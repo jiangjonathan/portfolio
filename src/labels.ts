@@ -25,12 +25,22 @@ export type LabelVisualOptions = {
   background: string;
   fontFamily: string;
   accent: string;
+  scalingAggression?: number;
+  // vertical for titles
+  title1YOffset?: number;
+  title2YOffset?: number;
+  // horizontal offset for side/rpm from center (nub)
+  sideXOffset?: number;
 };
 
 const defaultVisualOptions: LabelVisualOptions = {
   background: "#ffffff",
   fontFamily: '"Space Grotesk", "Inter", sans-serif',
   accent: "#202022",
+  scalingAggression: 1,
+  title1YOffset: -0.12, // a bit above nub
+  title2YOffset: 0.02, // just below
+  sideXOffset: 0.23, // left/right distance from center
 };
 
 export function createLabelTextures(
@@ -45,6 +55,26 @@ export function createLabelTextures(
   };
 }
 
+function fitTextToWidth(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  baseSize: number,
+  fontFamily: string,
+  maxWidth: number,
+  weight = "700",
+  aggressiveness = 1,
+) {
+  let size = baseSize;
+  ctx.font = `${weight} ${size}px ${fontFamily}`;
+  const width = ctx.measureText(text).width;
+  if (width <= maxWidth) return size;
+
+  const ratio = maxWidth / width;
+  size = Math.floor(size * Math.pow(ratio, aggressiveness));
+  ctx.font = `${weight} ${size}px ${fontFamily}`;
+  return size;
+}
+
 export function createLabelTexture(
   visuals: LabelVisualOptions = defaultVisualOptions,
   size = 1024,
@@ -52,42 +82,92 @@ export function createLabelTexture(
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = size;
   const context = canvas.getContext("2d");
+  if (!context) throw new Error("Unable to create label texture context.");
 
-  if (!context) {
-    throw new Error("Unable to create label texture context.");
-  }
+  const {
+    background,
+    fontFamily,
+    accent,
+    scalingAggression = 1,
+    title1YOffset = -0.25,
+    title2YOffset = 0.25,
+    sideXOffset = 0.23,
+  } = visuals;
 
-  // White background
-  context.fillStyle = visuals.background;
+  context.fillStyle = background;
   context.fillRect(0, 0, size, size);
 
   const center = size / 2;
+  const maxTextWidth = size * 0.75;
 
-  // Text styling
-  context.fillStyle = visuals.accent;
-  context.textAlign = "center";
+  // titles (centered vertically around nub)
+  const title1 = "KANYE WEST";
+  const title2 = "MY BEAUTIFUL DARK TWISTED FANTASY";
+
+  context.fillStyle = accent;
   context.textBaseline = "middle";
 
-  const titleFont = size * 0.07;
-  context.font = `700 ${titleFont}px ${visuals.fontFamily}`;
-  context.fillText("KANYE WEST", center, center - size * 0.32);
-  context.fillText(
-    "MY BEAUTIFUL DARK TWISTED FANTASY",
-    center,
-    center - size * 0.18,
+  const baseTitleSize = size * 0.065;
+
+  const title1Size = fitTextToWidth(
+    context,
+    title1,
+    baseTitleSize,
+    fontFamily,
+    maxTextWidth,
+    "700",
+    scalingAggression,
   );
+  context.textAlign = "center";
+  context.font = `700 ${title1Size}px ${fontFamily}`;
+  context.fillText(title1, center, center + size * title1YOffset);
 
-  const sideFont = size * 0.05;
-  context.font = `600 ${sideFont}px ${visuals.fontFamily}`;
-  context.fillText("SIDE A", center, center + size * 0.08);
+  const title2Size = fitTextToWidth(
+    context,
+    title2,
+    baseTitleSize,
+    fontFamily,
+    maxTextWidth,
+    "700",
+    scalingAggression,
+  );
+  context.font = `700 ${title2Size}px ${fontFamily}`;
+  context.fillText(title2, center, center + size * title2YOffset);
 
-  const rpmFont = size * 0.045;
-  context.font = `500 ${rpmFont}px ${visuals.fontFamily}`;
-  context.fillText("33 1/3 RPM", center, center + size * 0.18);
+  // SIDE A on the left of nub
+  const sideText = "SIDE A";
+  const baseSideFont = size * 0.045;
+  const sideFont = fitTextToWidth(
+    context,
+    sideText,
+    baseSideFont,
+    fontFamily,
+    size * 0.3,
+    "600",
+    scalingAggression,
+  );
+  context.font = `600 ${sideFont}px ${fontFamily}`;
+  context.textAlign = "right";
+  context.fillText(sideText, center - size * sideXOffset, center);
+
+  // RPM on the right of nub
+  const rpmText = "33 1/3";
+  const baseRpmFont = size * 0.042;
+  const rpmFont = fitTextToWidth(
+    context,
+    rpmText,
+    baseRpmFont,
+    fontFamily,
+    size * 0.3,
+    "500",
+    scalingAggression,
+  );
+  context.font = `500 ${rpmFont}px ${fontFamily}`;
+  context.textAlign = "left";
+  context.fillText(rpmText, center + size * sideXOffset, center);
 
   const texture = new CanvasTexture(canvas);
   texture.needsUpdate = true;
-
   return texture;
 }
 
