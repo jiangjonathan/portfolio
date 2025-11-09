@@ -8,6 +8,24 @@ import {
   Vector2,
 } from "three";
 import type { Material } from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+
+const vinylLoader = new GLTFLoader();
+
+export function loadVinylModel(normalTexture: Texture): Promise<Object3D> {
+  return new Promise((resolve, reject) => {
+    vinylLoader.load(
+      "/vinyl.glb",
+      (gltf) => {
+        const model = gltf.scene;
+        applyGrooveMaterial(model, normalTexture);
+        resolve(model);
+      },
+      undefined,
+      (error) => reject(error),
+    );
+  });
+}
 
 export function applyGrooveMaterial(model: Object3D, texture: Texture) {
   model.traverse((child) => {
