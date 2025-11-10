@@ -25,18 +25,27 @@ import { loadVinylModel } from "./vinyl";
 import {
   applyLabelTextures,
   createLabelTextures,
+  createDefaultLabelVisuals,
+  type LabelVisualOptions,
   type LabelApplicationOptions,
+  type LabelTextures,
 } from "./labels";
 import { loadTurntableModel, TurntableController } from "./turntable";
 import { CameraRig } from "./cameraRig";
 import {
-  createCameraInfoDisplay,
-  createTonearmRotationDisplay,
-  createVinylRotationControls,
-  createZoomControls,
+  createFpsDisplay,
+  // createTonearmRotationDisplay,
+  // createCameraInfoDisplay,
 } from "./ui";
-// media helpers used by controller
+import { initializeYouTubePlayer } from "./youtube";
+import { createMetadataController } from "./metadata";
 import { clampValue } from "./utils";
+import { createYouTubeURLInput } from "./youtubeInputUI";
+import {
+  createVinylAnimationState,
+  RETURN_CLEARANCE,
+  updateVinylAnimation,
+} from "./vinylAnimation";
 
 declare global {
   interface Window {
@@ -84,16 +93,15 @@ const vinylNormalTexture = textureLoader.load("/vinyl-normal.png");
 vinylNormalTexture.colorSpace = LinearSRGBColorSpace;
 vinylNormalTexture.anisotropy = renderer.capabilities.getMaxAnisotropy();
 
-const labelVisuals = {
-  background: "#f6e2f1",
-  gradientInner: "#fefefe",
-  gradientOuter: "#dcdcdc",
-  fontFamily: '"Space Grotesk", "Inter", sans-serif',
-  accent: "#202022",
+let labelVisuals: LabelVisualOptions = createDefaultLabelVisuals();
+
+let labelTextures: LabelTextures = createLabelTextures(labelVisuals);
+const applyLabelTextureQuality = (textures: LabelTextures) => {
+  const anisotropy = renderer.capabilities.getMaxAnisotropy();
+  textures.sideA.anisotropy = anisotropy;
+  textures.sideB.anisotropy = anisotropy;
 };
-const labelTextures = createLabelTextures(labelVisuals);
-labelTextures.sideA.anisotropy = renderer.capabilities.getMaxAnisotropy();
-labelTextures.sideB.anisotropy = renderer.capabilities.getMaxAnisotropy();
+applyLabelTextureQuality(labelTextures);
 
 let labelOptions: LabelApplicationOptions = {
   scale: 1,
@@ -102,55 +110,36 @@ let labelOptions: LabelApplicationOptions = {
   offsetY: 0,
 };
 
-const RAD2DEG = 180 / Math.PI;
+// const RAD2DEG = 180 / Math.PI;
 
 const heroGroup = new Group();
 scene.add(heroGroup);
 
-const zoomControls = createZoomControls();
-root.appendChild(zoomControls.container);
-cameraRig.setZoomFactor(parseFloat(zoomControls.slider.value));
+const MIN_ZOOM = 0.7;
+const MAX_ZOOM = 5;
+let zoomFactor = 1.8;
+cameraRig.setZoomFactor(zoomFactor);
 
-const tonearmRotationDisplay = createTonearmRotationDisplay();
-root.appendChild(tonearmRotationDisplay.container);
-const cameraInfoDisplay = createCameraInfoDisplay();
-root.appendChild(cameraInfoDisplay.container);
+const fpsDisplay = createFpsDisplay();
+root.appendChild(fpsDisplay.container);
+let fpsSmoothed = 60;
+let fpsUpdateTimer = 0;
+
+// const cameraInfoDisplay = createCameraInfoDisplay();
+// root.appendChild(cameraInfoDisplay.container);
 
 canvas.addEventListener(
   "wheel",
   (event) => {
     event.preventDefault();
     const delta = event.deltaY > 0 ? 0.08 : -0.08;
-    const slider = zoomControls.slider;
-    const min = parseFloat(slider.min);
-    const max = parseFloat(slider.max);
-    const nextValue = clampValue(parseFloat(slider.value) + delta, min, max);
-    slider.value = nextValue.toFixed(2);
-    cameraRig.setZoomFactor(nextValue);
+    zoomFactor = clampValue(zoomFactor + delta, MIN_ZOOM, MAX_ZOOM);
+    cameraRig.setZoomFactor(zoomFactor);
   },
   { passive: false },
 );
 
-const vinylRotationControls = createVinylRotationControls(
-  setVinylRotationDegrees,
-);
-root.appendChild(vinylRotationControls.container);
-
 let vinylModel: Object3D | null = null;
-const vinylAnchorPosition = new Vector3();
-const vinylTargetPosition = new Vector3();
-const lastTargetPosition = new Vector3();
-const currentPointerWorld = new Vector3();
-const pointerAttachmentOffset = new Vector3();
-const hangOffset = new Vector3(0, -0.08, 0);
-const relativeOffset = new Vector3();
-const desiredPosition = new Vector3();
-const swingState = {
-  targetX: 0,
-  targetZ: 0,
-  currentX: 0,
-  currentZ: 0,
-};
 const cameraOrbitState = {
   isOrbiting: false,
   pointerId: -1,
@@ -162,7 +151,16 @@ const raycaster = new Raycaster();
 const pointerNDC = new Vector2();
 const dragPlane = new Plane(new Vector3(0, 0, 1), 0);
 const dragIntersectPoint = new Vector3();
-const tempVelocity = new Vector3();
+const vinylAnimationState = createVinylAnimationState();
+const {
+  vinylAnchorPosition,
+  vinylTargetPosition,
+  lastTargetPosition,
+  currentPointerWorld,
+  pointerAttachmentOffset,
+  hangOffset,
+  swingState,
+} = vinylAnimationState;
 const placementRaycaster = new Raycaster();
 const placementRayOrigin = new Vector3();
 const placementRayDirection = new Vector3(0, -1, 0);
@@ -172,37 +170,154 @@ const platterSampleWorld = new Vector3();
 const turntableWorldPos = new Vector3();
 const turntableWorldQuat = new Quaternion();
 let turntableController: TurntableController | null = null;
-const MAX_DRAG_RADIUS = 100;
-const SWING_DAMPING = 0.18;
-const SWING_MAX_TILT = 0.35;
-const SWING_VELOCITY_FACTOR = 16;
-const STRING_RELAX_RATE = 0.08;
-const POSITION_LERP = 0.22;
-const RETURN_CLEARANCE = 0.05;
-const RETURN_HORIZONTAL_EPS = 0.01;
-const RETURN_VERTICAL_EPS = 0.0005;
-const RETURN_DROP_RATE = 0.05;
-const RETURN_APPROACH_RATE = 0.15;
-let isDraggingVinyl = false;
+function rebuildLabelTextures() {
+  labelTextures.sideA.dispose();
+  labelTextures.sideB.dispose();
+  labelTextures = createLabelTextures(labelVisuals);
+  applyLabelTextureQuality(labelTextures);
+  if (vinylModel) {
+    applyLabelTextures(vinylModel, labelTextures, labelOptions, labelVisuals);
+  }
+}
+
+const metadataController = createMetadataController({
+  labelVisuals,
+  onVisualsUpdated: rebuildLabelTextures,
+});
+const { applyMetadata: applyMetadataToLabels, loadSupplementalLabelMetadata } =
+  metadataController;
+loadSupplementalLabelMetadata();
+
+// YouTube player (top-left), wired to the turntable
+// No default video - user must provide URL via input
+const youtubePlayer = initializeYouTubePlayer(root);
+const {
+  bridge: yt,
+  controls: videoControls,
+  updateProgress: updateVideoProgress,
+  ready: youtubeReady,
+} = youtubePlayer;
+
+// Initially hide the player controls (only show when tonearm is in play area)
+yt.setControlsVisible(false);
+
+// Track when video reaches the last 2 seconds to animate out
+let hasStartedFadeOut = false;
+let isTonearmInPlayArea = false;
+yt.onPlaybackProgress(() => {
+  const currentTime = yt.getCurrentTime();
+  const duration = youtubePlayer.getDuration();
+  const timeRemaining = duration - currentTime;
+
+  // When video has 2 seconds or less remaining, animate controls and viewport out
+  if (timeRemaining <= 2 && !hasStartedFadeOut) {
+    hasStartedFadeOut = true;
+    // Fade out the controls
+    yt.setControlsVisible(false);
+    // Animate viewport height to 0
+    const viewport = root.querySelector(".yt-player-viewport") as HTMLElement;
+    if (viewport) {
+      viewport.style.height = "0px";
+    }
+  } else if (timeRemaining > 2) {
+    // Reset the flag if we seek back
+    hasStartedFadeOut = false;
+  }
+});
+
+// YouTube URL input UI (top-right)
+const youtubeURLInput = createYouTubeURLInput({
+  onVideoChange: async (metadata) => {
+    // Reset the fade-out flag for the new video
+    hasStartedFadeOut = false;
+
+    // Reset turntable state when new video loads
+    if (turntableController) {
+      turntableController.resetState();
+    }
+
+    // Randomize vinyl rotation on video load
+    if (vinylModel) {
+      const randomRotation = Math.random() * Math.PI * 2; // Random rotation 0 to 2π
+      vinylReturnBaseTwist = randomRotation;
+      console.log(
+        "Randomized vinyl rotation:",
+        randomRotation,
+        "radians",
+        (randomRotation * 180) / Math.PI,
+        "degrees",
+      );
+    }
+
+    // Load the new video with forced metadata update
+    await youtubePlayer.loadVideo(metadata.videoId, (videoMetadata) => {
+      // Force update to override any locked metadata
+      applyMetadataToLabels(videoMetadata, true);
+    });
+
+    // Update turntable controller with new duration
+    const duration = youtubePlayer.getDuration();
+    if (duration > 1 && turntableController) {
+      turntableController.setMediaDuration(duration);
+    }
+
+    // Update the timeline display with new duration
+    videoControls.setProgress(0, duration);
+
+    // Update label background color with dominant color from thumbnail
+    labelVisuals.background = metadata.dominantColor;
+    rebuildLabelTextures();
+
+    // Apply updated textures to vinyl if it's loaded
+    if (vinylModel) {
+      applyLabelTextures(vinylModel, labelTextures, labelOptions, labelVisuals);
+    }
+
+    // Show the video controls only if tonearm is in play area
+    if (turntableController?.isTonearmInPlayArea()) {
+      yt.setControlsVisible(true);
+    }
+
+    // Auto-play briefly to show first frame instead of thumbnail (muted)
+    yt.setVolume(0); // Mute before playing
+    yt.play();
+    // Wait a short moment then pause and seek to beginning
+    setTimeout(() => {
+      yt.pause();
+      yt.seek(0);
+      yt.setVolume(100); // Restore volume after preview
+    }, 300);
+  },
+  onError: (error) => {
+    console.error("Failed to load YouTube video:", error);
+  },
+});
+root.appendChild(youtubeURLInput);
+
+let vinylDragPointerId: number | null = null;
 let isReturningVinyl = false;
 let hasClearedNub = false;
 let nubClearanceY = 0;
 // tonearm drag handled by controller
 let ON_TURNTABLE = true;
+function setVinylOnTurntable(onTurntable: boolean) {
+  if (ON_TURNTABLE === onTurntable) {
+    return;
+  }
+  ON_TURNTABLE = onTurntable;
+  turntableController?.setVinylPresence(onTurntable);
+  if (!onTurntable) {
+    turntableController?.liftNeedle();
+  }
+}
 let vinylSpinAngle = 0;
 let vinylUserRotation = 0;
 let lastTime = performance.now();
-let fpsSmoothed = 60;
-let fpsUpdateTimer = 0;
-let PLAYING_SOUND = false;
-window.PLAYING_SOUND = PLAYING_SOUND;
 let tonearmPlayTime = 0;
 // Vinyl twist that plays during the return-drop animation
 let vinylReturnTwist = 0;
 let vinylReturnTwistTarget = 0;
 let vinylReturnBaseTwist = 0;
-const VINYL_RETURN_FINAL_TWIST = (75 * Math.PI) / 180;
-const VINYL_RETURN_TWIST_LERP = 0.14;
 // spin handled by controller
 
 // Match the default orientation in CameraRig (yaw=0°, pitch=45°).
@@ -239,10 +354,10 @@ canvas.addEventListener("pointerdown", (event) => {
   if (!hit) {
     return;
   }
-  isDraggingVinyl = true;
+  vinylDragPointerId = event.pointerId;
   isReturningVinyl = false;
   hasClearedNub = false;
-  ON_TURNTABLE = false;
+  setVinylOnTurntable(false);
   currentPointerWorld.copy(hit);
   pointerAttachmentOffset.copy(vinylModel.position).sub(hit);
   vinylTargetPosition.copy(vinylModel.position);
@@ -259,7 +374,11 @@ canvas.addEventListener("pointermove", (event) => {
   if (turntableController && turntableController.handlePointerMove(event)) {
     return;
   }
-  if (!isDraggingVinyl || !vinylModel) {
+  if (
+    vinylDragPointerId === null ||
+    event.pointerId !== vinylDragPointerId ||
+    !vinylModel
+  ) {
     return;
   }
   const hit = pickPointOnPlane(event);
@@ -270,11 +389,11 @@ canvas.addEventListener("pointermove", (event) => {
 });
 
 const endDrag = (event: PointerEvent) => {
-  if (!isDraggingVinyl) {
+  if (vinylDragPointerId === null || event.pointerId !== vinylDragPointerId) {
     return;
   }
 
-  isDraggingVinyl = false;
+  vinylDragPointerId = null;
   pointerAttachmentOffset.copy(hangOffset);
   currentPointerWorld.copy(vinylAnchorPosition);
   if (vinylModel) {
@@ -316,7 +435,10 @@ Promise.all([loadTurntableModel(), loadVinylModel(vinylNormalTexture)])
   .then(([turntable, vinyl]) => {
     vinylModel = vinyl;
     // references not needed; controller handles rotation
-    const cartridge = findObjectByName(turntable.getObjectByName("Mount") ?? null, "Cartridge");
+    const cartridge = findObjectByName(
+      turntable.getObjectByName("Mount") ?? null,
+      "Cartridge",
+    );
     if (cartridge) {
       applyCartridgeColor(cartridge);
     }
@@ -324,8 +446,26 @@ Promise.all([loadTurntableModel(), loadVinylModel(vinylNormalTexture)])
       camera,
       canvas,
       getZoomFactor: () => cameraRig.getZoomFactor(),
-      onScrub: (seconds) => notifyMediaScrub(seconds),
+      onScrub: (seconds) => {
+        yt.seek(seconds);
+        videoControls.setProgress(
+          seconds,
+          youtubePlayer.getDuration() || yt.getDuration(),
+        );
+      },
+      onPlay: () => yt.play(),
+      onPause: () => yt.pause(),
+      onRateChange: (rate) => yt.setRate(rate),
     });
+    turntableController.setVinylPresence(ON_TURNTABLE);
+    const applyDuration = () => {
+      const duration = youtubePlayer.getDuration();
+      if (duration > 1 && turntableController) {
+        turntableController.setMediaDuration(duration);
+      }
+    };
+    applyDuration();
+    youtubeReady.then(applyDuration).catch(() => {});
     logMaterialNames(turntable);
     logMaterialNames(vinyl);
 
@@ -336,9 +476,7 @@ Promise.all([loadTurntableModel(), loadVinylModel(vinylNormalTexture)])
     heroGroup.add(vinyl);
 
     cameraRig.frameObject(heroGroup, 2.6);
-    vinylRotationControls.setEnabled(true);
-    vinylRotationControls.setValue(0);
-    setVinylRotationDegrees(0);
+    vinylUserRotation = 0;
   })
   .catch((error) => {
     console.error("Failed to load hero models", error);
@@ -365,125 +503,80 @@ const animate = (time: number) => {
   // const isTonearmPlaying = turntableController?.isPlaying() ?? false;
 
   if (vinylModel) {
-    if (isDraggingVinyl) {
-      pointerAttachmentOffset.lerp(hangOffset, STRING_RELAX_RATE);
-      desiredPosition.copy(currentPointerWorld).add(pointerAttachmentOffset);
-
-      relativeOffset.copy(desiredPosition).sub(vinylAnchorPosition);
-      const planarDistance = Math.hypot(relativeOffset.x, relativeOffset.y);
-      if (planarDistance > MAX_DRAG_RADIUS) {
-        const clampScale = MAX_DRAG_RADIUS / planarDistance;
-        relativeOffset.x *= clampScale;
-        relativeOffset.y *= clampScale;
-      }
-
-      vinylTargetPosition.copy(vinylAnchorPosition).add(relativeOffset);
-      vinylTargetPosition.z = vinylAnchorPosition.z;
-
-      tempVelocity.copy(vinylTargetPosition).sub(lastTargetPosition);
-      lastTargetPosition.copy(vinylTargetPosition);
-
-      swingState.targetX = clampValue(
-        tempVelocity.y * SWING_VELOCITY_FACTOR,
-        -SWING_MAX_TILT,
-        SWING_MAX_TILT,
-      );
-      swingState.targetZ = clampValue(
-        -tempVelocity.x * SWING_VELOCITY_FACTOR,
-        -SWING_MAX_TILT,
-        SWING_MAX_TILT,
-      );
-    } else {
-      const horizontalDelta = vinylAnchorPosition.x - vinylTargetPosition.x;
-      vinylTargetPosition.x += horizontalDelta * RETURN_APPROACH_RATE;
-      vinylTargetPosition.z = vinylAnchorPosition.z;
-
-      if (isReturningVinyl) {
-        if (!hasClearedNub) {
-          const targetLift =
-            nubClearanceY || vinylAnchorPosition.y + RETURN_CLEARANCE;
-          vinylTargetPosition.y +=
-            (targetLift - vinylTargetPosition.y) * RETURN_APPROACH_RATE;
-          if (Math.abs(horizontalDelta) < RETURN_HORIZONTAL_EPS) {
-            hasClearedNub = true;
-          }
-        } else {
-          vinylTargetPosition.y +=
-            (vinylAnchorPosition.y - vinylTargetPosition.y) * RETURN_DROP_RATE;
-          const closeHorizontally =
-            Math.abs(horizontalDelta) < RETURN_HORIZONTAL_EPS;
-          // During the drop phase, twist the vinyl toward the default 75° offset
-          vinylReturnTwistTarget =
-            VINYL_RETURN_FINAL_TWIST - vinylReturnBaseTwist;
-          if (
-            closeHorizontally &&
-            Math.abs(vinylTargetPosition.y - vinylAnchorPosition.y) <
-              RETURN_VERTICAL_EPS
-          ) {
-            isReturningVinyl = false;
-            hasClearedNub = false;
-            vinylTargetPosition.copy(vinylAnchorPosition);
-            ON_TURNTABLE = true;
-            // Commit the twist and reset the animated component
-            vinylReturnBaseTwist = VINYL_RETURN_FINAL_TWIST;
-            vinylReturnTwist = 0;
-            vinylReturnTwistTarget = 0;
-          }
-        }
-      } else {
-        vinylTargetPosition.y +=
-          (vinylAnchorPosition.y - vinylTargetPosition.y) * RETURN_DROP_RATE;
-        // Not returning: ease twist back to zero offset
-        vinylReturnTwistTarget = 0;
-      }
-
-      lastTargetPosition.copy(vinylTargetPosition);
-      swingState.targetX = 0;
-      swingState.targetZ = 0;
+    const vinylAnimationResult = updateVinylAnimation(vinylAnimationState, {
+      vinylModel,
+      dragActive: vinylDragPointerId !== null,
+      isReturningVinyl,
+      hasClearedNub,
+      nubClearanceY,
+      vinylReturnBaseTwist,
+      vinylReturnTwist,
+      vinylReturnTwistTarget,
+      vinylSpinAngle,
+      vinylUserRotation,
+      onTurntable: ON_TURNTABLE,
+    });
+    isReturningVinyl = vinylAnimationResult.isReturningVinyl;
+    hasClearedNub = vinylAnimationResult.hasClearedNub;
+    vinylReturnBaseTwist = vinylAnimationResult.vinylReturnBaseTwist;
+    vinylReturnTwist = vinylAnimationResult.vinylReturnTwist;
+    vinylReturnTwistTarget = vinylAnimationResult.vinylReturnTwistTarget;
+    if (vinylAnimationResult.returnedToPlatter) {
+      setVinylOnTurntable(true);
     }
-
-    vinylModel.position.lerp(vinylTargetPosition, POSITION_LERP);
-    swingState.currentX +=
-      (swingState.targetX - swingState.currentX) * SWING_DAMPING;
-    swingState.currentZ +=
-      (swingState.targetZ - swingState.currentZ) * SWING_DAMPING;
-    vinylModel.rotation.x = swingState.currentX;
-    vinylModel.rotation.z = swingState.currentZ;
-    // update vinyl twist easing
-    vinylReturnTwist +=
-      (vinylReturnTwistTarget - vinylReturnTwist) * VINYL_RETURN_TWIST_LERP;
-    vinylModel.rotation.y =
-      vinylUserRotation +
-      vinylSpinAngle +
-      vinylReturnBaseTwist +
-      vinylReturnTwist;
   }
 
   // Controller updates tonearm + platter/pulley
   turntableController?.update(delta);
-  tonearmRotationDisplay.setValue(
-    turntableController?.getTonearmYawDegrees() ?? null,
-  );
-  const cameraAngles = cameraRig.getOrbitAngles();
-  cameraInfoDisplay.setValue(
-    cameraAngles.azimuth * RAD2DEG,
-    cameraAngles.polar * RAD2DEG,
-  );
+  // const cameraAngles = cameraRig.getOrbitAngles();
+  // cameraInfoDisplay.setValue(
+  //   cameraAngles.azimuth * RAD2DEG,
+  //   cameraAngles.polar * RAD2DEG,
+  // );
+
+  // Show/hide player based on tonearm position in play area
+  const tonearmNowInPlayArea =
+    turntableController?.isTonearmInPlayArea() ?? false;
+  if (tonearmNowInPlayArea && !isTonearmInPlayArea) {
+    // Tonearm just entered play area - show player
+    isTonearmInPlayArea = true;
+    const viewport = root.querySelector(".yt-player-viewport") as HTMLElement;
+    if (viewport && youtubePlayer.getDuration() > 0) {
+      yt.setControlsVisible(true);
+      // Animate viewport back in using the current video's aspect ratio
+      const targetHeight = 512 / yt.getAspectRatio();
+      viewport.style.height = `${targetHeight}px`;
+    }
+  } else if (!tonearmNowInPlayArea && isTonearmInPlayArea) {
+    // Tonearm just left play area - hide player (unless we're in the last 2 seconds)
+    const timeRemaining = youtubePlayer.getDuration() - yt.getCurrentTime();
+    if (timeRemaining > 2) {
+      isTonearmInPlayArea = false;
+      yt.setControlsVisible(false);
+      const viewport = root.querySelector(".yt-player-viewport") as HTMLElement;
+      if (viewport) {
+        viewport.style.height = "0px";
+      }
+    }
+  }
 
   const angularStep = turntableController?.getAngularStep() ?? 0;
-  if (ON_TURNTABLE) vinylSpinAngle += angularStep;
+  if (ON_TURNTABLE) {
+    vinylSpinAngle += angularStep;
+  }
 
   // Update FPS counter (smoothed)
   const currentFps = delta > 0 ? 1 / delta : 0;
   fpsSmoothed += (currentFps - fpsSmoothed) * 0.05;
   fpsUpdateTimer += delta;
   if (fpsUpdateTimer > 0.25) {
-    zoomControls.fps.textContent = `${Math.round(fpsSmoothed)} fps`;
+    fpsDisplay.fps.textContent = `${Math.round(fpsSmoothed)}`;
     fpsUpdateTimer = 0;
   }
 
   renderer.render(scene, camera);
-  window.PLAYING_SOUND = PLAYING_SOUND;
+  window.PLAYING_SOUND = turntableController?.isPlaying() ?? false;
+  updateVideoProgress();
 };
 
 requestAnimationFrame(animate);
@@ -547,26 +640,8 @@ function positionVinylOnTurntable(vinyl: Object3D, turntable: Object3D) {
   swingState.currentZ = 0;
   swingState.targetX = 0;
   swingState.targetZ = 0;
-  ON_TURNTABLE = true;
+  setVinylOnTurntable(true);
   updateDragPlaneDepth(alignedPosition.z);
-}
-
-function setVinylRotationDegrees(value: number) {
-  const clamped = clampValue(value, -180, 180);
-  vinylUserRotation = (clamped * Math.PI) / 180;
-  vinylRotationControls.setValue(clamped);
-  applyVinylRotation();
-}
-
-function applyVinylRotation() {
-  if (!vinylModel) {
-    return;
-  }
-  vinylModel.rotation.y =
-    vinylUserRotation +
-    vinylSpinAngle +
-    vinylReturnBaseTwist +
-    vinylReturnTwist;
 }
 
 function pickPointOnPlane(event: PointerEvent) {
@@ -638,9 +713,7 @@ function applyCartridgeColor(object: Object3D) {
 
 // media time set handled by controller
 
-function notifyMediaScrub(_time: number) {
-  // Placeholder for integrating with external media/video playback.
-}
+// no-op placeholder (controller + YouTube handle sync)
 
 // tonearm handlers moved to turntable controller
 

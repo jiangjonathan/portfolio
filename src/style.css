@@ -36,3 +36,89 @@ canvas#vinyl-viewer {
     display: block;
     outline: none;
 }
+
+/* YouTube player cropping shell */
+.yt-player-viewport {
+    position: relative;
+    display: inline-block;
+    overflow: hidden;
+    background: #fff;
+}
+
+#player-size {
+    position: relative;
+    width: 512px;
+    height: 1024px;
+    background: #fff;
+    transform: translateY(0);
+    will-change: transform;
+    pointer-events: none;
+}
+
+#player {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+#player iframe {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    display: block;
+    pointer-events: none;
+    user-select: none;
+    touch-action: none;
+}
+
+.volume-slider {
+    appearance: none;
+    -webkit-appearance: none;
+    height: 3px;
+    border-radius: 0;
+    background: rgba(0, 0, 0, 0.08);
+    cursor: pointer;
+    margin: 0;
+    padding: 0;
+}
+
+.volume-slider::-webkit-slider-runnable-track {
+    height: 3px;
+    border-radius: 0;
+    background: transparent;
+}
+
+.volume-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 0;
+    height: 0;
+    border-radius: 0;
+    background: transparent;
+    border: none;
+    margin-top: 0;
+    box-shadow: none;
+}
+
+.volume-slider::-moz-range-track {
+    height: 3px;
+    border-radius: 0;
+    background: transparent;
+}
+
+.volume-slider::-moz-range-progress {
+    height: 3px;
+    border-radius: 0;
+    background: transparent;
+}
+
+.volume-slider::-moz-range-thumb {
+    width: 0;
+    height: 0;
+    border-radius: 0;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    cursor: pointer;
+}

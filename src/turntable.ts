@@ -1,7 +1,7 @@
 import type { Camera, Object3D } from "three";
 import { Raycaster, Vector2 } from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { mediaTimeToYaw, yawToMediaTime } from "./media";
+import { mediaTimeToYaw } from "./media";
 import { clampValue } from "./utils";
 
 export interface TurntableControllerOptions {
@@ -9,6 +9,9 @@ export interface TurntableControllerOptions {
   canvas: HTMLCanvasElement;
   getZoomFactor: () => number;
   onScrub?: (seconds: number) => void;
+  onPlay?: () => void;
+  onPause?: () => void;
+  onRateChange?: (rate: number) => void;
 }
 
 export class TurntableController {
@@ -16,6 +19,9 @@ export class TurntableController {
   private canvas: HTMLCanvasElement;
   private getZoomFactor: () => number;
   private onScrub?: (seconds: number) => void;
+  private onPlay?: () => void;
+  private onPause?: () => void;
+  private onRateChange?: (rate: number) => void;
 
   private raycaster = new Raycaster();
   private pointerNDC = new Vector2();
@@ -48,6 +54,7 @@ export class TurntableController {
   private playingSound = false;
   private startOn = false;
   private autoReturn = false;
+  private vinylPresent = true;
 
   private currentRpm = 33 + 1 / 3;
   private readonly RPM_SLOW = 33 + 1 / 3;
@@ -63,16 +70,17 @@ export class TurntableController {
   private readonly TONEARM_MAX_YAW = (10 * Math.PI) / 180;
   private readonly TONEARM_PLAY_YAW_THRESHOLD = (-15 * Math.PI) / 180;
   private readonly TONEARM_DRAG_SENSITIVITY = 0.012;
-  private readonly TONEARM_RETURN_RATE = 0.08;
+  private readonly TONEARM_RETURN_RATE = 0.04;
   private readonly TONEARM_PLAY_LERP = 0.02;
   private readonly TONEARM_PLAY_EPSILON = 0.01;
   private readonly TONEARM_HOVER_OFFSET = 0.06;
-  private readonly TONEARM_PLAY_WOBBLE = 0.005;
-  private readonly TONEARM_PLAY_WOBBLE_SPEED = 3.2;
-  private readonly TONEARM_PLAY_OFFSET = 0.066; // pitch-down amount (radians) when playing, before wobble
-  private readonly SPEED_SLIDE_TRAVEL = -2.1; // forward/back z
+  private readonly TONEARM_YAW_WOBBLE = 0.003;
+  private readonly TONEARM_PITCH_WOBBLE = 0.0035;
+  private readonly TONEARM_WOBBLE_SPEED = 4;
+  private readonly TONEARM_PLAY_OFFSET = 0.066; // 0.066 Default
+  private readonly SPEED_SLIDE_TRAVEL = -2.1; // -2.1 Default
   private readonly START_STOP_PRESS = -0.175;
-  private readonly MEDIA_DURATION_SECONDS = 120;
+  private mediaDuration = 0;
   private mediaPlaybackRate = 1;
   private mediaCurrentTime = 0;
 
@@ -81,6 +89,9 @@ export class TurntableController {
     this.canvas = options.canvas;
     this.getZoomFactor = options.getZoomFactor;
     this.onScrub = options.onScrub;
+    this.onPlay = options.onPlay;
+    this.onPause = options.onPause;
+    this.onRateChange = options.onRateChange;
 
     this.platterMesh = turntable.getObjectByName("Platter") ?? null;
     this.pulleyMesh = turntable.getObjectByName("Pulley") ?? null;
@@ -115,6 +126,18 @@ export class TurntableController {
     }
   }
 
+  setMediaDuration(seconds: number) {
+    if (!Number.isFinite(seconds) || seconds <= 1) {
+      return;
+    }
+    this.mediaDuration = seconds;
+    this.mediaCurrentTime = clampValue(
+      this.mediaCurrentTime,
+      0,
+      this.mediaDuration,
+    );
+  }
+
   handlePointerDown(e: PointerEvent): boolean {
     if (!this.updatePointer(e)) return false;
     // Start/Stop
@@ -130,6 +153,10 @@ export class TurntableController {
     }
     // Tonearm
     if (this.hit(this.tonearm)) {
+      if (this.playingSound) {
+        this.playingSound = false;
+        this.onPause?.();
+      }
       this.isDraggingTonearm = true;
       this.autoReturn = false;
       this.tonearmDragLastX = e.clientX;
@@ -150,7 +177,7 @@ export class TurntableController {
         this.TONEARM_MIN_YAW,
         this.TONEARM_MAX_YAW,
       );
-      this.syncMediaToYaw();
+      this.scrubVideoToCurrentYaw();
       return true;
     }
     // hover state
@@ -169,7 +196,9 @@ export class TurntableController {
     const min = this.TONEARM_PLAY_YAW_THRESHOLD; // −15°
     if (this.tonearmBaseRotation <= max && this.tonearmBaseRotation >= min) {
       this.tonearmBaseRotation = min - 0.0005;
-      this.syncMediaToYaw();
+    }
+    if (this.isTonearmOverVinyl()) {
+      this.scrubVideoToCurrentYaw();
     }
   }
 
@@ -207,12 +236,19 @@ export class TurntableController {
 
     // Tonearm yaw/pitch
     if (this.tonearmMount && this.tonearm) {
-      // Auto progress during play
       const inPlayableYaw =
         this.tonearmBaseRotation <= this.TONEARM_PLAY_YAW_THRESHOLD &&
         this.tonearmBaseRotation >= this.TONEARM_MIN_YAW;
       const inPlayWindow = inPlayableYaw && !this.isDraggingTonearm;
-      if (this.startOn && this.playingSound && inPlayWindow) {
+      const shouldDropNeedle =
+        this.startOn &&
+        inPlayWindow &&
+        !this.isDraggingTonearm &&
+        this.vinylPresent;
+      const advanceMedia =
+        this.startOn && this.playingSound && inPlayWindow && this.vinylPresent;
+
+      if (advanceMedia) {
         this.setMediaCurrentTime(
           this.mediaCurrentTime + delta * this.mediaPlaybackRate,
         );
@@ -220,15 +256,18 @@ export class TurntableController {
           this.mediaCurrentTime,
           this.TONEARM_PLAY_YAW_THRESHOLD,
           this.TONEARM_MIN_YAW,
-          this.MEDIA_DURATION_SECONDS,
+          this.mediaDuration,
         );
         if (
           this.tonearmBaseRotation <= this.TONEARM_MIN_YAW + 1e-5 ||
-          this.mediaCurrentTime >= this.MEDIA_DURATION_SECONDS - 1e-4
+          this.mediaCurrentTime >= this.mediaDuration - 1e-4
         ) {
           this.autoReturn = true;
           this.startOn = false;
-          this.playingSound = false;
+          if (this.playingSound) {
+            this.playingSound = false;
+            this.onPause?.();
+          }
         }
       } else if (
         !this.isDraggingTonearm &&
@@ -249,58 +288,51 @@ export class TurntableController {
         }
       }
 
-      // Wobble target + easing to base rotation
-      let yawTarget = this.tonearmBaseRotation;
-      if (this.startOn && this.playingSound && inPlayWindow) {
-        const wobble =
-          this.TONEARM_PLAY_WOBBLE *
-          Math.sin(this.tonearmPlayTime * this.TONEARM_PLAY_WOBBLE_SPEED);
-        yawTarget = clampValue(
-          this.tonearmBaseRotation + wobble,
-          this.TONEARM_MIN_YAW,
-          this.TONEARM_MAX_YAW,
-        );
-      }
+      const wobblePhase = this.tonearmPlayTime * this.TONEARM_WOBBLE_SPEED;
+      const yawRender =
+        this.tonearmBaseRotation +
+        (advanceMedia ? this.TONEARM_YAW_WOBBLE * Math.sin(wobblePhase) : 0);
       this.tonearmMount.rotation.y +=
-        (yawTarget - this.tonearmMount.rotation.y) * 0.2;
+        (yawRender - this.tonearmMount.rotation.y) * 0.2;
       this.tonearmMount.rotation.y = clampValue(
         this.tonearmMount.rotation.y,
         this.TONEARM_MIN_YAW,
         this.TONEARM_MAX_YAW,
       );
 
-      const yaw = this.tonearmMount.rotation.y;
-      const inPlayZone =
-        this.startOn &&
-        !this.isDraggingTonearm &&
-        yaw <= this.TONEARM_PLAY_YAW_THRESHOLD &&
-        yaw >= this.TONEARM_MIN_YAW;
+      const desiredPitchDown =
+        this.tonearmRestPitch +
+        this.tonearmPitchDownDir * this.TONEARM_PLAY_OFFSET;
+      const inPlayZone = shouldDropNeedle;
 
       let targetPitch = this.tonearmRestPitch;
       if (this.isHoveringTonearm && !inPlayZone) {
         targetPitch -= this.tonearmPitchDownDir * this.TONEARM_HOVER_OFFSET;
       }
-      let pitchLerp = this.TONEARM_PLAY_LERP; // reuse constant
-      if (!this.startOn && this.playingSound) this.playingSound = false;
-      if (inPlayZone) {
-        const pitchWobble =
-          this.TONEARM_PLAY_WOBBLE *
-          Math.sin(this.tonearmPlayTime * this.TONEARM_PLAY_WOBBLE_SPEED);
-        targetPitch =
-          this.tonearmRestPitch +
-          this.tonearmPitchDownDir * (this.TONEARM_PLAY_OFFSET + pitchWobble);
-        if (
-          !this.playingSound &&
-          Math.abs(this.tonearm.rotation.x - targetPitch) <
-            this.TONEARM_PLAY_EPSILON
-        ) {
-          this.playingSound = true;
-        }
-      } else if (this.playingSound) {
-        this.playingSound = false;
+      if (shouldDropNeedle) {
+        targetPitch = desiredPitchDown;
       }
+      const pitchRender =
+        targetPitch +
+        (advanceMedia
+          ? this.tonearmPitchDownDir *
+            this.TONEARM_PITCH_WOBBLE *
+            Math.sin(wobblePhase + Math.PI / 2)
+          : 0);
       this.tonearm.rotation.x +=
-        (targetPitch - this.tonearm.rotation.x) * pitchLerp;
+        (pitchRender - this.tonearm.rotation.x) * this.TONEARM_PLAY_LERP;
+
+      const needleDown =
+        Math.abs(this.tonearm.rotation.x - desiredPitchDown) <
+        this.TONEARM_PLAY_EPSILON;
+
+      if (shouldDropNeedle && needleDown && !this.playingSound) {
+        this.playingSound = true;
+        this.onPlay?.();
+      } else if ((!shouldDropNeedle || !needleDown) && this.playingSound) {
+        this.playingSound = false;
+        this.onPause?.();
+      }
     }
   }
 
@@ -309,16 +341,59 @@ export class TurntableController {
   }
 
   getTonearmYawDegrees() {
-    if (!this.tonearmMount) return null;
-    return (this.tonearmMount.rotation.y * 180) / Math.PI;
+    return (this.tonearmBaseRotation * 180) / Math.PI;
+  }
+
+  isTonearmInPlayArea() {
+    return (
+      this.tonearmBaseRotation <= this.TONEARM_PLAY_YAW_THRESHOLD &&
+      this.tonearmBaseRotation >= this.TONEARM_MIN_YAW
+    );
   }
 
   isPlaying() {
     return this.playingSound;
   }
 
+  liftNeedle() {
+    if (!this.playingSound) {
+      return;
+    }
+    this.playingSound = false;
+    this.onPause?.();
+  }
+
+  setVinylPresence(present: boolean) {
+    this.vinylPresent = present;
+    if (!present && this.playingSound) {
+      this.playingSound = false;
+      this.onPause?.();
+    }
+  }
+
+  resetState() {
+    // Lift needle if playing
+    if (this.playingSound) {
+      this.playingSound = false;
+      this.onPause?.();
+    }
+    // Stop the turntable
+    this.startOn = false;
+    // Return tonearm to home position
+    this.tonearmBaseRotation = this.tonearmHomeRotation;
+    // Reset media position to start
+    this.setMediaCurrentTime(0, false);
+  }
+
   private toggleStart() {
     this.startOn = !this.startOn;
+    if (!this.startOn && this.playingSound) {
+      this.playingSound = false;
+      this.onPause?.();
+    }
+    if (this.startOn && this.isTonearmOverVinyl()) {
+      this.scrubVideoToCurrentYaw();
+    }
   }
 
   private pressStartStop() {
@@ -340,7 +415,9 @@ export class TurntableController {
     // move slide forward/back along Z
     this.speedSlideTarget =
       Math.abs(rpm - this.RPM_FAST) < 0.1 ? this.SPEED_SLIDE_TRAVEL : 0;
-    this.mediaPlaybackRate = rpm / this.RPM_SLOW;
+    const rate = Math.abs(rpm - this.RPM_FAST) < 0.1 ? 1.5 : 1.0;
+    this.mediaPlaybackRate = rate;
+    this.onRateChange?.(rate);
   }
 
   private rpmToAngularSpeed(rpm: number) {
@@ -362,20 +439,37 @@ export class TurntableController {
     return this.raycaster.intersectObject(obj, true).length > 0;
   }
 
-  private syncMediaToYaw() {
-    const seconds = yawToMediaTime(
-      this.tonearmBaseRotation,
-      this.TONEARM_PLAY_YAW_THRESHOLD,
-      this.TONEARM_MIN_YAW,
-      this.MEDIA_DURATION_SECONDS,
-    );
-    this.setMediaCurrentTime(seconds);
+  private scrubVideoToCurrentYaw() {
+    const seconds = this.computeSecondsFromYaw(this.tonearmBaseRotation);
+    this.setMediaCurrentTime(seconds, true);
   }
 
-  private setMediaCurrentTime(seconds: number) {
-    const clamped = clampValue(seconds, 0, this.MEDIA_DURATION_SECONDS);
+  private computeSecondsFromYaw(yaw: number) {
+    const span = this.TONEARM_MIN_YAW - this.TONEARM_PLAY_YAW_THRESHOLD;
+    if (!this.mediaDuration || span === 0) {
+      return 0;
+    }
+    const progress = clampValue(
+      (yaw - this.TONEARM_PLAY_YAW_THRESHOLD) / span,
+      0,
+      1,
+    );
+    return progress * this.mediaDuration;
+  }
+
+  private isTonearmOverVinyl() {
+    return (
+      this.tonearmBaseRotation <= this.TONEARM_PLAY_YAW_THRESHOLD &&
+      this.tonearmBaseRotation >= this.TONEARM_MIN_YAW
+    );
+  }
+
+  private setMediaCurrentTime(seconds: number, emit = false) {
+    const clamped = clampValue(seconds, 0, this.mediaDuration);
     this.mediaCurrentTime = clamped;
-    if (this.onScrub) this.onScrub(clamped);
+    if (emit) {
+      this.onScrub?.(clamped);
+    }
   }
 }
 

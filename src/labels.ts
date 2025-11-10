@@ -5,6 +5,7 @@ import {
   MathUtils,
   Object3D,
 } from "three";
+import { getContrastTextColor } from "./colorUtils";
 
 export type LabelTextures = { sideA: CanvasTexture; sideB: CanvasTexture };
 export type LabelApplicationOptions = {
@@ -25,26 +26,41 @@ export type LabelVisualOptions = {
   background: string;
   fontFamily: string;
   accent: string;
+  textColor?: string; // Color for title/text (auto-determined if not set)
   scalingAggression?: number;
   // vertical for titles
   title1YOffset?: number;
   title2YOffset?: number;
+  title3YOffset?: number;
   // horizontal offset for side/rpm from center (nub)
   sideXOffset?: number;
+  title1?: string;
+  title2?: string;
+  title3?: string;
+  sideLabel?: string;
+  rpmLabel?: string;
 };
 
-const defaultVisualOptions: LabelVisualOptions = {
-  background: "#ffffff",
-  fontFamily: '"Space Grotesk", "Inter", sans-serif',
-  accent: "#202022",
-  scalingAggression: 1,
-  title1YOffset: -0.12, // a bit above nub
-  title2YOffset: 0.02, // just below
-  sideXOffset: 0.23, // left/right distance from center
-};
+export function createDefaultLabelVisuals(): LabelVisualOptions {
+  return {
+    background: "#f6e2f1",
+    fontFamily: '"Space Grotesk", "Inter", sans-serif',
+    accent: "#202022",
+    scalingAggression: 1,
+    title1YOffset: -0.2,
+    title2YOffset: 0.2,
+    title3YOffset: 0.3,
+    sideXOffset: 0.23,
+    title1: "Unknown Artist",
+    title2: "Untitled Track",
+    title3: "",
+    sideLabel: "SIDE A",
+    rpmLabel: "33 1/3",
+  };
+}
 
 export function createLabelTextures(
-  visuals: LabelVisualOptions = defaultVisualOptions,
+  visuals: LabelVisualOptions = createDefaultLabelVisuals(),
 ): LabelTextures {
   const base = createLabelTexture(visuals);
   const clone = base.clone();
@@ -76,7 +92,7 @@ function fitTextToWidth(
 }
 
 export function createLabelTexture(
-  visuals: LabelVisualOptions = defaultVisualOptions,
+  visuals: LabelVisualOptions = createDefaultLabelVisuals(),
   size = 1024,
 ) {
   const canvas = document.createElement("canvas");
@@ -87,11 +103,17 @@ export function createLabelTexture(
   const {
     background,
     fontFamily,
-    accent,
+    textColor,
     scalingAggression = 1,
-    title1YOffset = -0.25,
-    title2YOffset = 0.25,
+    title1YOffset = -0.2,
+    title2YOffset = 0.2,
+    title3YOffset = 0.3,
     sideXOffset = 0.23,
+    title1 = "Unknown Artist",
+    title2 = "Untitled Track",
+    title3 = "",
+    sideLabel = "SIDE A",
+    rpmLabel = "33 1/3",
   } = visuals;
 
   context.fillStyle = background;
@@ -100,14 +122,14 @@ export function createLabelTexture(
   const center = size / 2;
   const maxTextWidth = size * 0.75;
 
-  // titles (centered vertically around nub)
-  const title1 = "KANYE WEST";
-  const title2 = "MY BEAUTIFUL DARK TWISTED FANTASY";
+  // Determine text color based on background if not explicitly set
+  const finalTextColor = textColor || getContrastTextColor(background);
 
-  context.fillStyle = accent;
+  // titles (centered vertically around nub)
+  context.fillStyle = finalTextColor;
   context.textBaseline = "middle";
 
-  const baseTitleSize = size * 0.065;
+  const baseTitleSize = size * 0.1;
 
   const title1Size = fitTextToWidth(
     context,
@@ -115,11 +137,11 @@ export function createLabelTexture(
     baseTitleSize,
     fontFamily,
     maxTextWidth,
-    "700",
+    "800",
     scalingAggression,
   );
   context.textAlign = "center";
-  context.font = `700 ${title1Size}px ${fontFamily}`;
+  context.font = `800 ${title1Size}px ${fontFamily}`;
   context.fillText(title1, center, center + size * title1YOffset);
 
   const title2Size = fitTextToWidth(
@@ -128,41 +150,55 @@ export function createLabelTexture(
     baseTitleSize,
     fontFamily,
     maxTextWidth,
-    "700",
+    "800",
     scalingAggression,
   );
-  context.font = `700 ${title2Size}px ${fontFamily}`;
+  context.font = `800 ${title2Size}px ${fontFamily}`;
   context.fillText(title2, center, center + size * title2YOffset);
 
+  if (title3 && title3.trim().length > 0) {
+    const title3Size = fitTextToWidth(
+      context,
+      title3,
+      baseTitleSize * 0.92,
+      fontFamily,
+      maxTextWidth,
+      "600",
+      scalingAggression,
+    );
+    context.font = `600 ${title3Size}px ${fontFamily}`;
+    context.fillText(title3, center, center + size * title3YOffset);
+  }
+
   // SIDE A on the left of nub
-  const sideText = "SIDE A";
-  const baseSideFont = size * 0.045;
-  const sideFont = fitTextToWidth(
-    context,
-    sideText,
-    baseSideFont,
-    fontFamily,
-    size * 0.3,
-    "600",
-    scalingAggression,
-  );
+  const sideText = sideLabel;
+  const sideFont = size * 0.045;
+  // const sideFont = fitTextToWidth(
+  //   context,
+  //   sideText,
+  //   baseSideFont,
+  //   fontFamily,
+  //   size * 0.3,
+  //   "600",
+  //   scalingAggression,
+  // );
   context.font = `600 ${sideFont}px ${fontFamily}`;
   context.textAlign = "right";
   context.fillText(sideText, center - size * sideXOffset, center);
 
   // RPM on the right of nub
-  const rpmText = "33 1/3";
-  const baseRpmFont = size * 0.042;
-  const rpmFont = fitTextToWidth(
-    context,
-    rpmText,
-    baseRpmFont,
-    fontFamily,
-    size * 0.3,
-    "500",
-    scalingAggression,
-  );
-  context.font = `500 ${rpmFont}px ${fontFamily}`;
+  const rpmText = rpmLabel;
+  const rpmFont = size * 0.05;
+  // const rpmFont = fitTextToWidth(
+  //   context,
+  //   rpmText,
+  //   baseRpmFont,
+  //   fontFamily,
+  //   size * 0.3,
+  //   "600",
+  //   scalingAggression,
+  // );
+  context.font = `600 ${rpmFont}px ${fontFamily}`;
   context.textAlign = "left";
   context.fillText(rpmText, center + size * sideXOffset, center);
 
@@ -175,7 +211,7 @@ export function applyLabelTextures(
   model: Object3D,
   textures: LabelTextures,
   options: LabelApplicationOptions = defaultLabelOptions,
-  visuals: LabelVisualOptions = defaultVisualOptions,
+  visuals: LabelVisualOptions = createDefaultLabelVisuals(),
 ) {
   const targets: {
     material: MeshStandardMaterial & { clearcoat?: number };
