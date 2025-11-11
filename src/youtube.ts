@@ -417,6 +417,7 @@ export function createYouTubePlayer(): YouTubeBridge {
       const playerHeight = 2 * windowWidth;
 
       wrapper.style.transition = "none";
+      wrapper.style.opacity = "0";
 
       Object.assign(wrapper.style, {
         position: "fixed",
@@ -438,6 +439,10 @@ export function createYouTubePlayer(): YouTubeBridge {
       viewport.style.transition = "opacity 0.5s ease-out";
       void viewport.offsetHeight;
       viewport.style.opacity = "1";
+
+      wrapper.style.transition = "opacity 0.5s ease-out";
+      void wrapper.offsetHeight;
+      wrapper.style.opacity = "1";
 
       Object.assign(playerSize.style, {
         width: `${playerWidth}px`,

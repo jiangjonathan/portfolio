@@ -75,7 +75,7 @@ export class TurntableController {
   private readonly TONEARM_PLAY_EPSILON = 0.01;
   private readonly TONEARM_HOVER_OFFSET = 0.06;
   private readonly TONEARM_YAW_WOBBLE = 0.003;
-  private readonly TONEARM_PITCH_WOBBLE = 0.0035;
+  private readonly TONEARM_PITCH_WOBBLE = 0.004;
   private readonly TONEARM_WOBBLE_SPEED = 4;
   private readonly TONEARM_PLAY_OFFSET = 0.066; // 0.066 Default
   private readonly SPEED_SLIDE_TRAVEL = -2.1; // -2.1 Default

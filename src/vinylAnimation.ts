@@ -13,7 +13,7 @@ const RETURN_HORIZONTAL_EPS = 0.01;
 const RETURN_VERTICAL_EPS = 0.0005;
 const RETURN_DROP_RATE = 0.05;
 const RETURN_APPROACH_RATE = 0.15;
-const VINYL_WOBBLE_AMPLITUDE = 0.0025;
+const VINYL_WOBBLE_AMPLITUDE = 0.004;
 const VINYL_WOBBLE_PHASE_MULT = 1;
 export const VINYL_RETURN_FINAL_TWIST = (75 * Math.PI) / 180;
 const VINYL_RETURN_TWIST_LERP = 0.14;
@@ -126,6 +126,11 @@ export function updateVinylAnimation(
     state.vinylTargetPosition
       .copy(state.vinylAnchorPosition)
       .add(state.relativeOffset);
+    // Clamp Y position to not go below the vinyl anchor position
+    state.vinylTargetPosition.y = Math.max(
+      state.vinylTargetPosition.y,
+      state.vinylAnchorPosition.y + 8,
+    );
     state.vinylTargetPosition.z = state.vinylAnchorPosition.z;
 
     state.tempVelocity
