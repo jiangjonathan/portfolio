@@ -35,6 +35,8 @@ canvas#vinyl-viewer {
     height: 100%;
     display: block;
     outline: none;
+    position: relative;
+    z-index: 1;
 }
 
 /* YouTube player cropping shell */
@@ -114,6 +116,57 @@ canvas#vinyl-viewer {
 }
 
 .volume-slider::-moz-range-thumb {
+    width: 0;
+    height: 0;
+    border-radius: 0;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    cursor: pointer;
+}
+
+/* Vertical volume slider for fullscreen mode */
+.volume-slider-vertical {
+    appearance: none;
+    -webkit-appearance: none;
+    height: 3px;
+    border-radius: 0;
+    background: rgba(255, 255, 255, 0.2);
+    cursor: pointer;
+    margin: 0;
+    padding: 0;
+}
+
+.volume-slider-vertical::-webkit-slider-runnable-track {
+    height: 3px;
+    border-radius: 0;
+    background: transparent;
+}
+
+.volume-slider-vertical::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 0;
+    height: 0;
+    border-radius: 0;
+    background: transparent;
+    border: none;
+    margin-top: 0;
+    box-shadow: none;
+}
+
+.volume-slider-vertical::-moz-range-track {
+    height: 3px;
+    border-radius: 0;
+    background: transparent;
+}
+
+.volume-slider-vertical::-moz-range-progress {
+    height: 3px;
+    border-radius: 0;
+    background: transparent;
+}
+
+.volume-slider-vertical::-moz-range-thumb {
     width: 0;
     height: 0;
     border-radius: 0;

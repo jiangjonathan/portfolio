@@ -71,7 +71,7 @@ renderer.toneMapping = ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.1;
 
 const scene = new Scene();
-scene.background = new Color("#f7f7f2");
+scene.background = null; // Transparent background
 
 const cameraRig = new CameraRig();
 const { camera } = cameraRig;
@@ -209,19 +209,21 @@ yt.onPlaybackProgress(() => {
   const duration = youtubePlayer.getDuration();
   const timeRemaining = duration - currentTime;
 
-  // When video has 2 seconds or less remaining, animate controls and viewport out
-  if (timeRemaining <= 2 && !hasStartedFadeOut) {
-    hasStartedFadeOut = true;
-    // Fade out the controls
-    yt.setControlsVisible(false);
-    // Animate viewport height to 0
-    const viewport = root.querySelector(".yt-player-viewport") as HTMLElement;
-    if (viewport) {
-      viewport.style.height = "0px";
+  // When video has 2 seconds or less remaining, animate controls and viewport out (only in small mode)
+  if (!yt.isFullscreen()) {
+    if (timeRemaining <= 2 && !hasStartedFadeOut) {
+      hasStartedFadeOut = true;
+      // Fade out the controls
+      yt.setControlsVisible(false);
+      // Animate viewport height to 0
+      const viewport = root.querySelector(".yt-player-viewport") as HTMLElement;
+      if (viewport) {
+        viewport.style.height = "0px";
+      }
+    } else if (timeRemaining > 2) {
+      // Reset the flag if we seek back
+      hasStartedFadeOut = false;
     }
-  } else if (timeRemaining > 2) {
-    // Reset the flag if we seek back
-    hasStartedFadeOut = false;
   }
 });
 
@@ -534,28 +536,32 @@ const animate = (time: number) => {
   //   cameraAngles.polar * RAD2DEG,
   // );
 
-  // Show/hide player based on tonearm position in play area
-  const tonearmNowInPlayArea =
-    turntableController?.isTonearmInPlayArea() ?? false;
-  if (tonearmNowInPlayArea && !isTonearmInPlayArea) {
-    // Tonearm just entered play area - show player
-    isTonearmInPlayArea = true;
-    const viewport = root.querySelector(".yt-player-viewport") as HTMLElement;
-    if (viewport && youtubePlayer.getDuration() > 0) {
-      yt.setControlsVisible(true);
-      // Animate viewport back in using the current video's aspect ratio
-      const targetHeight = 512 / yt.getAspectRatio();
-      viewport.style.height = `${targetHeight}px`;
-    }
-  } else if (!tonearmNowInPlayArea && isTonearmInPlayArea) {
-    // Tonearm just left play area - hide player (unless we're in the last 2 seconds)
-    const timeRemaining = youtubePlayer.getDuration() - yt.getCurrentTime();
-    if (timeRemaining > 2) {
-      isTonearmInPlayArea = false;
-      yt.setControlsVisible(false);
+  // Show/hide player based on tonearm position in play area (only in small mode)
+  if (!yt.isFullscreen()) {
+    const tonearmNowInPlayArea =
+      turntableController?.isTonearmInPlayArea() ?? false;
+    if (tonearmNowInPlayArea && !isTonearmInPlayArea) {
+      // Tonearm just entered play area - show player
+      isTonearmInPlayArea = true;
       const viewport = root.querySelector(".yt-player-viewport") as HTMLElement;
-      if (viewport) {
-        viewport.style.height = "0px";
+      if (viewport && youtubePlayer.getDuration() > 0) {
+        yt.setControlsVisible(true);
+        // Animate viewport back in using the current video's aspect ratio
+        const targetHeight = 512 / yt.getAspectRatio();
+        viewport.style.height = `${targetHeight}px`;
+      }
+    } else if (!tonearmNowInPlayArea && isTonearmInPlayArea) {
+      // Tonearm just left play area - hide player (unless we're in the last 2 seconds)
+      const timeRemaining = youtubePlayer.getDuration() - yt.getCurrentTime();
+      if (timeRemaining > 2) {
+        isTonearmInPlayArea = false;
+        yt.setControlsVisible(false);
+        const viewport = root.querySelector(
+          ".yt-player-viewport",
+        ) as HTMLElement;
+        if (viewport) {
+          viewport.style.height = "0px";
+        }
       }
     }
   }

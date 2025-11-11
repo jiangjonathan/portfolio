@@ -35,6 +35,9 @@ export interface YouTubeBridge {
   setControlsVisible(visible: boolean): void;
   onPlaybackProgress(callback: (progress: number) => void): void;
   getAspectRatio(): number;
+  setFullscreen(enabled: boolean): void;
+  isFullscreen(): boolean;
+  onFullscreenChange(callback: (isFullscreen: boolean) => void): void;
 }
 
 let apiReadyPromise: Promise<void> | null = null;
@@ -75,6 +78,7 @@ export function createYouTubePlayer(): YouTubeBridge {
     left: "1.5rem",
     zIndex: "1000",
     pointerEvents: "auto",
+    transition: "all 0.3s ease-in-out",
   });
 
   const viewport = document.createElement("div");
@@ -101,6 +105,10 @@ export function createYouTubePlayer(): YouTubeBridge {
   let overlayEnabled = true;
   let controlsContainer: HTMLDivElement | null = null;
   let onVideoLoadedCallback: (() => void) | null = null;
+  let isFullscreenMode = false;
+  let fullscreenControls: HTMLDivElement | null = null;
+  let userActivityTimeout: number | null = null;
+  let fullscreenChangeCallback: ((isFullscreen: boolean) => void) | null = null;
 
   const disablePlayerInteraction = () => {
     const iframe = player?.getIframe?.();
@@ -248,7 +256,429 @@ export function createYouTubePlayer(): YouTubeBridge {
     });
   }
 
-  return {
+  // Create fullscreen toggle icon
+  const createFullscreenToggle = () => {
+    const toggle = document.createElement("button");
+    Object.assign(toggle.style, {
+      position: "fixed",
+      bottom: "1.5rem",
+      right: "1.5rem",
+      width: "60px",
+      height: "60px",
+      padding: "0",
+      border: "none",
+      background: "#000",
+      cursor: "pointer",
+      zIndex: "999",
+      opacity: "1",
+      transition: "opacity 1s ease-in-out, background 1s ease-in-out",
+      pointerEvents: "auto",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: "0",
+    });
+
+    const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    icon.setAttribute("viewBox", "0 0 16 16");
+    icon.setAttribute("aria-hidden", "true");
+    Object.assign(icon.style, {
+      width: "32px",
+      height: "32px",
+      display: "block",
+    });
+
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute(
+      "d",
+      "M1 1h5v2H3v3H1V1zm9 0h5v5h-2V3h-3V1zM1 10h2v3h3v2H1v-5zm14 0v5h-5v-2h3v-3h2z",
+    );
+    path.setAttribute("fill", "#fff");
+    icon.appendChild(path);
+    toggle.appendChild(icon);
+
+    toggle.addEventListener("click", () => {
+      setFullscreen(!isFullscreenMode);
+    });
+
+    // Hover effect
+    toggle.addEventListener("mouseenter", () => {
+      toggle.style.background = "#333";
+    });
+
+    toggle.addEventListener("mouseleave", () => {
+      toggle.style.background = "#000";
+    });
+
+    toggle.addEventListener("mousedown", () => {
+      toggle.style.background = "#555";
+    });
+
+    toggle.addEventListener("mouseup", () => {
+      toggle.style.background = "#333";
+    });
+
+    return toggle;
+  };
+
+  const fullscreenToggle = createFullscreenToggle();
+  document.body.appendChild(fullscreenToggle);
+
+  // Create fullscreen controls (vertical layout)
+  const createFullscreenControls = () => {
+    const container = document.createElement("div");
+    container.className = "yt-fullscreen-controls";
+    Object.assign(container.style, {
+      position: "fixed",
+      left: "1.5rem",
+      top: "50%",
+      transform: "translateY(-50%)",
+      zIndex: "10001",
+      display: "flex",
+      flexDirection: "column",
+      gap: "1rem",
+      padding: "1rem 0.5rem",
+      background: "#000",
+      opacity: "1",
+      transition: "opacity 0.3s ease-in-out",
+      pointerEvents: "auto",
+    });
+
+    // Timeline (vertical)
+    const timelineContainer = document.createElement("div");
+    Object.assign(timelineContainer.style, {
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      gap: "0.5rem",
+    });
+
+    const timeline = document.createElement("div");
+    Object.assign(timeline.style, {
+      width: "4px",
+      height: "300px",
+      background: "rgba(255,255,255,0.2)",
+      position: "relative",
+    });
+
+    const timelineFill = document.createElement("div");
+    Object.assign(timelineFill.style, {
+      width: "100%",
+      height: "0%",
+      background: "#fff",
+      transition: "height 0.1s linear",
+      position: "absolute",
+      bottom: "0",
+    });
+    timeline.appendChild(timelineFill);
+
+    const timingLabel = document.createElement("div");
+    Object.assign(timingLabel.style, {
+      color: "#fff",
+      fontSize: "0.7rem",
+      fontFamily: '"Space Grotesk", "Inter", sans-serif',
+      fontWeight: "600",
+      fontVariantNumeric: "tabular-nums",
+      writingMode: "vertical-rl",
+      textOrientation: "mixed",
+      transform: "rotate(180deg)",
+    });
+    timingLabel.textContent = "0:00 / 0:00";
+
+    timelineContainer.appendChild(timeline);
+    timelineContainer.appendChild(timingLabel);
+
+    // Volume controls (vertical)
+    const volumeContainer = document.createElement("div");
+    Object.assign(volumeContainer.style, {
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      gap: "0.5rem",
+    });
+
+    const volumeSlider = document.createElement("input");
+    volumeSlider.type = "range";
+    volumeSlider.min = "0";
+    volumeSlider.max = "100";
+    volumeSlider.value = "100";
+    volumeSlider.className = "volume-slider-vertical";
+    Object.assign(volumeSlider.style, {
+      width: "100px",
+      height: "3px",
+      writingMode: "bt-lr",
+      WebkitAppearance: "slider-vertical",
+      appearance: "slider-vertical",
+      transform: "rotate(-90deg)",
+      transformOrigin: "center",
+    });
+
+    const volumeIcon = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "svg",
+    );
+    volumeIcon.setAttribute("viewBox", "0 0 20 20");
+    volumeIcon.setAttribute("aria-hidden", "true");
+    volumeIcon.setAttribute("role", "button");
+    volumeIcon.setAttribute("aria-label", "Toggle mute");
+    Object.assign(volumeIcon.style, {
+      width: "14px",
+      height: "14px",
+      display: "block",
+      cursor: "pointer",
+    });
+    volumeIcon.tabIndex = 0;
+
+    const volumeSpeakerPath = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "path",
+    );
+    volumeSpeakerPath.setAttribute("d", "M2 7h3l4-3v12l-4-3H2z");
+    volumeSpeakerPath.setAttribute("fill", "#fff");
+    const volumeWavesPath = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "path",
+    );
+    volumeWavesPath.setAttribute(
+      "d",
+      "M13.5 10a2.5 2.5 0 0 1-1.3 2.2v-4.4a2.5 2.5 0 0 1 1.3 2.2zm2.5 0a5 5 0 0 1-2.6 4.4V5.6A5 5 0 0 1 16 10z",
+    );
+    volumeWavesPath.setAttribute("fill", "#fff");
+    volumeIcon.append(volumeSpeakerPath, volumeWavesPath);
+
+    volumeContainer.appendChild(volumeIcon);
+    volumeContainer.appendChild(volumeSlider);
+
+    container.appendChild(timelineContainer);
+    container.appendChild(volumeContainer);
+
+    // Store references for updating
+    (container as any)._timelineFill = timelineFill;
+    (container as any)._timingLabel = timingLabel;
+    (container as any)._volumeSlider = volumeSlider;
+    (container as any)._volumeIcon = volumeIcon;
+    (container as any)._volumeSpeakerPath = volumeSpeakerPath;
+    (container as any)._volumeWavesPath = volumeWavesPath;
+
+    // Volume slider styling
+    const setVolumeVisual = (value: number) => {
+      const ratio = clampValue(value / 100, 0, 1) * 100;
+      volumeSlider.style.background = `linear-gradient(90deg, #fff 0%, #fff ${ratio}%, rgba(255,255,255,0.2) ${ratio}%, rgba(255,255,255,0.2) 100%)`;
+    };
+
+    let lastVolumeBeforeMute = 100;
+
+    const updateVolumeIcon = (value: number) => {
+      const muted = value <= 0;
+      volumeWavesPath.style.display = muted ? "none" : "block";
+    };
+
+    const handleVolumeChange = (value: number) => {
+      const safe = clampValue(value, 0, 100);
+      volumeSlider.value = String(safe);
+      setVolumeVisual(safe);
+      if (safe > 0) {
+        lastVolumeBeforeMute = safe;
+      }
+      updateVolumeIcon(safe);
+      // Trigger the bridge's setVolume
+      if (player) {
+        try {
+          player.setVolume?.(safe);
+        } catch {}
+      }
+    };
+
+    volumeSlider.addEventListener("input", () => {
+      const value = parseInt(volumeSlider.value, 10);
+      handleVolumeChange(Number.isFinite(value) ? value : 0);
+    });
+
+    const toggleMute = () => {
+      const current = parseInt(volumeSlider.value, 10) || 0;
+      if (current > 0) {
+        lastVolumeBeforeMute = current;
+        handleVolumeChange(0);
+      } else {
+        const restore = lastVolumeBeforeMute > 0 ? lastVolumeBeforeMute : 100;
+        handleVolumeChange(restore);
+      }
+    };
+
+    volumeIcon.addEventListener("click", () => toggleMute());
+    volumeIcon.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      toggleMute();
+    });
+
+    setVolumeVisual(100);
+
+    return container;
+  };
+
+  // User activity tracking for fullscreen auto-hide
+  const resetUserActivityTimer = () => {
+    if (userActivityTimeout !== null) {
+      clearTimeout(userActivityTimeout);
+    }
+
+    if (isFullscreenMode && fullscreenControls) {
+      fullscreenControls.style.opacity = "1";
+      fullscreenControls.style.pointerEvents = "auto";
+
+      userActivityTimeout = window.setTimeout(() => {
+        if (fullscreenControls) {
+          fullscreenControls.style.opacity = "0";
+          fullscreenControls.style.pointerEvents = "none";
+        }
+      }, 2000);
+    }
+  };
+
+  // Set fullscreen mode
+  const setFullscreen = (enabled: boolean) => {
+    isFullscreenMode = enabled;
+
+    // Notify callback
+    if (fullscreenChangeCallback) {
+      fullscreenChangeCallback(enabled);
+    }
+
+    if (enabled) {
+      const windowWidth = window.innerWidth;
+      const windowHeight = window.innerHeight;
+      const playerWidth = windowWidth;
+      const playerHeight = 2 * windowWidth;
+
+      // Disable transitions immediately to prevent movement animation
+      wrapper.style.transition = "none";
+
+      // Position wrapper to cover the window
+      Object.assign(wrapper.style, {
+        position: "fixed",
+        top: "0",
+        left: "0",
+        width: `${windowWidth}px`,
+        height: `${windowHeight}px`,
+        zIndex: "0", // Behind Three.js canvas (which has z-index: 1)
+      });
+
+      // Make the scene background transparent so video shows through
+      const appDiv = document.getElementById("app");
+      if (appDiv) {
+        appDiv.style.background = "transparent";
+      }
+
+      // Set viewport dimensions and fade in
+      viewport.style.width = `${windowWidth}px`;
+      viewport.style.height = `${windowHeight}px`;
+      viewport.style.opacity = "0";
+      viewport.style.transition = "opacity 0.5s ease-out";
+      // Force reflow and then fade in
+      void viewport.offsetHeight;
+      viewport.style.opacity = "1";
+
+      // Resize player
+      Object.assign(playerSize.style, {
+        width: `${playerWidth}px`,
+        height: `${playerHeight}px`,
+      });
+
+      // Hide small controls
+      if (controlsContainer) {
+        (controlsContainer as HTMLDivElement).style.display = "none";
+      }
+
+      // Create and show fullscreen controls
+      if (!fullscreenControls) {
+        fullscreenControls = createFullscreenControls();
+        document.body.appendChild(fullscreenControls);
+      } else {
+        fullscreenControls.style.display = "flex";
+      }
+
+      // Set up user activity tracking
+      document.addEventListener("mousemove", resetUserActivityTimer);
+      document.addEventListener("mousedown", resetUserActivityTimer);
+      document.addEventListener("keydown", resetUserActivityTimer);
+      resetUserActivityTimer();
+    } else {
+      // Restore small mode - immediately hide viewport (no fade animation)
+      viewport.style.transition = "none";
+      viewport.style.opacity = "0";
+
+      // Immediately resize without waiting
+      (() => {
+        // Disable transitions during layout changes
+        wrapper.style.transition = "none";
+        viewport.style.transition = "none";
+        playerSize.style.transition = "none";
+
+        // STEP 1: Reset playerSize and viewport to small mode dimensions FIRST (no animation)
+        Object.assign(playerSize.style, {
+          width: "512px",
+          height: "1024px",
+        });
+
+        viewport.style.width = "512px";
+        viewport.style.height = "0px";
+        viewport.style.opacity = "1"; // Restore opacity
+
+        // Force immediate layout recalculation
+        void viewport.offsetHeight;
+
+        // STEP 2: Move wrapper to small mode position
+        Object.assign(wrapper.style, {
+          position: "absolute",
+          top: "1.5rem",
+          left: "1.5rem",
+          width: "auto",
+          height: "auto",
+          zIndex: "1000",
+        });
+
+        // Restore app background
+        const appDiv = document.getElementById("app");
+        if (appDiv) {
+          appDiv.style.background = "";
+        }
+
+        // Show small controls
+        if (controlsContainer) {
+          (controlsContainer as HTMLDivElement).style.display = "flex";
+        }
+
+        // Hide fullscreen controls
+        if (fullscreenControls) {
+          fullscreenControls.style.display = "none";
+        }
+
+        // STEP 3: Enable viewport height animation
+        viewport.style.transition = "height 0.5s ease-out";
+
+        // Force reflow to apply transition
+        void viewport.offsetHeight;
+
+        // STEP 4: Animate viewport to target height (the only animation)
+        const targetHeight = 512 / DYNAMIC_VIDEO_ASPECT;
+        viewport.style.height = `${targetHeight}px`;
+      })();
+
+      // Remove user activity tracking immediately
+      document.removeEventListener("mousemove", resetUserActivityTimer);
+      document.removeEventListener("mousedown", resetUserActivityTimer);
+      document.removeEventListener("keydown", resetUserActivityTimer);
+      if (userActivityTimeout !== null) {
+        clearTimeout(userActivityTimeout);
+        userActivityTimeout = null;
+      }
+    }
+
+    updateViewport();
+  };
+
+  const bridge = {
     el: wrapper,
     load,
     play() {
@@ -275,6 +705,15 @@ export function createYouTubePlayer(): YouTubeBridge {
       try {
         player?.setVolume?.(clamped);
       } catch {}
+      // Also update fullscreen controls if they exist
+      if (fullscreenControls) {
+        const slider = (fullscreenControls as any)._volumeSlider;
+        if (slider) {
+          slider.value = String(clamped);
+          const ratio = clampValue(clamped / 100, 0, 1) * 100;
+          slider.style.background = `linear-gradient(90deg, #fff 0%, #fff ${ratio}%, rgba(255,255,255,0.2) ${ratio}%, rgba(255,255,255,0.2) 100%)`;
+        }
+      }
     },
     getDuration() {
       return player?.getDuration?.() ?? 0;
@@ -307,6 +746,10 @@ export function createYouTubePlayer(): YouTubeBridge {
       if (container) {
         (container as any)._setVisible?.(visible);
       }
+      // Also update fullscreen toggle visibility
+      if (fullscreenToggle) {
+        (fullscreenToggle as any)._setVisible?.(visible);
+      }
     },
     onPlaybackProgress(callback: (progress: number) => void) {
       (this as any).onPlaybackProgressCallback = callback;
@@ -314,7 +757,21 @@ export function createYouTubePlayer(): YouTubeBridge {
     getAspectRatio() {
       return DYNAMIC_VIDEO_ASPECT;
     },
+    setFullscreen(enabled: boolean) {
+      setFullscreen(enabled);
+    },
+    isFullscreen() {
+      return isFullscreenMode;
+    },
+    onFullscreenChange(callback: (isFullscreen: boolean) => void) {
+      fullscreenChangeCallback = callback;
+    },
   };
+
+  // Store reference to fullscreen controls for progress updates
+  (bridge as any)._fullscreenControls = () => fullscreenControls;
+
+  return bridge;
 }
 
 export interface VideoControls {
@@ -354,6 +811,21 @@ export function createProgressUpdater(
     }
     const currentTime = bridge.getCurrentTime();
     controls.setProgress(currentTime, duration);
+
+    // Update fullscreen controls if they exist
+    const fullscreenControls = (bridge as any)._fullscreenControls?.();
+    if (fullscreenControls) {
+      const safeDuration = duration > 0 ? duration : 1;
+      const ratio = clampValue(currentTime / safeDuration, 0, 1);
+      const fill = (fullscreenControls as any)._timelineFill;
+      const label = (fullscreenControls as any)._timingLabel;
+      if (fill) {
+        fill.style.height = `${ratio * 100}%`;
+      }
+      if (label) {
+        label.textContent = `${formatTime(currentTime)} / ${formatTime(duration)}`;
+      }
+    }
 
     // Calculate progress as a ratio (0 to 1)
     const progress = duration > 0 ? currentTime / duration : 0;
