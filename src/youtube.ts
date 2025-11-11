@@ -38,6 +38,7 @@ export interface YouTubeBridge {
   setFullscreen(enabled: boolean): void;
   isFullscreen(): boolean;
   onFullscreenChange(callback: (isFullscreen: boolean) => void): void;
+  setIsTonearmInPlayAreaQuery(callback: () => boolean): void;
 }
 
 let apiReadyPromise: Promise<void> | null = null;
@@ -84,15 +85,15 @@ export function createYouTubePlayer(): YouTubeBridge {
   const viewport = document.createElement("div");
   viewport.className = "yt-player-viewport";
   viewport.style.width = "512px";
-  viewport.style.height = "0px"; // Start with 0 height when no video loaded
-  viewport.style.transition = "height 0.5s ease-out"; // Add animation for height changes
-  viewport.style.transformOrigin = "center center"; // Expand from center
+  viewport.style.height = "0px";
+  viewport.style.transition = "height 0.5s ease-out";
+  viewport.style.transformOrigin = "center center";
   wrapper.appendChild(viewport);
 
   const playerSize = document.createElement("div");
   playerSize.id = "player-size";
   playerSize.style.width = "512px";
-  playerSize.style.height = "1024px"; // Player stays fixed at 512x1024
+  playerSize.style.height = "1024px";
   viewport.appendChild(playerSize);
 
   const playerHostId = "player";
@@ -109,6 +110,7 @@ export function createYouTubePlayer(): YouTubeBridge {
   let fullscreenControls: HTMLDivElement | null = null;
   let userActivityTimeout: number | null = null;
   let fullscreenChangeCallback: ((isFullscreen: boolean) => void) | null = null;
+  let isTonearmInPlayAreaQuery: (() => boolean) | null = null;
 
   const disablePlayerInteraction = () => {
     const iframe = player?.getIframe?.();
@@ -133,11 +135,8 @@ export function createYouTubePlayer(): YouTubeBridge {
     if (!viewportWidth || !viewportHeight || !playerWidth || !playerHeight)
       return;
 
-    // Center the playerSize (512x1024) within the viewport
-    // Viewport width is always 512, height varies by aspect ratio
     viewport.style.overflow = "hidden";
 
-    // Calculate excess to center vertically
     const excessY = playerHeight - viewportHeight;
     playerSize.style.transform = `translateY(${-excessY / 2}px)`;
   };
@@ -177,21 +176,18 @@ export function createYouTubePlayer(): YouTubeBridge {
       const html = (data.html ?? "").trim();
       const title = data.title ?? "";
 
-      // Detect aspect ratio from oEmbed response
       if (
         html.startsWith('<iframe width="200" height="150"') &&
         title.includes("Album")
       ) {
-        DYNAMIC_VIDEO_ASPECT = 1; // Square (album art)
+        DYNAMIC_VIDEO_ASPECT = 1;
       } else if (html.startsWith('<iframe width="200" height="150"')) {
-        DYNAMIC_VIDEO_ASPECT = 4 / 3; // Classic 4:3
+        DYNAMIC_VIDEO_ASPECT = 4 / 3;
       } else if (html.startsWith('<iframe width="200" height="113"')) {
-        DYNAMIC_VIDEO_ASPECT = 16 / 9; // Widescreen
+        DYNAMIC_VIDEO_ASPECT = 16 / 9;
       } else {
-        DYNAMIC_VIDEO_ASPECT = 16 / 9; // Default
+        DYNAMIC_VIDEO_ASPECT = 16 / 9;
       }
-
-      // Don't set viewport height here - let main.ts control visibility based on tonearm position
       updateViewport();
     } catch (error) {
       console.warn("Failed to detect video aspect ratio:", error);
@@ -202,22 +198,19 @@ export function createYouTubePlayer(): YouTubeBridge {
 
   async function load(videoId: string) {
     await ensureApi();
-    const YT = (window as any).YT;
 
-    // Detect aspect ratio and update player size
     await detectAndUpdateAspectRatio(videoId);
 
     if (player) {
-      // Use cueVideoById instead of loadVideoById to prevent autoplay
       player.cueVideoById(videoId);
       disablePlayerInteraction();
-      // Wait for onStateChange event with CUED state (5) which fires when metadata is ready
       return new Promise<void>((resolve) => {
         onVideoLoadedCallback = resolve;
       });
     }
 
     await new Promise<void>((resolve) => {
+      const YT = (window as any).YT;
       player = new YT.Player(playerHostId, {
         width: "100%",
         height: "100%",
@@ -242,9 +235,7 @@ export function createYouTubePlayer(): YouTubeBridge {
             resolve();
           },
           onStateChange: (event: any) => {
-            // UNSTARTED = -1, ENDED = 0, PLAYING = 1, PAUSED = 2, BUFFERING = 3, CUED = 5
             const state = event.data;
-            // When state changes to CUED (5), video metadata is available
             if (state === 5) {
               updateVideoMetadata();
               onVideoLoadedCallback?.();
@@ -256,7 +247,6 @@ export function createYouTubePlayer(): YouTubeBridge {
     });
   }
 
-  // Create fullscreen toggle icon
   const createFullscreenToggle = () => {
     const toggle = document.createElement("button");
     Object.assign(toggle.style, {
@@ -301,7 +291,6 @@ export function createYouTubePlayer(): YouTubeBridge {
       setFullscreen(!isFullscreenMode);
     });
 
-    // Hover effect
     toggle.addEventListener("mouseenter", () => {
       toggle.style.background = "#333";
     });
@@ -324,7 +313,6 @@ export function createYouTubePlayer(): YouTubeBridge {
   const fullscreenToggle = createFullscreenToggle();
   document.body.appendChild(fullscreenToggle);
 
-  // Create fullscreen controls (vertical layout)
   const createFullscreenControls = () => {
     const container = document.createElement("div");
     container.className = "yt-fullscreen-controls";
@@ -344,7 +332,7 @@ export function createYouTubePlayer(): YouTubeBridge {
       pointerEvents: "auto",
     });
 
-    // Timeline (vertical)
+    // timeline
     const timelineContainer = document.createElement("div");
     Object.assign(timelineContainer.style, {
       display: "flex",
@@ -388,136 +376,15 @@ export function createYouTubePlayer(): YouTubeBridge {
     timelineContainer.appendChild(timeline);
     timelineContainer.appendChild(timingLabel);
 
-    // Volume controls (vertical)
-    const volumeContainer = document.createElement("div");
-    Object.assign(volumeContainer.style, {
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "center",
-      gap: "0.5rem",
-    });
-
-    const volumeSlider = document.createElement("input");
-    volumeSlider.type = "range";
-    volumeSlider.min = "0";
-    volumeSlider.max = "100";
-    volumeSlider.value = "100";
-    volumeSlider.className = "volume-slider-vertical";
-    Object.assign(volumeSlider.style, {
-      width: "100px",
-      height: "3px",
-      writingMode: "bt-lr",
-      WebkitAppearance: "slider-vertical",
-      appearance: "slider-vertical",
-      transform: "rotate(-90deg)",
-      transformOrigin: "center",
-    });
-
-    const volumeIcon = document.createElementNS(
-      "http://www.w3.org/2000/svg",
-      "svg",
-    );
-    volumeIcon.setAttribute("viewBox", "0 0 20 20");
-    volumeIcon.setAttribute("aria-hidden", "true");
-    volumeIcon.setAttribute("role", "button");
-    volumeIcon.setAttribute("aria-label", "Toggle mute");
-    Object.assign(volumeIcon.style, {
-      width: "14px",
-      height: "14px",
-      display: "block",
-      cursor: "pointer",
-    });
-    volumeIcon.tabIndex = 0;
-
-    const volumeSpeakerPath = document.createElementNS(
-      "http://www.w3.org/2000/svg",
-      "path",
-    );
-    volumeSpeakerPath.setAttribute("d", "M2 7h3l4-3v12l-4-3H2z");
-    volumeSpeakerPath.setAttribute("fill", "#fff");
-    const volumeWavesPath = document.createElementNS(
-      "http://www.w3.org/2000/svg",
-      "path",
-    );
-    volumeWavesPath.setAttribute(
-      "d",
-      "M13.5 10a2.5 2.5 0 0 1-1.3 2.2v-4.4a2.5 2.5 0 0 1 1.3 2.2zm2.5 0a5 5 0 0 1-2.6 4.4V5.6A5 5 0 0 1 16 10z",
-    );
-    volumeWavesPath.setAttribute("fill", "#fff");
-    volumeIcon.append(volumeSpeakerPath, volumeWavesPath);
-
-    volumeContainer.appendChild(volumeIcon);
-    volumeContainer.appendChild(volumeSlider);
-
     container.appendChild(timelineContainer);
-    container.appendChild(volumeContainer);
 
-    // Store references for updating
+    // store refs
     (container as any)._timelineFill = timelineFill;
     (container as any)._timingLabel = timingLabel;
-    (container as any)._volumeSlider = volumeSlider;
-    (container as any)._volumeIcon = volumeIcon;
-    (container as any)._volumeSpeakerPath = volumeSpeakerPath;
-    (container as any)._volumeWavesPath = volumeWavesPath;
-
-    // Volume slider styling
-    const setVolumeVisual = (value: number) => {
-      const ratio = clampValue(value / 100, 0, 1) * 100;
-      volumeSlider.style.background = `linear-gradient(90deg, #fff 0%, #fff ${ratio}%, rgba(255,255,255,0.2) ${ratio}%, rgba(255,255,255,0.2) 100%)`;
-    };
-
-    let lastVolumeBeforeMute = 100;
-
-    const updateVolumeIcon = (value: number) => {
-      const muted = value <= 0;
-      volumeWavesPath.style.display = muted ? "none" : "block";
-    };
-
-    const handleVolumeChange = (value: number) => {
-      const safe = clampValue(value, 0, 100);
-      volumeSlider.value = String(safe);
-      setVolumeVisual(safe);
-      if (safe > 0) {
-        lastVolumeBeforeMute = safe;
-      }
-      updateVolumeIcon(safe);
-      // Trigger the bridge's setVolume
-      if (player) {
-        try {
-          player.setVolume?.(safe);
-        } catch {}
-      }
-    };
-
-    volumeSlider.addEventListener("input", () => {
-      const value = parseInt(volumeSlider.value, 10);
-      handleVolumeChange(Number.isFinite(value) ? value : 0);
-    });
-
-    const toggleMute = () => {
-      const current = parseInt(volumeSlider.value, 10) || 0;
-      if (current > 0) {
-        lastVolumeBeforeMute = current;
-        handleVolumeChange(0);
-      } else {
-        const restore = lastVolumeBeforeMute > 0 ? lastVolumeBeforeMute : 100;
-        handleVolumeChange(restore);
-      }
-    };
-
-    volumeIcon.addEventListener("click", () => toggleMute());
-    volumeIcon.addEventListener("keydown", (event) => {
-      if (event.key !== "Enter" && event.key !== " ") return;
-      event.preventDefault();
-      toggleMute();
-    });
-
-    setVolumeVisual(100);
 
     return container;
   };
 
-  // User activity tracking for fullscreen auto-hide
   const resetUserActivityTimer = () => {
     if (userActivityTimeout !== null) {
       clearTimeout(userActivityTimeout);
@@ -536,11 +403,9 @@ export function createYouTubePlayer(): YouTubeBridge {
     }
   };
 
-  // Set fullscreen mode
   const setFullscreen = (enabled: boolean) => {
     isFullscreenMode = enabled;
 
-    // Notify callback
     if (fullscreenChangeCallback) {
       fullscreenChangeCallback(enabled);
     }
@@ -551,46 +416,38 @@ export function createYouTubePlayer(): YouTubeBridge {
       const playerWidth = windowWidth;
       const playerHeight = 2 * windowWidth;
 
-      // Disable transitions immediately to prevent movement animation
       wrapper.style.transition = "none";
 
-      // Position wrapper to cover the window
       Object.assign(wrapper.style, {
         position: "fixed",
         top: "0",
         left: "0",
         width: `${windowWidth}px`,
         height: `${windowHeight}px`,
-        zIndex: "0", // Behind Three.js canvas (which has z-index: 1)
+        zIndex: "0",
       });
 
-      // Make the scene background transparent so video shows through
       const appDiv = document.getElementById("app");
       if (appDiv) {
         appDiv.style.background = "transparent";
       }
 
-      // Set viewport dimensions and fade in
       viewport.style.width = `${windowWidth}px`;
       viewport.style.height = `${windowHeight}px`;
       viewport.style.opacity = "0";
       viewport.style.transition = "opacity 0.5s ease-out";
-      // Force reflow and then fade in
       void viewport.offsetHeight;
       viewport.style.opacity = "1";
 
-      // Resize player
       Object.assign(playerSize.style, {
         width: `${playerWidth}px`,
         height: `${playerHeight}px`,
       });
 
-      // Hide small controls
       if (controlsContainer) {
         (controlsContainer as HTMLDivElement).style.display = "none";
       }
 
-      // Create and show fullscreen controls
       if (!fullscreenControls) {
         fullscreenControls = createFullscreenControls();
         document.body.appendChild(fullscreenControls);
@@ -598,24 +455,19 @@ export function createYouTubePlayer(): YouTubeBridge {
         fullscreenControls.style.display = "flex";
       }
 
-      // Set up user activity tracking
       document.addEventListener("mousemove", resetUserActivityTimer);
       document.addEventListener("mousedown", resetUserActivityTimer);
       document.addEventListener("keydown", resetUserActivityTimer);
       resetUserActivityTimer();
     } else {
-      // Restore small mode - immediately hide viewport (no fade animation)
       viewport.style.transition = "none";
       viewport.style.opacity = "0";
 
-      // Immediately resize without waiting
       (() => {
-        // Disable transitions during layout changes
         wrapper.style.transition = "none";
         viewport.style.transition = "none";
         playerSize.style.transition = "none";
 
-        // STEP 1: Reset playerSize and viewport to small mode dimensions FIRST (no animation)
         Object.assign(playerSize.style, {
           width: "512px",
           height: "1024px",
@@ -623,12 +475,9 @@ export function createYouTubePlayer(): YouTubeBridge {
 
         viewport.style.width = "512px";
         viewport.style.height = "0px";
-        viewport.style.opacity = "1"; // Restore opacity
-
-        // Force immediate layout recalculation
+        viewport.style.opacity = "1";
         void viewport.offsetHeight;
 
-        // STEP 2: Move wrapper to small mode position
         Object.assign(wrapper.style, {
           position: "absolute",
           top: "1.5rem",
@@ -638,34 +487,30 @@ export function createYouTubePlayer(): YouTubeBridge {
           zIndex: "1000",
         });
 
-        // Restore app background
         const appDiv = document.getElementById("app");
         if (appDiv) {
           appDiv.style.background = "";
         }
 
-        // Show small controls
         if (controlsContainer) {
           (controlsContainer as HTMLDivElement).style.display = "flex";
         }
 
-        // Hide fullscreen controls
         if (fullscreenControls) {
           fullscreenControls.style.display = "none";
         }
 
-        // STEP 3: Enable viewport height animation
         viewport.style.transition = "height 0.5s ease-out";
-
-        // Force reflow to apply transition
         void viewport.offsetHeight;
 
-        // STEP 4: Animate viewport to target height (the only animation)
-        const targetHeight = 512 / DYNAMIC_VIDEO_ASPECT;
-        viewport.style.height = `${targetHeight}px`;
+        // Only show player if tonearm is in play area
+        const isTonearmInPlayArea = isTonearmInPlayAreaQuery?.() ?? false;
+        if (isTonearmInPlayArea) {
+          const targetHeight = 512 / DYNAMIC_VIDEO_ASPECT;
+          viewport.style.height = `${targetHeight}px`;
+        }
       })();
 
-      // Remove user activity tracking immediately
       document.removeEventListener("mousemove", resetUserActivityTimer);
       document.removeEventListener("mousedown", resetUserActivityTimer);
       document.removeEventListener("keydown", resetUserActivityTimer);
@@ -678,7 +523,7 @@ export function createYouTubePlayer(): YouTubeBridge {
     updateViewport();
   };
 
-  const bridge = {
+  const bridge: YouTubeBridge = {
     el: wrapper,
     load,
     play() {
@@ -705,15 +550,7 @@ export function createYouTubePlayer(): YouTubeBridge {
       try {
         player?.setVolume?.(clamped);
       } catch {}
-      // Also update fullscreen controls if they exist
-      if (fullscreenControls) {
-        const slider = (fullscreenControls as any)._volumeSlider;
-        if (slider) {
-          slider.value = String(clamped);
-          const ratio = clampValue(clamped / 100, 0, 1) * 100;
-          slider.style.background = `linear-gradient(90deg, #fff 0%, #fff ${ratio}%, rgba(255,255,255,0.2) ${ratio}%, rgba(255,255,255,0.2) 100%)`;
-        }
-      }
+      // no fullscreen volume to sync anymore
     },
     getDuration() {
       return player?.getDuration?.() ?? 0;
@@ -746,7 +583,6 @@ export function createYouTubePlayer(): YouTubeBridge {
       if (container) {
         (container as any)._setVisible?.(visible);
       }
-      // Also update fullscreen toggle visibility
       if (fullscreenToggle) {
         (fullscreenToggle as any)._setVisible?.(visible);
       }
@@ -766,9 +602,11 @@ export function createYouTubePlayer(): YouTubeBridge {
     onFullscreenChange(callback: (isFullscreen: boolean) => void) {
       fullscreenChangeCallback = callback;
     },
+    setIsTonearmInPlayAreaQuery(callback: () => boolean) {
+      isTonearmInPlayAreaQuery = callback;
+    },
   };
 
-  // Store reference to fullscreen controls for progress updates
   (bridge as any)._fullscreenControls = () => fullscreenControls;
 
   return bridge;
@@ -791,10 +629,7 @@ export function createYouTubeExperience(host: HTMLElement): YouTubeExperience {
   const controls = createVideoControls((value) => bridge.setVolume(value));
   bridge.el.appendChild(controls.container);
   controls.setVolume(100);
-
-  // Store controls container reference in bridge
   (bridge as any)._controlsContainer = controls.container;
-
   return { bridge, controls };
 }
 
@@ -812,7 +647,6 @@ export function createProgressUpdater(
     const currentTime = bridge.getCurrentTime();
     controls.setProgress(currentTime, duration);
 
-    // Update fullscreen controls if they exist
     const fullscreenControls = (bridge as any)._fullscreenControls?.();
     if (fullscreenControls) {
       const safeDuration = duration > 0 ? duration : 1;
@@ -827,9 +661,7 @@ export function createProgressUpdater(
       }
     }
 
-    // Calculate progress as a ratio (0 to 1)
     const progress = duration > 0 ? currentTime / duration : 0;
-    // Call the playback progress callback if registered
     (bridge as any).onPlaybackProgressCallback?.(progress);
   };
 }
@@ -923,7 +755,6 @@ export function createVideoControls(
     pointerEvents: "none",
   });
 
-  // Expose a method to show/hide controls
   (container as any)._setVisible = (visible: boolean) => {
     container.style.opacity = visible ? "1" : "0";
     container.style.pointerEvents = visible ? "auto" : "none";
@@ -972,29 +803,22 @@ export function createVideoControls(
 
   let clickSetVolume = false;
 
-  // user clicked somewhere on the track → animate
   volumeSlider.addEventListener("pointerdown", (e) => {
     const rect = volumeSlider.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const ratio = Math.min(Math.max(x / rect.width, 0), 1);
     const value = Math.round(ratio * 100);
-
-    handleVolumeChange(value, true); // ← your animated path
-    clickSetVolume = true; // remember that we just set it ourselves
-    // NO preventDefault here → dragging still works
+    handleVolumeChange(value, true);
+    clickSetVolume = true;
   });
 
-  // user drags the thumb → just update volume, no animation
   volumeSlider.addEventListener("input", () => {
     const v = parseInt(volumeSlider.value, 10);
-
-    // if this input came right after our pointer click, skip it
     if (clickSetVolume) {
       clickSetVolume = false;
       return;
     }
-
-    onVolumeChange(Number.isFinite(v) ? v : 0); // non-animated drag update
+    onVolumeChange(Number.isFinite(v) ? v : 0);
   });
 
   const volumeGroup = document.createElement("div");
@@ -1206,7 +1030,6 @@ export function initializeYouTubePlayer(
     callback?: (metadata: VideoMetadata | null) => void,
   ) => {
     await bridge.load(videoId);
-    // Small delay to ensure metadata is extracted from the player
     await new Promise((resolve) => setTimeout(resolve, 100));
     youtubeDuration = bridge.getDuration();
     controls.setProgress(0, youtubeDuration);
@@ -1216,7 +1039,6 @@ export function initializeYouTubePlayer(
     }
   };
 
-  // Only load initial video if provided
   const ready = youtubeSource
     ? (() => {
         const youtubeVideoId = extractYouTubeVideoId(youtubeSource);

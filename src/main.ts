@@ -201,6 +201,9 @@ const {
 // Initially hide the player controls (only show when tonearm is in play area)
 yt.setControlsVisible(false);
 
+// Register callback to query tonearm state when exiting fullscreen
+yt.setIsTonearmInPlayAreaQuery(() => isTonearmInPlayArea);
+
 // Track when video reaches the last 2 seconds to animate out
 let hasStartedFadeOut = false;
 let isTonearmInPlayArea = false;
