@@ -20,6 +20,7 @@ export interface SongMetadata {
   genre?: string; // Music genre from MusicBrainz
   releaseYear?: string; // Release year from MusicBrainz
   releaseId?: string; // MusicBrainz release ID for cached covers
+  aspectRatio?: number; // Video aspect ratio (16/9, 4/3, 1, etc.)
 }
 
 // ============================================================================
@@ -769,6 +770,7 @@ export async function promptUserForMetadata(
       artistName: string;
       songName: string;
       albumName?: string;
+      aspectRatio?: number;
     }
   | null
   | "skip"
@@ -881,7 +883,7 @@ export async function promptUserForMetadata(
           >
         </div>
 
-        <div style="margin-bottom: 1.5rem;">
+        <div style="margin-bottom: 1rem;">
           <label style="
             display: block;
             margin-bottom: 0.5rem;
@@ -912,6 +914,75 @@ export async function promptUserForMetadata(
             "
           >
         </div>
+
+        <div style="margin-bottom: 1.5rem;">
+          <label
+            style="
+              display: block;
+              margin-bottom: 0.5rem;
+              color: #000;
+              font-size: 0.8rem;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+              font-weight: normal;
+            "
+          >
+            aspect ratio
+          </label>
+          <input
+            id="vinyl-aspect-ratio-input"
+            placeholder="e.g. 16:9, 4/3, 1.33"
+            style="
+              width: 100%;
+              padding: 0.5rem 0;
+              background: transparent;
+              border: none;
+              border-bottom: 1px solid #000;
+              color: #000;
+              font-size: 0.9rem;
+              box-sizing: border-box;
+              font-family: inherit;
+              outline: none;
+            "
+          />
+        </div>
+
+        <script type="module">
+          const input = document.getElementById("vinyl-aspect-ratio-input") as HTMLInputElement;
+
+          input.addEventListener("change", () => {
+            const value = input.value.trim();
+            const ratio = parseAspectRatio(value);
+            if (!isFinite(ratio) || ratio <= 0) {
+              console.warn("Invalid aspect ratio input:", value);
+              return;
+            }
+            console.log("Aspect ratio parsed:", ratio);
+            // You can now use ratio, e.g. update your video/viewport logic
+          });
+
+          function parseAspectRatio(value: string): number {
+            // Handle symbolic names
+            const lower = value.toLowerCase();
+            if (lower === "square") return 1;
+            if (lower === "widescreen") return 16 / 9;
+            if (lower === "standard") return 4 / 3;
+
+            // Handle formats like 16:9, 4/3, 21:9
+            const match = value.match(/(\d+(\.\d+)?)[/:](\d+(\.\d+)?)/);
+            if (match) {
+              const w = parseFloat(match[1]);
+              const h = parseFloat(match[3]);
+              return w / h;
+            }
+
+            // Handle direct numeric values (e.g., 1.777)
+            const num = parseFloat(value);
+            if (!isNaN(num)) return num;
+
+            return NaN;
+          }
+        </script>
 
         <div style="display: flex; gap: 2rem; align-items: center;">
           ${
@@ -972,6 +1043,9 @@ export async function promptUserForMetadata(
     const albumInput = modal.querySelector(
       "#vinyl-album-input",
     ) as HTMLInputElement;
+    const aspectRatioInput = modal.querySelector(
+      "#vinyl-aspect-ratio-input",
+    ) as HTMLSelectElement;
     const confirmBtn = modal.querySelector(
       "#vinyl-confirm-btn",
     ) as HTMLAnchorElement;
@@ -1025,6 +1099,7 @@ export async function promptUserForMetadata(
       const artist = artistInput.value.trim();
       const song = songInput.value.trim();
       const album = albumInput.value.trim();
+      const aspectRatio = parseFloat(aspectRatioInput.value);
 
       if (!artist || !song) {
         alert("Please fill in both artist and song name");
@@ -1036,6 +1111,7 @@ export async function promptUserForMetadata(
         artistName: artist,
         songName: song,
         albumName: album || undefined,
+        aspectRatio: aspectRatio,
       });
     });
 
@@ -1073,6 +1149,7 @@ export async function extractAndEnrichMetadata(
   let artistName = parsed.artistName;
   let songName = parsed.songName;
   let albumName: string | undefined;
+  let aspectRatio: number | undefined;
 
   if (!artistName) {
     const confirmed = await promptUserForMetadata(
@@ -1086,6 +1163,7 @@ export async function extractAndEnrichMetadata(
     artistName = confirmed.artistName;
     songName = confirmed.songName;
     albumName = confirmed.albumName;
+    aspectRatio = confirmed.aspectRatio;
   }
 
   // Step 3: Check if song has featured artists
@@ -1161,6 +1239,7 @@ export async function extractAndEnrichMetadata(
         youtubeThumbUrl,
         genre: undefined,
         releaseYear: undefined,
+        aspectRatio: aspectRatio,
       };
     } else if (retryPrompt) {
       // User adjusted names, retry search
@@ -1170,6 +1249,7 @@ export async function extractAndEnrichMetadata(
       artistName = retryPrompt.artistName;
       songName = retryPrompt.songName;
       albumName = retryPrompt.albumName;
+      aspectRatio = retryPrompt.aspectRatio;
 
       // Retry search with adjusted names
       candidates = await searchMusicBrainz(songName, artistName, albumName);
@@ -1187,6 +1267,7 @@ export async function extractAndEnrichMetadata(
           youtubeThumbUrl,
           genre: undefined,
           releaseYear: undefined,
+          aspectRatio: aspectRatio,
         };
       }
     } else {
@@ -1234,6 +1315,7 @@ export async function extractAndEnrichMetadata(
           youtubeThumbUrl,
           genre: undefined,
           releaseYear: undefined,
+          aspectRatio: aspectRatio,
         };
       } else if (retryPrompt) {
         // User adjusted names, retry search
@@ -1243,6 +1325,7 @@ export async function extractAndEnrichMetadata(
         artistName = retryPrompt.artistName;
         songName = retryPrompt.songName;
         albumName = retryPrompt.albumName;
+        aspectRatio = retryPrompt.aspectRatio;
 
         // Retry search with adjusted names
         candidates = await searchMusicBrainz(songName, artistName, albumName);
@@ -1329,6 +1412,7 @@ export async function extractAndEnrichMetadata(
     genre,
     releaseYear,
     releaseId: selectedCandidate?.releaseId,
+    aspectRatio: aspectRatio,
   };
 
   console.log(`[extractAndEnrichMetadata] Returning metadata:`, result);

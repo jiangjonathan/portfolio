@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Plastic Texture Test</title>
+        <style>
+            body {
+                background: #000;
+                color: #fff;
+                font-family: sans-serif;
+                padding: 2rem;
+            }
+            .test-container {
+                display: flex;
+                gap: 2rem;
+                flex-wrap: wrap;
+            }
+            .test-item {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 1rem;
+            }
+            .plastic-box {
+                width: 250px;
+                height: 250px;
+                background-size: cover;
+                background-position: center;
+                border: 2px solid #fff;
+            }
+            .overlay-test {
+                position: relative;
+                width: 250px;
+                height: 250px;
+                background: linear-gradient(45deg, #ff0000, #00ff00, #0000ff);
+            }
+            .overlay-test .plastic {
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background-size: cover;
+                background-position: center;
+                opacity: 0.7;
+                mix-blend-mode: multiply;
+            }
+        </style>
+    </head>
+    <body>
+        <h1>Plastic Texture Test</h1>
+
+        <h2>Raw Plastic Textures (on black background)</h2>
+        <div class="test-container">
+            <div class="test-item">
+                <div
+                    class="plastic-box"
+                    style="background-image: url(&quot;/plastic1.png&quot;)"
+                ></div>
+                <p>plastic1.png</p>
+            </div>
+            <div class="test-item">
+                <div
+                    class="plastic-box"
+                    style="background-image: url(&quot;/plastic2.png&quot;)"
+                ></div>
+                <p>plastic2.png</p>
+            </div>
+            <div class="test-item">
+                <div
+                    class="plastic-box"
+                    style="background-image: url(&quot;/plastic3.png&quot;)"
+                ></div>
+                <p>plastic3.png</p>
+            </div>
+            <div class="test-item">
+                <div
+                    class="plastic-box"
+                    style="background-image: url(&quot;/plastic4.png&quot;)"
+                ></div>
+                <p>plastic4.png</p>
+            </div>
+        </div>
+
+        <h2>With Multiply Blend Mode (on colorful gradient)</h2>
+        <div class="test-container">
+            <div class="test-item">
+                <div class="overlay-test">
+                    <div
+                        class="plastic"
+                        style="background-image: url(&quot;/plastic1.png&quot;)"
+                    ></div>
+                </div>
+                <p>plastic1 with multiply blend</p>
+            </div>
+            <div class="test-item">
+                <div class="overlay-test">
+                    <div
+                        class="plastic"
+                        style="background-image: url(&quot;/plastic2.png&quot;)"
+                    ></div>
+                </div>
+                <p>plastic2 with multiply blend</p>
+            </div>
+            <div class="test-item">
+                <div class="overlay-test">
+                    <div
+                        class="plastic"
+                        style="background-image: url(&quot;/plastic3.png&quot;)"
+                    ></div>
+                </div>
+                <p>plastic3 with multiply blend</p>
+            </div>
+            <div class="test-item">
+                <div class="overlay-test">
+                    <div
+                        class="plastic"
+                        style="background-image: url(&quot;/plastic4.png&quot;)"
+                    ></div>
+                </div>
+                <p>plastic4 with multiply blend</p>
+            </div>
+        </div>
+    </body>
+</html>

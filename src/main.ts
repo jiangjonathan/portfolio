@@ -348,7 +348,7 @@ const {
 
 // Listen for song clicks from the viewer
 window.addEventListener("load-vinyl-song", async (event: any) => {
-  const { videoId, artistName, songName } = event.detail;
+  const { videoId, artistName, songName, aspectRatio } = event.detail;
 
   // Reset the fade-out flag for the new video
   hasStartedFadeOut = false;
@@ -362,6 +362,13 @@ window.addEventListener("load-vinyl-song", async (event: any) => {
   if (vinylModel) {
     const randomRotation = Math.random() * Math.PI * 2;
     vinylReturnBaseTwist = randomRotation;
+  }
+
+  // Apply aspect ratio if provided
+  if (aspectRatio !== undefined) {
+    const { setVideoAspectRatio } = await import("./youtube");
+    setVideoAspectRatio(aspectRatio);
+    console.log(`[main] Applied aspect ratio: ${aspectRatio}`);
   }
 
   // Load the video with corrected metadata from library

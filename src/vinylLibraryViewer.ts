@@ -12,6 +12,10 @@ import {
 } from "./visitorLibrary";
 
 import { initializeCache, recreateBlobUrlIfNeeded } from "./albumCoverCache";
+import {
+  generatePlasticOverlay,
+  PLASTIC_OVERLAY_BLEND_MODE,
+} from "./plasticOverlay";
 
 interface ViewerConfig {
   containerId: string;
@@ -35,9 +39,10 @@ export class VinylLibraryViewer {
   // Carousel/infinite scroll properties
   private scrollContainer: HTMLElement | null = null;
   private carouselItems: ExtendedEntry[] = []; // Duplicated list for seamless looping
-  private currentScrollIndex: number = 0;
   private itemHeight: number = 292; // 280px card + 12px gap
   private isResettingScroll: boolean = false;
+
+  private suppressNextLibraryUpdateEvent: boolean = false;
 
   constructor(config: ViewerConfig) {
     this.config = config;
@@ -154,8 +159,9 @@ export class VinylLibraryViewer {
 
   /**
    * Merge owner and visitor libraries, marking each entry's source
+   * If insertAtVisibleMiddle is provided, insert new entry at middle of visible area
    */
-  private mergeLibraries(): void {
+  private mergeLibraries(insertAtVisibleMiddle?: string): void {
     const ownerEntries: ExtendedEntry[] = this.ownerLibrary.map((entry) => ({
       ...entry,
       isOwnerEntry: true,
@@ -168,22 +174,115 @@ export class VinylLibraryViewer {
       }),
     );
 
-    // Combine both, owner entries first
-    this.library = [...ownerEntries, ...visitorEntries];
+    let combinedEntries: ExtendedEntry[];
+
+    // If we have an entry ID to insert at visible middle
+    if (insertAtVisibleMiddle && this.scrollContainer) {
+      // First get all entries in their default order
+      const allEntries = [...ownerEntries, ...visitorEntries];
+      console.log(
+        `[mergeLibraries] Total entries before insertion: ${allEntries.length}`,
+      );
+      console.log(
+        `[mergeLibraries] Owner entries: ${ownerEntries.length}, Visitor entries: ${visitorEntries.length}`,
+      );
+
+      // Find the new entry
+      const newEntry = allEntries.find((e) => e.id === insertAtVisibleMiddle);
+      console.log(
+        `[mergeLibraries] Found new entry:`,
+        newEntry ? `yes (id: ${newEntry.id})` : "NO",
+      );
+
+      if (newEntry) {
+        // Remove the new entry from the list
+        const allOtherEntries = allEntries.filter(
+          (e) => e.id !== insertAtVisibleMiddle,
+        );
+        console.log(
+          `[mergeLibraries] Other entries after removing new: ${allOtherEntries.length}`,
+        );
+
+        // Calculate middle visible index based on OLD library length
+        const scrollTop = this.scrollContainer.scrollTop;
+        const visibleHeight =
+          this.scrollContainer.getBoundingClientRect().height;
+
+        // Use the OLD library to calculate position (before adding new entry)
+        const oldLibraryLength = allOtherEntries.length;
+        const oneSetHeight = oldLibraryLength * this.itemHeight;
+
+        // Get the scroll position within the middle set (set 1 of 3)
+        const middleSetStart = oneSetHeight;
+        const middleSetEnd = oneSetHeight * 2;
+
+        let adjustedScroll: number;
+        if (scrollTop < middleSetStart) {
+          // In first set, use first set position
+          adjustedScroll = scrollTop;
+        } else if (scrollTop >= middleSetEnd) {
+          // In third set, use third set position minus 2 sets
+          adjustedScroll = scrollTop - oneSetHeight * 2;
+        } else {
+          // In middle set, use middle set position minus 1 set
+          adjustedScroll = scrollTop - oneSetHeight;
+        }
+
+        const visibleMiddleIndex = Math.floor(
+          (adjustedScroll + visibleHeight / 2) / this.itemHeight,
+        );
+
+        console.log(
+          `[mergeLibraries] scrollTop=${scrollTop}, visibleHeight=${visibleHeight}`,
+        );
+        console.log(
+          `[mergeLibraries] oldLibraryLength=${oldLibraryLength}, oneSetHeight=${oneSetHeight}`,
+        );
+        console.log(
+          `[mergeLibraries] adjustedScroll=${adjustedScroll}, itemHeight=${this.itemHeight}`,
+        );
+        console.log(
+          `[mergeLibraries] Calculated visibleMiddleIndex=${visibleMiddleIndex} of ${oldLibraryLength} total entries`,
+        );
+
+        // Insert at the middle visible index
+        const insertIndex = Math.max(
+          0,
+          Math.min(visibleMiddleIndex, allOtherEntries.length),
+        );
+        console.log(`[mergeLibraries] Final insertIndex=${insertIndex}`);
+
+        combinedEntries = [
+          ...allOtherEntries.slice(0, insertIndex),
+          newEntry,
+          ...allOtherEntries.slice(insertIndex),
+        ];
+
+        console.log(
+          `[mergeLibraries] Combined entries after insertion: ${combinedEntries.length}`,
+        );
+        console.log(
+          `[mergeLibraries] New entry is now at index: ${combinedEntries.findIndex((e) => e.id === insertAtVisibleMiddle)}`,
+        );
+      } else {
+        // Fallback if entry not found
+        combinedEntries = [...ownerEntries, ...visitorEntries];
+      }
+    } else {
+      // Default behavior: combine both, owner entries first
+      combinedEntries = [...ownerEntries, ...visitorEntries];
+    }
 
     // If filter is active, show only visitor entries
     if (this.showVisitorOnly) {
-      this.library = visitorEntries;
+      this.library = combinedEntries.filter((e) => !e.isOwnerEntry);
+    } else {
+      this.library = combinedEntries;
     }
 
     // Update carousel items when library changes
     if (this.library.length > 0) {
       this.carouselItems = [...this.library, ...this.library, ...this.library];
-    }
-
-    // Reset scroll position when library changes
-    if (this.scrollContainer) {
-      this.scrollContainer.scrollTop = 0;
     }
   }
 
@@ -208,8 +307,8 @@ export class VinylLibraryViewer {
           .vinyl-viewer-widget .library-grid {
             display: flex;
             flex-direction: column;
-            gap: 0.75rem;
-            max-height: 70vh;
+            gap: 0;
+            height: 100%;
             overflow-y: scroll;
             overflow-x: hidden;
             scrollbar-width: none;
@@ -230,8 +329,11 @@ export class VinylLibraryViewer {
             transition: none;
             border: none;
             cursor: default;
-            width: 450px;
+            width: 430px;
             flex-shrink: 0;
+            margin-bottom: 0.75rem;
+            content-visibility: auto;
+            contain-intrinsic-size: 430px 292px;
           }
 
           .vinyl-viewer-widget .album-card:hover {
@@ -244,14 +346,35 @@ export class VinylLibraryViewer {
           }
 
           .vinyl-viewer-widget .album-cover {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            background: #222;
+            border: none;
+            display: block;
+          }
+
+          .vinyl-viewer-widget .album-cover-wrapper {
+            position: relative;
             width: 250px;
             height: 250px;
             flex-shrink: 0;
-            object-fit: cover;
-            background: #222;
             border-radius: 2px;
             box-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
-            border: none;
+          }
+
+          .vinyl-viewer-widget .plastic-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            pointer-events: none;
+            mix-blend-mode: ${PLASTIC_OVERLAY_BLEND_MODE};
+            border-radius: 2px;
           }
 
           .vinyl-viewer-widget .album-info {
@@ -261,7 +384,7 @@ export class VinylLibraryViewer {
             background: transparent;
             justify-content: center;
             min-width: 0;
-            width: 200px;
+            width: 180px;
             flex-shrink: 0;
             overflow: hidden;
           }
@@ -312,66 +435,76 @@ export class VinylLibraryViewer {
             0% {
               opacity: 1;
               max-height: 250px;      /* approximate card height */
-              margin-bottom: 0.75rem;
-              padding-top: 0.5rem;    /* whatever your current paddings roughly are */
-              padding-bottom: 0.5rem;
+              margin: 0;
+              padding: 0.5rem 0;
+            }
+            99% {
+              opacity: 0;
+              max-height: 0;
+              margin: 0;
+              padding: 0;
             }
             100% {
               opacity: 0;
               max-height: 0;
+              margin: 0;
+              padding: 0;
+              display: none;
+            }
+          }
+
+          .vinyl-viewer-widget .album-card.deleting {
+            animation: fade-out-collapse 2000ms ease-in-out forwards !important;
+            overflow: hidden;
+            pointer-events: none;
+          }
+
+
+          /* Insertion animation for new albums */
+          /* New entry: reserve space, then fade the cover in */
+          @keyframes slide-in-expand {
+            0% {
+              opacity: 0;
+              max-height: 0;
+              margin-top: 0;
               margin-bottom: 0;
               padding-top: 0;
               padding-bottom: 0;
             }
-          }
-
-          .vinyl-viewer-widget .album-card.deleting {
-            animation: fade-out-collapse 100ms ease-out forwards !important;
-            overflow: hidden;         /* hide shrinking contents */
-            pointer-events: none;
-          }
-
-          .vinyl-viewer-widget .album-card.deleting {
-            animation: fade-out-collapse 1.5s ease-in-out forwards !important;
-            pointer-events: none;
-            overflow: hidden;
-          }
-
-          /* Insertion animation for new albums */
-          @keyframes slide-in-expand {
-            0% {
-              opacity: 0;
-              height: 0;
-              margin-bottom: 0;
-              transform: scale(0.1) translateX(-50px);
-            }
             50% {
-              opacity: 1;
-              height: auto;
-              margin-bottom: 0.75rem;
-              transform: scale(1.2) translateX(0);
+              opacity: 0;
+              max-height: 400px;      /* Expand to push cards up */
+              margin-top: -150px;     /* Pull up to overlap above */
+              margin-bottom: -100px;  /* Pull card below up */
+              padding-top: 0.5rem;
+              padding-bottom: 0.5rem;
             }
             100% {
               opacity: 1;
-              height: auto;
-              margin-bottom: 0.75rem;
-              transform: scale(1) translateX(0);
+              max-height: 280px;      /* Final card height */
+              margin-top: 0;
+              margin-bottom: 0.75rem; /* Final gap */
+              padding-top: 0.5rem;
+              padding-bottom: 0.5rem;
             }
           }
 
           .vinyl-viewer-widget .album-card.inserting {
-            animation: slide-in-expand 4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards !important;
-            overflow: hidden;
+            animation: slide-in-expand 2500ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards !important;
+            overflow: visible !important;
+            z-index: 10;
+            position: relative;
           }
 
+          /* Optional: stagger text fade-in so you see the "empty space" then content */
           .vinyl-viewer-widget .album-card.inserting .album-info {
-            animation: fade-in-text 1.5s ease-out 2s forwards !important;
+            animation: fade-in-text 1000ms ease-out 1000ms forwards !important;
             opacity: 0;
           }
 
           @keyframes fade-in-text {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
+            from { opacity: 0; transform: translateY(8px); }
+            to   { opacity: 1; transform: translateY(0); }
           }
 
           .vinyl-viewer-widget .empty-state {
@@ -468,7 +601,24 @@ export class VinylLibraryViewer {
   private renderGrid(): void {
     const gridContainer = document.getElementById("vinyl-viewer-grid");
 
-    if (!gridContainer) return;
+    if (!gridContainer) {
+      console.error("[renderGrid] Grid container not found!");
+      return;
+    }
+
+    console.log("[renderGrid] Grid container:", gridContainer);
+    console.log(
+      "[renderGrid] Grid container overflow-y:",
+      window.getComputedStyle(gridContainer).overflowY,
+    );
+    console.log(
+      "[renderGrid] Grid container height:",
+      window.getComputedStyle(gridContainer).height,
+    );
+    console.log(
+      "[renderGrid] Grid container scrollHeight:",
+      gridContainer.scrollHeight,
+    );
 
     if (this.library.length === 0) {
       gridContainer.innerHTML = "";
@@ -484,18 +634,38 @@ export class VinylLibraryViewer {
     this.updateVisibleItems();
     this.attachCardListeners();
 
-    // Listen for scroll to handle wrapping invisibly
-    gridContainer.addEventListener(
-      "scroll",
-      () => this.handleInfiniteScroll(),
-      { passive: true },
-    );
+    // The actual scrolling happens on the parent container
+    const scrollingContainer = document.getElementById("vinyl-library-viewer");
 
-    // Start at middle of carousel so wrapping works symmetrically
+    if (scrollingContainer) {
+      // Listen for scroll on the ACTUAL scrolling element
+      scrollingContainer.addEventListener(
+        "scroll",
+        () => {
+          console.log("[scroll event] Scroll event fired");
+          this.handleInfiniteScroll();
+        },
+        { passive: true },
+      );
+      console.log(
+        "[renderGrid] Scroll event listener attached to #vinyl-library-viewer",
+      );
+    } else {
+      console.error("[renderGrid] #vinyl-library-viewer not found!");
+    }
+
+    // Start at middle set, a few items before the first item for better circular scrolling
     const oneSetHeight = this.library.length * this.itemHeight;
-    setTimeout(() => {
-      if (gridContainer) gridContainer.scrollTop = oneSetHeight;
-    }, 0);
+
+    if (scrollingContainer) {
+      // Scroll to a position that shows the correct view (adjust offset as needed)
+      const offset = this.itemHeight * 4; // Start 4 items up from middle set start
+      const startScrollPosition = oneSetHeight - offset;
+      scrollingContainer.scrollTop = startScrollPosition;
+      console.log(
+        `[renderGrid] Set initial scroll position: ${startScrollPosition}`,
+      );
+    }
   }
 
   /**
@@ -510,23 +680,51 @@ export class VinylLibraryViewer {
     )
       return;
 
-    const oneSetHeight = this.library.length * this.itemHeight;
-    const scrollTop = this.scrollContainer.scrollTop;
+    // Get the actual scrolling container
+    const actualScrollContainer = document.getElementById(
+      "vinyl-library-viewer",
+    );
+    if (!actualScrollContainer) return;
 
-    // If scrolled past 2/3 of the way, jump back to 1/3
-    if (scrollTop > oneSetHeight * 1.5) {
+    const oneSetHeight = this.library.length * this.itemHeight;
+    const scrollTop = actualScrollContainer.scrollTop;
+    const scrollHeight = actualScrollContainer.scrollHeight;
+    const clientHeight = actualScrollContainer.clientHeight;
+
+    // Calculate thresholds for wrapping - trigger earlier to prevent reaching actual bottom
+    const bottomThreshold = scrollHeight - clientHeight - this.itemHeight * 2;
+    const topThreshold = this.itemHeight * 2;
+
+    console.log(
+      `[handleInfiniteScroll] scrollTop=${scrollTop}, topThreshold=${topThreshold}, bottomThreshold=${bottomThreshold}, scrollHeight=${scrollHeight}`,
+    );
+
+    // If scrolled near bottom, jump back to middle
+    if (scrollTop > bottomThreshold) {
+      console.log(
+        `[handleInfiniteScroll] NEAR BOTTOM - Jumping back to middle`,
+      );
       this.isResettingScroll = true;
-      // Jump to same position in the middle copy
-      this.scrollContainer.scrollTop = scrollTop - oneSetHeight;
+      const newScrollTop = scrollTop - oneSetHeight;
+      actualScrollContainer.scrollTop = newScrollTop;
+      console.log(
+        `[handleInfiniteScroll] Jumped from ${scrollTop} to ${newScrollTop}`,
+      );
       requestAnimationFrame(() => {
         this.isResettingScroll = false;
       });
     }
-    // If scrolled before 1/3 of the way, jump to near the end
-    else if (scrollTop < oneSetHeight * 0.5) {
+    // If scrolled near top, jump forward to middle
+    else if (scrollTop < topThreshold) {
+      console.log(
+        `[handleInfiniteScroll] NEAR TOP - Jumping forward to middle`,
+      );
       this.isResettingScroll = true;
-      // Jump to same position in the last copy
-      this.scrollContainer.scrollTop = scrollTop + oneSetHeight;
+      const newScrollTop = scrollTop + oneSetHeight;
+      actualScrollContainer.scrollTop = newScrollTop;
+      console.log(
+        `[handleInfiniteScroll] Jumped from ${scrollTop} to ${newScrollTop}`,
+      );
       requestAnimationFrame(() => {
         this.isResettingScroll = false;
       });
@@ -539,6 +737,9 @@ export class VinylLibraryViewer {
   private updateVisibleItems(): void {
     if (!this.scrollContainer || this.library.length === 0) return;
 
+    // Ensure carousel items are up to date with 3x duplication
+    this.carouselItems = [...this.library, ...this.library, ...this.library];
+
     let itemsHtml = "";
 
     // Render all carousel items (duplicates create seamless loop)
@@ -547,15 +748,19 @@ export class VinylLibraryViewer {
       const canDelete = !isOwner || this.config.isAdmin;
       const artistName = entry.artistName || "Unknown Artist";
       const songName = entry.songName || entry.note || "Unknown Song";
+      const plasticOverlay = generatePlasticOverlay();
 
       itemsHtml += `
       <div class="album-card" data-entry-id="${entry.id}" data-index="${index % this.library.length}">
-        <img
-          src="${this.getImageWithFallback(entry.imageUrl)}"
-          alt="${this.escapeHtml(songName)}"
-          class="album-cover"
-          loading="lazy"
-        >
+        <div class="album-cover-wrapper">
+          <img
+            src="${this.getImageWithFallback(entry.imageUrl)}"
+            alt="${this.escapeHtml(songName)}"
+            class="album-cover"
+            loading="lazy"
+          >
+          ${plasticOverlay}
+        </div>
         ${isOwner ? '<div class="owner-badge">Owner</div>' : ""}
         ${canDelete ? `<button class="delete-btn" data-entry-id="${entry.id}" data-is-owner="${isOwner}" title="Delete from collection">×</button>` : ""}
         <div class="album-info">
@@ -640,6 +845,7 @@ export class VinylLibraryViewer {
                 videoId: entry.youtubeId,
                 artistName: entry.artistName,
                 songName: entry.songName,
+                aspectRatio: entry.aspectRatio,
               },
             }),
           );
@@ -711,7 +917,7 @@ export class VinylLibraryViewer {
     );
     cards.forEach((card) => card.classList.add("deleting"));
 
-    const DELETION_ANIMATION_MS = 2002;
+    const DELETION_ANIMATION_MS = 2000;
 
     // Wait for animation to complete before actually removing
     await new Promise((resolve) => setTimeout(resolve, DELETION_ANIMATION_MS));
@@ -735,18 +941,16 @@ export class VinylLibraryViewer {
           this.ownerLibrary = await fetchOwnerLibrary(this.config.apiUrl);
           this.mergeLibraries();
 
-          // Only remove the animated cards from DOM, don't re-render everything
-          const cardsToRemove = document.querySelectorAll(
-            `.vinyl-viewer-widget .album-card.deleting[data-entry-id="${entryId}"]`,
-          );
-          cardsToRemove.forEach((card) => card.remove());
+          // Don't manually remove - the animation's display:none at 100% handles it
+          // The cards are now invisible and take up no space in the layout
 
           // Restore scroll position to maintain view
           if (this.scrollContainer) {
             this.scrollContainer.scrollTop = scrollPosBefore;
           }
 
-          // Dispatch event so other widgets update
+          // Tell other widgets to update, but skip re-rendering this one
+          this.suppressNextLibraryUpdateEvent = true;
           window.dispatchEvent(new CustomEvent("vinyl-library-updated"));
 
           console.log("✓ Entry deleted from backend collection");
@@ -764,18 +968,16 @@ export class VinylLibraryViewer {
         this.visitorLibrary = loadVisitorLibrary();
         this.mergeLibraries();
 
-        // Only remove the animated cards from DOM, don't re-render everything
-        const cardsToRemove = document.querySelectorAll(
-          `.vinyl-viewer-widget .album-card.deleting[data-entry-id="${entryId}"]`,
-        );
-        cardsToRemove.forEach((card) => card.remove());
+        // Don't manually remove - the animation's display:none at 100% handles it
+        // The cards are now invisible and take up no space in the layout
 
         // Restore scroll position to maintain view
         if (this.scrollContainer) {
           this.scrollContainer.scrollTop = scrollPosBefore;
         }
 
-        // Dispatch event so other widgets update
+        //  Tell other widgets to update, but skip re-rendering this one
+        this.suppressNextLibraryUpdateEvent = true;
         window.dispatchEvent(new CustomEvent("vinyl-library-updated"));
 
         console.log("✓ Entry deleted from your local collection");
@@ -798,9 +1000,18 @@ export class VinylLibraryViewer {
 
     // Also listen for custom events dispatched by the widget
     window.addEventListener("vinyl-library-updated", async (event: Event) => {
+      // 🔹 Skip the event we just fired from this instance during delete
+      if (this.suppressNextLibraryUpdateEvent) {
+        this.suppressNextLibraryUpdateEvent = false;
+        return;
+      }
+
       const customEvent = event as CustomEvent;
       const isNewAddition = customEvent.detail?.isNewAddition;
       const newEntryId = customEvent.detail?.entryId;
+
+      // 🔹 Capture scroll so re-render doesn’t cause a jump
+      const scrollPos = this.scrollContainer?.scrollTop ?? 0;
 
       this.visitorLibrary = loadVisitorLibrary();
 
@@ -816,19 +1027,82 @@ export class VinylLibraryViewer {
       // Recreate blob URLs after reloading libraries
       await this.recreateBlobUrls();
 
-      this.mergeLibraries();
-      this.updateVisibleItems();
-      this.attachCardListeners();
+      // If this is a new addition, insert at visible middle position
+      console.log(
+        `[vinyl-library-updated] isNewAddition=${isNewAddition}, newEntryId=${newEntryId}`,
+      );
 
-      // Trigger insertion animation for new additions
       if (isNewAddition && newEntryId) {
-        requestAnimationFrame(() => {
-          const cards = document.querySelectorAll(
-            `.vinyl-viewer-widget .album-card[data-entry-id="${newEntryId}"]`,
-          );
-          cards.forEach((card) => card.classList.add("inserting"));
-        });
+        console.log(
+          `[vinyl-library-updated] Calling mergeLibraries with insertAtVisibleMiddle="${newEntryId}"`,
+        );
+        // Don't set the flag yet - we'll set it after render
+        this.mergeLibraries(newEntryId);
+      } else {
+        console.log(
+          `[vinyl-library-updated] Calling mergeLibraries without insertion parameter`,
+        );
+        this.mergeLibraries();
       }
+
+      // Log where the new entry ended up in the library
+      if (isNewAddition && newEntryId) {
+        const index = this.library.findIndex((e) => e.id === newEntryId);
+        console.log(
+          `[vinyl-library-updated] New entry is at index ${index} of ${this.library.length} total entries`,
+        );
+      }
+
+      // Re-render the entire list
+      this.updateVisibleItems();
+
+      // Handle new insertion: scroll to it and animate
+      if (isNewAddition && newEntryId) {
+        // Use double requestAnimationFrame to ensure DOM is fully painted
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            const cards = document.querySelectorAll(
+              `.vinyl-viewer-widget .album-card[data-entry-id="${newEntryId}"]`,
+            );
+            console.log(
+              `[vinyl-library-updated] Found ${cards.length} cards with ID ${newEntryId}`,
+            );
+
+            if (cards.length > 0) {
+              // Scroll to the middle instance (carousel set 1 of 3)
+              const middleCard = cards[1] || cards[0];
+              console.log(`[vinyl-library-updated] Scrolling to card`);
+
+              middleCard.scrollIntoView({
+                behavior: "smooth",
+                block: "center",
+              });
+
+              // Add animation class to all instances
+              cards.forEach((card) => {
+                card.classList.add("inserting");
+              });
+              console.log(
+                `[vinyl-library-updated] Added inserting class to ${cards.length} cards`,
+              );
+
+              // Clear after animation completes
+              setTimeout(() => {
+                cards.forEach((card) => {
+                  card.classList.remove("inserting");
+                });
+              }, 2500);
+            }
+          });
+        });
+      } else {
+        // Restore scroll to keep viewport stable when not inserting
+        if (this.scrollContainer) {
+          this.scrollContainer.scrollTop = scrollPos;
+        }
+      }
+
+      this.attachCardListeners();
     });
   }
 

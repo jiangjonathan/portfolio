@@ -638,6 +638,7 @@ export class EnhancedVinylLibraryWidget {
           enrichedMetadata.genre,
           enrichedMetadata.releaseYear,
           enrichedMetadata.releaseId,
+          enrichedMetadata.aspectRatio,
         );
         console.log(`[handleAddSong] Backend returned entry:`, entry);
       } else {
@@ -652,6 +653,7 @@ export class EnhancedVinylLibraryWidget {
           enrichedMetadata.imageUrl,
           note,
           enrichedMetadata.releaseId,
+          enrichedMetadata.aspectRatio,
         );
         console.log(`[handleAddSong] localStorage returned entry:`, entry);
       }
@@ -665,7 +667,14 @@ export class EnhancedVinylLibraryWidget {
         if (noteInput) noteInput.value = "";
 
         // Dispatch event for other widgets to listen to
-        window.dispatchEvent(new CustomEvent("vinyl-library-updated"));
+        window.dispatchEvent(
+          new CustomEvent("vinyl-library-updated", {
+            detail: {
+              isNewAddition: true,
+              entryId: entry.id,
+            },
+          }),
+        );
 
         // Clear status message after 2 seconds
         setTimeout(() => {

@@ -12,6 +12,7 @@ export interface VisitorEntry {
   note: string;
   addedAt: string;
   releaseId?: string; // MusicBrainz release ID for cached covers
+  aspectRatio?: number; // Video aspect ratio (16/9, 4/3, 1, etc.)
 }
 
 const STORAGE_KEY = "visitorLibrary";
@@ -92,6 +93,7 @@ export function addVisitorLink(
   imageUrl: string,
   note: string = "",
   releaseId?: string,
+  aspectRatio?: number,
 ): VisitorEntry | null {
   const youtubeId = extractYouTubeId(youtubeLink);
 
@@ -109,6 +111,7 @@ export function addVisitorLink(
     note,
     addedAt: new Date().toISOString(),
     releaseId,
+    aspectRatio,
   };
 
   const library = loadVisitorLibrary();
@@ -212,6 +215,7 @@ export async function addToOwnerLibrary(
   genre?: string,
   releaseYear?: string,
   releaseId?: string,
+  aspectRatio?: number,
 ): Promise<VisitorEntry | null> {
   try {
     const headers: Record<string, string> = {
@@ -240,6 +244,9 @@ export async function addToOwnerLibrary(
     }
     if (releaseId) {
       requestBody.releaseId = releaseId;
+    }
+    if (aspectRatio !== undefined) {
+      requestBody.aspectRatio = aspectRatio;
     }
 
     const response = await fetch(`${apiUrl}/api/library`, {

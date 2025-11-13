@@ -72,6 +72,15 @@ function loadYouTubeIframeAPI(): Promise<void> {
 
 let DYNAMIC_VIDEO_ASPECT = 16 / 9;
 
+/**
+ * Set the aspect ratio for the current video manually
+ * @param aspectRatio - The aspect ratio as a number (e.g., 16/9, 4/3, 1)
+ */
+export function setVideoAspectRatio(aspectRatio: number): void {
+  DYNAMIC_VIDEO_ASPECT = aspectRatio;
+  console.log(`[YouTube] Manually set aspect ratio to ${aspectRatio}`);
+}
+
 export function createYouTubePlayer(): YouTubeBridge {
   const wrapper = document.createElement("div");
   wrapper.className = "yt-shell";
