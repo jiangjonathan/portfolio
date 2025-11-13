@@ -2,9 +2,13 @@
  * YouTube Metadata Extraction & Album Art Pipeline
  * 1. Extract YouTube metadata (title, artist, thumbnail)
  * 2. Prompt for missing artist name
- * 3. Fetch album art from MusicBrainz + Cover Art Archive (user selects from top 5)
+ * 3. Fetch album art from MusicBrainz + Cover Art Archive (user selects from up to 6 options)
+ *    - Prioritizes 12" vinyl records
+ *    - Fills remaining slots with duplicates of best option if fewer than 6 results
  * 4. Return metadata with image URL (no storage needed)
  */
+
+import { getOrCacheAlbumCover } from "./albumCoverCache";
 
 export interface SongMetadata {
   youtubeId: string;
@@ -15,6 +19,7 @@ export interface SongMetadata {
   youtubeThumbUrl: string; // Fallback thumbnail
   genre?: string; // Music genre from MusicBrainz
   releaseYear?: string; // Release year from MusicBrainz
+  releaseId?: string; // MusicBrainz release ID for cached covers
 }
 
 // ============================================================================
@@ -30,6 +35,7 @@ interface AlbumArtCandidate {
   genre?: string;
   releaseYear?: string;
   tags?: Array<{ name: string; count: number }>;
+  packaging?: string; // Format like "Vinyl", "CD", etc.
 }
 
 async function fetchCoverArtForRelease(
@@ -58,9 +64,89 @@ async function fetchCoverArtForRelease(
   return null;
 }
 
+/**
+ * Search for additional releases with the same album title
+ * Used to fill remaining slots with different editions/pressings
+ */
+async function fetchAdditionalReleasesByTitle(
+  albumTitle: string,
+  excludeReleaseIds: Set<string>,
+  limit: number = 5,
+): Promise<AlbumArtCandidate[]> {
+  try {
+    const query = `release:"${albumTitle}"`;
+    const url = `https://musicbrainz.org/ws/2/release/?fmt=json&limit=50&query=${encodeURIComponent(query)}`;
+
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent": "vinyl-library/1.0",
+      },
+    });
+
+    if (!response.ok) return [];
+
+    const data = await response.json();
+    const releases = data.releases || [];
+
+    const candidates: AlbumArtCandidate[] = [];
+
+    for (const release of releases) {
+      // Skip if we already have this release
+      if (excludeReleaseIds.has(release.id)) continue;
+
+      const artistCredit = release["artist-credit"]?.[0];
+      const artist =
+        artistCredit?.name || artistCredit?.artist?.name || "Unknown";
+
+      const tags = release.tags || [];
+      const genre = tags.length > 0 ? tags[0].name : undefined;
+
+      const releaseYear = release.date ? release.date.split("-")[0] : undefined;
+
+      // Extract packaging/media info
+      const media = release["media"] || [];
+      let packaging: string | undefined;
+      if (media.length > 0) {
+        const format = media[0]["format"] || "Unknown";
+        const trackCount = media[0]["track-count"];
+        packaging = trackCount ? `${format} (${trackCount} tracks)` : format;
+      }
+
+      // Fetch cover art for this release
+      const coverArtUrl = await fetchCoverArtForRelease(release.id);
+
+      // Only add if it has cover art
+      if (coverArtUrl) {
+        candidates.push({
+          releaseId: release.id,
+          title: release.title,
+          artist: artist,
+          date: release.date,
+          coverArtUrl: coverArtUrl,
+          genre: genre,
+          releaseYear: releaseYear,
+          tags: tags,
+          packaging: packaging,
+        });
+
+        if (candidates.length >= limit) break;
+      }
+    }
+
+    console.log(
+      `Fetched ${candidates.length} additional releases for "${albumTitle}"`,
+    );
+    return candidates;
+  } catch (error) {
+    console.error("Error fetching additional releases:", error);
+    return [];
+  }
+}
+
 async function searchMusicBrainz(
   songName: string,
   artistName: string,
+  albumName?: string,
 ): Promise<AlbumArtCandidate[]> {
   try {
     // Collect unique releases
@@ -68,7 +154,10 @@ async function searchMusicBrainz(
 
     // Helper function to search recordings
     const searchRecordings = async (artist: string) => {
-      const query = `recording:"${songName}" AND artist:"${artist}"`;
+      let query = `recording:"${songName}" AND artist:"${artist}"`;
+      if (albumName) {
+        query += ` AND release:"${albumName}"`;
+      }
       const url = `https://musicbrainz.org/ws/2/recording/?fmt=json&limit=20&query=${encodeURIComponent(query)}`;
 
       const response = await fetch(url, {
@@ -84,12 +173,20 @@ async function searchMusicBrainz(
 
       for (const rec of recordings) {
         const releases = rec.releases || [];
+        // Get artist from recording level as fallback
+        const recordingArtistCredit = rec["artist-credit"]?.[0];
+        const recordingArtist =
+          recordingArtistCredit?.name ||
+          recordingArtistCredit?.artist?.name ||
+          "Unknown";
+
         for (const release of releases) {
           if (releaseMap.has(release.id)) continue;
 
           const artistCredit = release["artist-credit"]?.[0];
+          // Use release artist if available, otherwise fall back to recording artist
           const artist =
-            artistCredit?.name || artistCredit?.artist?.name || "Unknown";
+            artistCredit?.name || artistCredit?.artist?.name || recordingArtist;
 
           // Extract genre from tags
           const tags = release.tags || [];
@@ -100,6 +197,17 @@ async function searchMusicBrainz(
             ? release.date.split("-")[0]
             : undefined;
 
+          // Extract packaging/media info
+          const media = release["media"] || [];
+          let packaging: string | undefined;
+          if (media.length > 0) {
+            const format = media[0]["format"] || "Unknown";
+            const trackCount = media[0]["track-count"];
+            packaging = trackCount
+              ? `${format} (${trackCount} tracks)`
+              : format;
+          }
+
           releaseMap.set(release.id, {
             releaseId: release.id,
             title: release.title,
@@ -109,6 +217,7 @@ async function searchMusicBrainz(
             genre: genre,
             releaseYear: releaseYear,
             tags: tags,
+            packaging: packaging,
           });
 
           // Limit to total 20 releases per search variant
@@ -121,7 +230,10 @@ async function searchMusicBrainz(
     // Helper function to search release groups
     const searchReleaseGroups = async (artist: string) => {
       try {
-        const rgQuery = `release:"${songName}" AND artist:"${artist}"`;
+        let rgQuery = `release:"${songName}" AND artist:"${artist}"`;
+        if (albumName) {
+          rgQuery = `releasegroup:"${albumName}" AND artist:"${artist}"`;
+        }
         const rgUrl = `https://musicbrainz.org/ws/2/release-group/?fmt=json&limit=10&query=${encodeURIComponent(rgQuery)}`;
 
         const rgResponse = await fetch(rgUrl, {
@@ -174,6 +286,17 @@ async function searchMusicBrainz(
             ? release.date.split("-")[0]
             : undefined;
 
+          // Extract packaging/media info
+          const media = release["media"] || [];
+          let packaging: string | undefined;
+          if (media.length > 0) {
+            const format = media[0]["format"] || "Unknown";
+            const trackCount = media[0]["track-count"];
+            packaging = trackCount
+              ? `${format} (${trackCount} tracks)`
+              : format;
+          }
+
           releaseMap.set(release.id, {
             releaseId: release.id,
             title: release.title,
@@ -183,6 +306,7 @@ async function searchMusicBrainz(
             genre: genre,
             releaseYear: releaseYear,
             tags: tags,
+            packaging: packaging,
           });
         }
       } catch (rgError) {
@@ -249,17 +373,68 @@ async function searchMusicBrainz(
       `${withCoverArt.length} results after artist filtering (searched for: "${artistName}")`,
     );
 
+    // Sort by vinyl priority (12" vinyl first, then other vinyl, then others)
+    const sortedByVinyl = withCoverArt.sort((a, b) => {
+      const aIsVinyl = a.packaging?.toLowerCase().includes("vinyl") ? 1 : 0;
+      const bIsVinyl = b.packaging?.toLowerCase().includes("vinyl") ? 1 : 0;
+
+      if (aIsVinyl !== bIsVinyl) {
+        return bIsVinyl - aIsVinyl; // Vinyl first
+      }
+
+      // If both are vinyl, prioritize 12"
+      const aIs12 = a.packaging?.toLowerCase().includes("12") ? 1 : 0;
+      const bIs12 = b.packaging?.toLowerCase().includes("12") ? 1 : 0;
+
+      if (aIs12 !== bIs12) {
+        return bIs12 - aIs12; // 12" first
+      }
+
+      return 0;
+    });
+
     // Deduplicate by album title to avoid showing multiple editions/versions
     // Keep first occurrence of each unique title
     const uniqueByTitle = new Map<string, AlbumArtCandidate>();
-    withCoverArt.forEach((c) => {
+    sortedByVinyl.forEach((c) => {
       if (!uniqueByTitle.has(c.title)) {
         uniqueByTitle.set(c.title, c);
       }
     });
 
-    // Return top 5 unique albums
-    return Array.from(uniqueByTitle.values()).slice(0, 5);
+    const topResults = Array.from(uniqueByTitle.values()).slice(0, 6);
+
+    // If we have fewer than 6 results, fetch additional releases with the same album title
+    if (topResults.length > 0 && topResults.length < 6) {
+      const bestOption = topResults[0];
+      const neededCount = 6 - topResults.length;
+
+      // Collect IDs we already have to avoid duplicates
+      const existingIds = new Set(topResults.map((r) => r.releaseId));
+
+      console.log(
+        `Fetching ${neededCount} additional releases with title "${bestOption.title}"...`,
+      );
+
+      // Fetch additional releases with the same title
+      const additionalReleases = await fetchAdditionalReleasesByTitle(
+        bestOption.title,
+        existingIds,
+        neededCount,
+      );
+
+      // Add additional releases to fill remaining slots
+      topResults.push(...additionalReleases.slice(0, neededCount));
+
+      console.log(
+        `Filled remaining slots with ${additionalReleases.length} additional releases of "${bestOption.title}"`,
+      );
+    }
+
+    console.log(
+      `Returning ${topResults.length} results (up to 6 with vinyl priority)`,
+    );
+    return topResults;
   } catch (error) {
     console.error("MusicBrainz error:", error);
     return [];
@@ -333,7 +508,7 @@ async function showAlbumArtPicker(
       const grid = document.createElement("div");
       grid.style.cssText = `
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+        grid-template-columns: repeat(3, 1fr);
         gap: 1.5rem;
         margin-bottom: 2rem;
       `;
@@ -372,17 +547,28 @@ async function showAlbumArtPicker(
         }
 
         const info = document.createElement("div");
-        info.style.cssText = "font-size: 0.8rem; line-height: 1.3;";
+        info.style.cssText = "font-size: 0.75rem; line-height: 1.3;";
 
         const albumTitle = document.createElement("div");
         albumTitle.textContent = candidate.title;
-        albumTitle.style.cssText = "margin-bottom: 0.15rem; color: #000;";
+        albumTitle.style.cssText =
+          "margin-bottom: 0.15rem; color: #000; font-weight: 500;";
         info.appendChild(albumTitle);
 
         const artist = document.createElement("div");
         artist.textContent = candidate.artist;
-        artist.style.cssText = "color: #666; font-size: 0.75rem;";
+        artist.style.cssText =
+          "color: #666; font-size: 0.7rem; margin-bottom: 0.15rem;";
         info.appendChild(artist);
+
+        // Show packaging/format info if available
+        if (candidate.packaging) {
+          const packaging = document.createElement("div");
+          packaging.textContent = candidate.packaging;
+          packaging.style.cssText =
+            "color: #999; font-size: 0.65rem; font-weight: 500;";
+          info.appendChild(packaging);
+        }
 
         card.appendChild(info);
         grid.appendChild(card);
@@ -582,6 +768,7 @@ export async function promptUserForMetadata(
   | {
       artistName: string;
       songName: string;
+      albumName?: string;
     }
   | null
   | "skip"
@@ -613,7 +800,7 @@ export async function promptUserForMetadata(
         color: #000;
       ">
         <h2 style="margin-top: 0; margin-bottom: 1.5rem; font-size: 1.1rem; font-weight: normal; letter-spacing: 0.5px;">
-          CONFIRM SONG DETAILS
+        confirm song details
         </h2>
 
         <div style="margin-bottom: 1.5rem;">
@@ -640,13 +827,45 @@ export async function promptUserForMetadata(
             letter-spacing: 0.5px;
             font-weight: normal;
           ">
-            Artist Name *
+            artist name *
           </label>
           <input
             id="vinyl-artist-input"
             type="text"
-            placeholder="e.g., The Beatles"
+            placeholder="e.g., Radiohead"
             value="${parsed.artistName || ""}"
+            style="
+              width: 100%;
+              padding: 0.5rem 0;
+              background: transparent;
+              border: none;
+              border-bottom: 1px solid #000;
+              color: #000;
+              font-size: 0.9rem;
+              box-sizing: border-box;
+              font-family: inherit;
+              outline: none;
+            "
+          >
+        </div>
+
+        <div style="margin-bottom: 1rem;">
+          <label style="
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #000;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: normal;
+          ">
+            song name *
+          </label>
+          <input
+            id="vinyl-song-input"
+            type="text"
+            placeholder="e.g., Weird Fishes/Arpeggi"
+            value="${parsed.songName}"
             style="
               width: 100%;
               padding: 0.5rem 0;
@@ -672,13 +891,13 @@ export async function promptUserForMetadata(
             letter-spacing: 0.5px;
             font-weight: normal;
           ">
-            Song Name *
+            album / release group
           </label>
           <input
-            id="vinyl-song-input"
+            id="vinyl-album-input"
             type="text"
-            placeholder="e.g., Let It Be"
-            value="${parsed.songName}"
+            placeholder="e.g., In Rainbows (optional)"
+            value=""
             style="
               width: 100%;
               padding: 0.5rem 0;
@@ -750,6 +969,9 @@ export async function promptUserForMetadata(
     const songInput = modal.querySelector(
       "#vinyl-song-input",
     ) as HTMLInputElement;
+    const albumInput = modal.querySelector(
+      "#vinyl-album-input",
+    ) as HTMLInputElement;
     const confirmBtn = modal.querySelector(
       "#vinyl-confirm-btn",
     ) as HTMLAnchorElement;
@@ -802,6 +1024,7 @@ export async function promptUserForMetadata(
       e.preventDefault();
       const artist = artistInput.value.trim();
       const song = songInput.value.trim();
+      const album = albumInput.value.trim();
 
       if (!artist || !song) {
         alert("Please fill in both artist and song name");
@@ -809,7 +1032,11 @@ export async function promptUserForMetadata(
       }
 
       modal.remove();
-      resolve({ artistName: artist, songName: song });
+      resolve({
+        artistName: artist,
+        songName: song,
+        albumName: album || undefined,
+      });
     });
 
     // Allow Enter to confirm
@@ -820,6 +1047,7 @@ export async function promptUserForMetadata(
 
     artistInput.addEventListener("keypress", handleKeyPress);
     songInput.addEventListener("keypress", handleKeyPress);
+    albumInput.addEventListener("keypress", handleKeyPress);
 
     // Focus artist name if empty
     if (!parsed.artistName) {
@@ -844,6 +1072,7 @@ export async function extractAndEnrichMetadata(
   // Step 2: Prompt if artist is missing
   let artistName = parsed.artistName;
   let songName = parsed.songName;
+  let albumName: string | undefined;
 
   if (!artistName) {
     const confirmed = await promptUserForMetadata(
@@ -856,6 +1085,7 @@ export async function extractAndEnrichMetadata(
     }
     artistName = confirmed.artistName;
     songName = confirmed.songName;
+    albumName = confirmed.albumName;
   }
 
   // Step 3: Check if song has featured artists
@@ -878,8 +1108,8 @@ export async function extractAndEnrichMetadata(
 
     // Run both searches in parallel
     const [candidatesOriginalSong, candidatesCleanSong] = await Promise.all([
-      searchMusicBrainz(songName, artistName),
-      searchMusicBrainz(cleanSongName, artistName),
+      searchMusicBrainz(songName, artistName, albumName),
+      searchMusicBrainz(cleanSongName, artistName, albumName),
     ]);
 
     console.log(
@@ -897,15 +1127,15 @@ export async function extractAndEnrichMetadata(
       }
     });
 
-    // Return top 5 unique by title (deduplication already done in searchMusicBrainz)
-    candidates = Array.from(mergedMap.values()).slice(0, 5);
+    // Return top 6 unique by title (deduplication already done in searchMusicBrainz)
+    candidates = Array.from(mergedMap.values()).slice(0, 6);
     console.log(
-      `✓ Merged candidates: ${candidates.length} total (showing top 5 unique albums)`,
+      `✓ Merged candidates: ${candidates.length} total (showing up to 6 unique albums with vinyl priority)`,
     );
   } else {
     // No featured artist, search normally
     console.log(`No featured artist detected, searching normally`);
-    candidates = await searchMusicBrainz(songName, artistName);
+    candidates = await searchMusicBrainz(songName, artistName, albumName);
     console.log(`Search results: ${candidates.length} candidates`);
   }
 
@@ -935,13 +1165,14 @@ export async function extractAndEnrichMetadata(
     } else if (retryPrompt) {
       // User adjusted names, retry search
       console.log(
-        `Retrying search with: "${retryPrompt.artistName}" - "${retryPrompt.songName}"`,
+        `Retrying search with: "${retryPrompt.artistName}" - "${retryPrompt.songName}"${retryPrompt.albumName ? ` - Album: "${retryPrompt.albumName}"` : ""}`,
       );
       artistName = retryPrompt.artistName;
       songName = retryPrompt.songName;
+      albumName = retryPrompt.albumName;
 
       // Retry search with adjusted names
-      candidates = await searchMusicBrainz(songName, artistName);
+      candidates = await searchMusicBrainz(songName, artistName, albumName);
       console.log(`Retry search results: ${candidates.length} candidates`);
 
       // If still no results after retry, use YouTube thumbnail
@@ -1007,13 +1238,14 @@ export async function extractAndEnrichMetadata(
       } else if (retryPrompt) {
         // User adjusted names, retry search
         console.log(
-          `Retrying search after "not found" with: "${retryPrompt.artistName}" - "${retryPrompt.songName}"`,
+          `Retrying search after "not found" with: "${retryPrompt.artistName}" - "${retryPrompt.songName}"${retryPrompt.albumName ? ` - Album: "${retryPrompt.albumName}"` : ""}`,
         );
         artistName = retryPrompt.artistName;
         songName = retryPrompt.songName;
+        albumName = retryPrompt.albumName;
 
         // Retry search with adjusted names
-        candidates = await searchMusicBrainz(songName, artistName);
+        candidates = await searchMusicBrainz(songName, artistName, albumName);
         console.log(`Retry search results: ${candidates.length} candidates`);
 
         // If results found, show picker again
@@ -1025,10 +1257,19 @@ export async function extractAndEnrichMetadata(
           );
 
           if (retryPickerResult && retryPickerResult !== "not_found") {
-            imageUrl = retryPickerResult;
             selectedCandidate =
               candidates.find((c) => c.coverArtUrl === retryPickerResult) ||
               null;
+
+            // Cache the selected cover art for faster future loads
+            if (selectedCandidate && selectedCandidate.coverArtUrl) {
+              imageUrl = await getOrCacheAlbumCover(
+                selectedCandidate.releaseId,
+                selectedCandidate.coverArtUrl,
+              );
+            } else {
+              imageUrl = retryPickerResult;
+            }
           } else {
             // Use YouTube thumbnail if cancelled or not found again
             imageUrl = youtubeThumbUrl;
@@ -1042,11 +1283,20 @@ export async function extractAndEnrichMetadata(
         return null;
       }
     } else if (pickerResult) {
-      imageUrl = pickerResult;
       // Find the candidate that matches this URL
       selectedCandidate =
         candidates.find((c) => c.coverArtUrl === pickerResult) || null;
       console.log(`Selected candidate:`, selectedCandidate);
+
+      // Cache the selected cover art for faster future loads
+      if (selectedCandidate && selectedCandidate.coverArtUrl) {
+        imageUrl = await getOrCacheAlbumCover(
+          selectedCandidate.releaseId,
+          selectedCandidate.coverArtUrl,
+        );
+      } else {
+        imageUrl = pickerResult;
+      }
     } else {
       console.log(`User cancelled or no image selected`);
     }
@@ -1069,7 +1319,7 @@ export async function extractAndEnrichMetadata(
       : undefined;
   }
 
-  return {
+  const result = {
     youtubeId,
     artistName,
     songName,
@@ -1078,7 +1328,12 @@ export async function extractAndEnrichMetadata(
     youtubeThumbUrl,
     genre,
     releaseYear,
+    releaseId: selectedCandidate?.releaseId,
   };
+
+  console.log(`[extractAndEnrichMetadata] Returning metadata:`, result);
+
+  return result;
 }
 
 /**

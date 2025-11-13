@@ -386,11 +386,13 @@ export function createYouTubePlayer(): YouTubeBridge {
   };
 
   async function load(videoId: string) {
+    console.log(`[YouTube] Loading video: ${videoId}`);
     await ensureApi();
 
     await detectAndUpdateAspectRatio(videoId);
 
-    if (player) {
+    if (player && typeof player.cueVideoById === "function") {
+      console.log(`[YouTube] Player exists and ready, cueing video`);
       player.cueVideoById(videoId);
       disablePlayerInteraction();
       return new Promise<void>((resolve) => {
@@ -398,6 +400,7 @@ export function createYouTubePlayer(): YouTubeBridge {
       });
     }
 
+    console.log(`[YouTube] Creating new player instance`);
     await new Promise<void>((resolve) => {
       const YT = (window as any).YT;
       player = new YT.Player(playerHostId, {
@@ -418,6 +421,7 @@ export function createYouTubePlayer(): YouTubeBridge {
         },
         events: {
           onReady: () => {
+            console.log(`[YouTube] Player onReady event`);
             player!.setPlaybackRate(1);
             disablePlayerInteraction();
             updateVideoMetadata();
@@ -425,7 +429,9 @@ export function createYouTubePlayer(): YouTubeBridge {
           },
           onStateChange: (event: any) => {
             const state = event.data;
+            console.log(`[YouTube] Player state changed: ${state}`);
             if (state === 5) {
+              console.log(`[YouTube] Video cued (state 5)`);
               updateVideoMetadata();
               onVideoLoadedCallback?.();
               onVideoLoadedCallback = null;

@@ -11,6 +11,7 @@ export interface VisitorEntry {
   imageUrl: string; // Link to cover art (iTunes, Spotify, or YouTube thumbnail)
   note: string;
   addedAt: string;
+  releaseId?: string; // MusicBrainz release ID for cached covers
 }
 
 const STORAGE_KEY = "visitorLibrary";
@@ -81,6 +82,7 @@ export function saveVisitorLibrary(entries: VisitorEntry[]): boolean {
  * @param songName Song name
  * @param imageUrl Cover art image URL
  * @param note Optional note about the entry
+ * @param releaseId Optional MusicBrainz release ID for cached covers
  * @returns The created entry if successful, null otherwise
  */
 export function addVisitorLink(
@@ -89,6 +91,7 @@ export function addVisitorLink(
   songName: string,
   imageUrl: string,
   note: string = "",
+  releaseId?: string,
 ): VisitorEntry | null {
   const youtubeId = extractYouTubeId(youtubeLink);
 
@@ -105,6 +108,7 @@ export function addVisitorLink(
     imageUrl,
     note,
     addedAt: new Date().toISOString(),
+    releaseId,
   };
 
   const library = loadVisitorLibrary();
@@ -207,6 +211,7 @@ export async function addToOwnerLibrary(
   adminToken?: string,
   genre?: string,
   releaseYear?: string,
+  releaseId?: string,
 ): Promise<VisitorEntry | null> {
   try {
     const headers: Record<string, string> = {
@@ -232,6 +237,9 @@ export async function addToOwnerLibrary(
     }
     if (releaseYear) {
       requestBody.releaseYear = releaseYear;
+    }
+    if (releaseId) {
+      requestBody.releaseId = releaseId;
     }
 
     const response = await fetch(`${apiUrl}/api/library`, {

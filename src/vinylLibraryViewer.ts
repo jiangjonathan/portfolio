@@ -11,6 +11,8 @@ import {
   type VisitorEntry,
 } from "./visitorLibrary";
 
+import { initializeCache, recreateBlobUrlIfNeeded } from "./albumCoverCache";
+
 interface ViewerConfig {
   containerId: string;
   compact?: boolean;
@@ -30,6 +32,13 @@ export class VinylLibraryViewer {
   private ownerLibrary: VisitorEntry[] = [];
   private showVisitorOnly: boolean = false;
 
+  // Carousel/infinite scroll properties
+  private scrollContainer: HTMLElement | null = null;
+  private carouselItems: ExtendedEntry[] = []; // Duplicated list for seamless looping
+  private currentScrollIndex: number = 0;
+  private itemHeight: number = 292; // 280px card + 12px gap
+  private isResettingScroll: boolean = false;
+
   constructor(config: ViewerConfig) {
     this.config = config;
   }
@@ -42,6 +51,14 @@ export class VinylLibraryViewer {
     if (!container) {
       console.error(`Container #${this.config.containerId} not found`);
       return;
+    }
+
+    // Initialize IndexedDB cache for blob URL recreation
+    try {
+      await initializeCache();
+      console.log("✓ Album cover cache initialized");
+    } catch (error) {
+      console.error("Failed to initialize cache:", error);
     }
 
     // Load visitor library from localStorage
@@ -68,6 +85,9 @@ export class VinylLibraryViewer {
 
     console.log("Visitor library:", this.visitorLibrary.length, "entries");
 
+    // Recreate blob URLs for cached covers in both libraries
+    await this.recreateBlobUrls();
+
     // Merge and mark libraries
     this.mergeLibraries();
     console.log("📦 Merged library:", this.library.length, "total entries");
@@ -77,6 +97,59 @@ export class VinylLibraryViewer {
 
     // Watch for changes in localStorage
     this.watchStorageChanges();
+  }
+
+  /**
+   * Recreate blob URLs for all entries that have cached covers
+   */
+  private async recreateBlobUrls(): Promise<void> {
+    console.log("[recreateBlobUrls] Processing owner library...");
+
+    await Promise.all(
+      this.ownerLibrary.map(async (entry) => {
+        console.log(
+          `[Owner Entry] id: ${entry.id}, releaseId: ${entry.releaseId}, imageUrl: ${entry.imageUrl}`,
+        );
+
+        if (entry.releaseId) {
+          const newUrl = await recreateBlobUrlIfNeeded(
+            entry.imageUrl,
+            entry.releaseId,
+          );
+          console.log(
+            `[Owner Entry] Updated imageUrl from ${entry.imageUrl} to ${newUrl}`,
+          );
+          entry.imageUrl = newUrl;
+        } else {
+          console.log(`[Owner Entry] No releaseId, skipping`);
+        }
+      }),
+    );
+
+    console.log("[recreateBlobUrls] Processing visitor library...");
+
+    await Promise.all(
+      this.visitorLibrary.map(async (entry) => {
+        console.log(
+          `[Visitor Entry] id: ${entry.id}, releaseId: ${entry.releaseId}, imageUrl: ${entry.imageUrl}`,
+        );
+
+        if (entry.releaseId) {
+          const newUrl = await recreateBlobUrlIfNeeded(
+            entry.imageUrl,
+            entry.releaseId,
+          );
+          console.log(
+            `[Visitor Entry] Updated imageUrl from ${entry.imageUrl} to ${newUrl}`,
+          );
+          entry.imageUrl = newUrl;
+        } else {
+          console.log(`[Visitor Entry] No releaseId, skipping`);
+        }
+      }),
+    );
+
+    console.log("[recreateBlobUrls] Done!");
   }
 
   /**
@@ -102,6 +175,16 @@ export class VinylLibraryViewer {
     if (this.showVisitorOnly) {
       this.library = visitorEntries;
     }
+
+    // Update carousel items when library changes
+    if (this.library.length > 0) {
+      this.carouselItems = [...this.library, ...this.library, ...this.library];
+    }
+
+    // Reset scroll position when library changes
+    if (this.scrollContainer) {
+      this.scrollContainer.scrollTop = 0;
+    }
   }
 
   /**
@@ -126,6 +209,14 @@ export class VinylLibraryViewer {
             display: flex;
             flex-direction: column;
             gap: 0.75rem;
+            max-height: 70vh;
+            overflow-y: scroll;
+            overflow-x: hidden;
+            scrollbar-width: none;
+          }
+
+          .vinyl-viewer-widget .library-grid::-webkit-scrollbar {
+            display: none;
           }
 
           .vinyl-viewer-widget .album-card {
@@ -230,6 +321,11 @@ export class VinylLibraryViewer {
             justify-content: flex-end;
             margin-bottom: 1rem;
             gap: 0.5rem;
+            position: sticky;
+            top: 0;
+            background: #f7f7f7;
+            z-index: 100;
+            padding: 0.5rem 0;
           }
 
           .vinyl-viewer-widget .filter-btn {
@@ -273,7 +369,7 @@ export class VinylLibraryViewer {
   }
 
   /**
-   * Render the album grid
+   * Render the album grid with smooth circular scrolling
    */
   private renderGrid(): void {
     const gridContainer = document.getElementById("vinyl-viewer-grid");
@@ -285,17 +381,81 @@ export class VinylLibraryViewer {
       return;
     }
 
-    gridContainer.innerHTML = this.library
-      .map((entry) => {
-        const isOwner = entry.isOwnerEntry || false;
-        const canDelete = !isOwner || this.config.isAdmin;
+    this.scrollContainer = gridContainer;
 
-        // Handle missing fields with fallbacks
-        const artistName = entry.artistName || "Unknown Artist";
-        const songName = entry.songName || entry.note || "Unknown Song";
+    // Create carousel items: 3x copies for seamless wrapping (minimal memory)
+    this.carouselItems = [...this.library, ...this.library, ...this.library];
 
-        return `
-      <div class="album-card" data-entry-id="${entry.id}">
+    // Initial render
+    this.updateVisibleItems();
+    this.attachCardListeners();
+
+    // Listen for scroll to handle wrapping invisibly
+    gridContainer.addEventListener(
+      "scroll",
+      () => this.handleInfiniteScroll(),
+      { passive: true },
+    );
+
+    // Start at middle of carousel so wrapping works symmetrically
+    const oneSetHeight = this.library.length * this.itemHeight;
+    setTimeout(() => {
+      if (gridContainer) gridContainer.scrollTop = oneSetHeight;
+    }, 0);
+  }
+
+  /**
+   * Handle infinite scroll by detecting when we've scrolled too far
+   * and resetting to the middle section invisibly
+   */
+  private handleInfiniteScroll(): void {
+    if (
+      !this.scrollContainer ||
+      this.library.length === 0 ||
+      this.isResettingScroll
+    )
+      return;
+
+    const oneSetHeight = this.library.length * this.itemHeight;
+    const scrollTop = this.scrollContainer.scrollTop;
+
+    // If scrolled past 2/3 of the way, jump back to 1/3
+    if (scrollTop > oneSetHeight * 1.5) {
+      this.isResettingScroll = true;
+      // Jump to same position in the middle copy
+      this.scrollContainer.scrollTop = scrollTop - oneSetHeight;
+      requestAnimationFrame(() => {
+        this.isResettingScroll = false;
+      });
+    }
+    // If scrolled before 1/3 of the way, jump to near the end
+    else if (scrollTop < oneSetHeight * 0.5) {
+      this.isResettingScroll = true;
+      // Jump to same position in the last copy
+      this.scrollContainer.scrollTop = scrollTop + oneSetHeight;
+      requestAnimationFrame(() => {
+        this.isResettingScroll = false;
+      });
+    }
+  }
+
+  /**
+   * Update visible items rendering
+   */
+  private updateVisibleItems(): void {
+    if (!this.scrollContainer || this.library.length === 0) return;
+
+    let itemsHtml = "";
+
+    // Render all carousel items (duplicates create seamless loop)
+    this.carouselItems.forEach((entry, index) => {
+      const isOwner = entry.isOwnerEntry || false;
+      const canDelete = !isOwner || this.config.isAdmin;
+      const artistName = entry.artistName || "Unknown Artist";
+      const songName = entry.songName || entry.note || "Unknown Song";
+
+      itemsHtml += `
+      <div class="album-card" data-entry-id="${entry.id}" data-index="${index % this.library.length}">
         <img
           src="${this.getImageWithFallback(entry.imageUrl)}"
           alt="${this.escapeHtml(songName)}"
@@ -310,10 +470,9 @@ export class VinylLibraryViewer {
         </div>
       </div>
     `;
-      })
-      .join("");
+    });
 
-    this.attachCardListeners();
+    this.scrollContainer.innerHTML = itemsHtml;
   }
 
   /**
@@ -376,7 +535,8 @@ export class VinylLibraryViewer {
           : "Show Mine Only";
         filterBtn.classList.toggle("active", this.showVisitorOnly);
         this.mergeLibraries();
-        this.renderGrid();
+        this.updateVisibleItems();
+        this.attachCardListeners();
       });
     }
   }
@@ -418,7 +578,8 @@ export class VinylLibraryViewer {
           // Reload owner library
           this.ownerLibrary = await fetchOwnerLibrary(this.config.apiUrl);
           this.mergeLibraries();
-          this.renderGrid();
+          this.updateVisibleItems();
+          this.attachCardListeners();
 
           // Dispatch event so other widgets update
           window.dispatchEvent(new CustomEvent("vinyl-library-updated"));
@@ -437,7 +598,8 @@ export class VinylLibraryViewer {
         // Update visitor library and re-merge
         this.visitorLibrary = loadVisitorLibrary();
         this.mergeLibraries();
-        this.renderGrid();
+        this.updateVisibleItems();
+        this.attachCardListeners();
 
         // Dispatch event so other widgets update
         window.dispatchEvent(new CustomEvent("vinyl-library-updated"));
@@ -455,10 +617,8 @@ export class VinylLibraryViewer {
       if (event.key === "visitorLibrary") {
         this.visitorLibrary = loadVisitorLibrary();
         this.mergeLibraries();
-        const gridContainer = document.getElementById("vinyl-viewer-grid");
-        if (gridContainer) {
-          this.renderGrid();
-        }
+        this.updateVisibleItems();
+        this.attachCardListeners();
       }
     });
 
@@ -475,11 +635,12 @@ export class VinylLibraryViewer {
         }
       }
 
+      // Recreate blob URLs after reloading libraries
+      await this.recreateBlobUrls();
+
       this.mergeLibraries();
-      const gridContainer = document.getElementById("vinyl-viewer-grid");
-      if (gridContainer) {
-        this.renderGrid();
-      }
+      this.updateVisibleItems();
+      this.attachCardListeners();
     });
   }
 
@@ -498,11 +659,12 @@ export class VinylLibraryViewer {
       }
     }
 
+    // Recreate blob URLs after reloading libraries
+    await this.recreateBlobUrls();
+
     this.mergeLibraries();
-    const gridContainer = document.getElementById("vinyl-viewer-grid");
-    if (gridContainer) {
-      this.renderGrid();
-    }
+    this.updateVisibleItems();
+    this.attachCardListeners();
   }
 
   /**

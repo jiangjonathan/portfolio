@@ -8,10 +8,11 @@ export interface LibraryEntry {
   youtubeId: string;
   artistName: string;
   songName: string;
-  imageUrl: string; // Link to cover art CoverAr 
+  imageUrl: string; // Link to cover art CoverArtArchive
   note: string;
   genre?: string; // Music genre from MusicBrainz
   releaseYear?: string; // Release year from MusicBrainz (YYYY format)
+  releaseId?: string; // MusicBrainz release ID for caching
   addedAt: string;
 }
 
@@ -152,6 +153,7 @@ async function handlePostLibrary(
     note,
     genre,
     releaseYear,
+    releaseId,
   } = body;
 
   if (!rawYoutubeId || typeof rawYoutubeId !== "string") {
@@ -231,6 +233,7 @@ async function handlePostLibrary(
     note: note || "",
     genre: genre || undefined,
     releaseYear: releaseYear || undefined,
+    releaseId: releaseId || undefined,
     addedAt: new Date().toISOString(),
   };
 

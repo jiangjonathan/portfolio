@@ -32,15 +32,12 @@ import {
 } from "./labels";
 import { loadTurntableModel, TurntableController } from "./turntable";
 import { CameraRig } from "./cameraRig";
-import {
-  createFpsDisplay,
-  // createTonearmRotationDisplay,
-  // createCameraInfoDisplay,
-} from "./ui";
+import {} from // createTonearmRotationDisplay,
+// createCameraInfoDisplay,
+"./ui";
 import { initializeYouTubePlayer } from "./youtube";
 import { createMetadataController } from "./metadata";
 import { clampValue } from "./utils";
-import { createYouTubeURLInput } from "./youtubeInputUI";
 import {
   createVinylAnimationState,
   RETURN_CLEARANCE,
@@ -49,6 +46,8 @@ import {
 import { EnhancedVinylLibraryWidget } from "./vinylLibraryWidgetEnhanced";
 import { VinylLibraryViewer } from "./vinylLibraryViewer";
 import { extractDominantColor } from "./colorUtils";
+import { initializeCache } from "./albumCoverCache";
+import type { VideoMetadata } from "./youtube";
 
 declare global {
   interface Window {
@@ -63,6 +62,12 @@ if (!root) {
 }
 
 root.innerHTML = "";
+
+// Initialize IndexedDB cache for album covers
+initializeCache().catch((error) => {
+  console.error("Failed to initialize album cover cache:", error);
+  // Continue even if cache initialization fails
+});
 
 // Create container for vinyl library widget (form)
 const vinylLibraryContainer = document.createElement("div");
@@ -165,10 +170,14 @@ root.appendChild(vinylViewerContainer);
 // Turntable position cycling (camera view)
 type TurntablePosition = "default" | "bottom-center" | "bottom-left";
 let turntablePositionState: TurntablePosition = "default";
+
+// Camera target positions (pan/translation only, no angle change)
+// Will be initialized after heroGroup is loaded based on bounding box center
+let defaultCameraTarget = new Vector3(0, 0.15, 0);
 const CAMERA_TARGETS: Record<TurntablePosition, Vector3> = {
-  default: new Vector3(0, 0.15, 0),
-  "bottom-center": new Vector3(0, 20 + 0.15, 0),
-  "bottom-left": new Vector3(30, 20 + 0.15, 0),
+  default: defaultCameraTarget,
+  "bottom-center": new Vector3(), // Will be set after heroGroup loads
+  "bottom-left": new Vector3(), // Will be set after heroGroup loads
 };
 
 // Create position cycling button
@@ -185,7 +194,8 @@ positionButton.addEventListener("click", () => {
   const nextIndex = (currentIndex + 1) % positions.length;
   turntablePositionState = positions[nextIndex];
 
-  cameraRig.setLookTarget(CAMERA_TARGETS[turntablePositionState]);
+  // Pan camera to new position with animation (no angle change)
+  cameraRig.setLookTarget(CAMERA_TARGETS[turntablePositionState], true);
 
   const labels: Record<TurntablePosition, string> = {
     default: "Position: Default",
@@ -255,11 +265,6 @@ const MAX_ZOOM = 5;
 let zoomFactor = 1.8;
 cameraRig.setZoomFactor(zoomFactor);
 
-const fpsDisplay = createFpsDisplay();
-root.appendChild(fpsDisplay.container);
-let fpsSmoothed = 60;
-let fpsUpdateTimer = 0;
-
 // const cameraInfoDisplay = createCameraInfoDisplay();
 // root.appendChild(cameraInfoDisplay.container);
 
@@ -282,6 +287,14 @@ const cameraOrbitState = {
   lastY: 0,
 };
 const CAMERA_ORBIT_SENSITIVITY = 0.0045;
+
+const cameraPanState = {
+  isPanning: false,
+  pointerId: -1,
+  lastX: 0,
+  lastY: 0,
+};
+
 const raycaster = new Raycaster();
 const pointerNDC = new Vector2();
 const dragPlane = new Plane(new Vector3(0, 0, 1), 0);
@@ -351,10 +364,15 @@ window.addEventListener("load-vinyl-song", async (event: any) => {
     vinylReturnBaseTwist = randomRotation;
   }
 
-  // Load the video with forced metadata update
+  // Load the video with corrected metadata from library
   await youtubePlayer.loadVideo(videoId, (videoMetadata) => {
-    // Force update to override any locked metadata
-    applyMetadataToLabels(videoMetadata, true);
+    // Use corrected artist and song names from library instead of YouTube metadata
+    const correctedMetadata: VideoMetadata = {
+      artist: artistName,
+      song: songName,
+      album: videoMetadata?.album || "",
+    };
+    applyMetadataToLabels(correctedMetadata, true);
   });
 
   // Extract dominant color from thumbnail and update labels
@@ -433,78 +451,6 @@ yt.onPlaybackProgress(() => {
   }
 });
 
-// YouTube URL input UI (top-right)
-const youtubeURLInput = createYouTubeURLInput({
-  onVideoChange: async (metadata) => {
-    // Reset the fade-out flag for the new video
-    hasStartedFadeOut = false;
-
-    // Reset turntable state when new video loads
-    if (turntableController) {
-      turntableController.resetState();
-    }
-
-    // Randomize vinyl rotation on video load
-    if (vinylModel) {
-      const randomRotation = Math.random() * Math.PI * 2; // Random rotation 0 to 2π
-      vinylReturnBaseTwist = randomRotation;
-      console.log(
-        "Randomized vinyl rotation:",
-        randomRotation,
-        "radians",
-        (randomRotation * 180) / Math.PI,
-        "degrees",
-      );
-    }
-
-    // Load the new video with forced metadata update
-    await youtubePlayer.loadVideo(metadata.videoId, (videoMetadata) => {
-      // Force update to override any locked metadata
-      applyMetadataToLabels(videoMetadata, true);
-    });
-
-    // Update turntable controller with new duration
-    const duration = youtubePlayer.getDuration();
-    if (duration > 1 && turntableController) {
-      turntableController.setMediaDuration(duration);
-    }
-
-    // Update the timeline display with new duration
-    videoControls.setProgress(0, duration);
-
-    // Update label background color with dominant color from thumbnail
-    labelVisuals.background = metadata.dominantColor;
-    rebuildLabelTextures();
-
-    // Apply updated textures to vinyl if it's loaded
-    if (vinylModel) {
-      applyLabelTextures(vinylModel, labelTextures, labelOptions, labelVisuals);
-    }
-
-    // Show the video controls if tonearm is in play area OR if player is not collapsed
-    // When collapsed, controls should still be visible (they appear under the collapsed viewport)
-    const isPlayerCollapsed = yt.isPlayerCollapsed();
-
-    if (turntableController?.isTonearmInPlayArea() || !isPlayerCollapsed) {
-      yt.setControlsVisible(true);
-    }
-
-    // Auto-play briefly to show first frame instead of thumbnail (muted)
-    yt.setVolume(0); // Mute before playing
-    yt.play();
-    // Wait a short moment then pause and seek to beginning
-    setTimeout(() => {
-      yt.pause();
-      yt.seek(0);
-      yt.setVolume(100); // Restore volume after preview
-    }, 300);
-  },
-  onError: (error) => {
-    console.error("Failed to load YouTube video:", error);
-  },
-});
-root.appendChild(youtubeURLInput);
-
 let vinylDragPointerId: number | null = null;
 let isReturningVinyl = false;
 let hasClearedNub = false;
@@ -569,6 +515,10 @@ document.addEventListener("keyup", (event) => {
 });
 
 canvas.addEventListener("pointerdown", (event) => {
+  if (event.button === 1) {
+    startCameraPan(event);
+    return;
+  }
   if (event.button === 2) {
     startCameraOrbit(event);
     return;
@@ -605,6 +555,9 @@ canvas.addEventListener("pointerdown", (event) => {
 });
 
 canvas.addEventListener("pointermove", (event) => {
+  if (handleCameraPanMove(event)) {
+    return;
+  }
   if (handleCameraOrbitMove(event)) {
     return;
   }
@@ -667,6 +620,9 @@ canvas.addEventListener("pointerleave", endTonearmDrag);
 canvas.addEventListener("pointerup", endCameraOrbit);
 canvas.addEventListener("pointercancel", endCameraOrbit);
 canvas.addEventListener("pointerleave", endCameraOrbit);
+canvas.addEventListener("pointerup", endCameraPan);
+canvas.addEventListener("pointercancel", endCameraPan);
+canvas.addEventListener("pointerleave", endCameraPan);
 
 Promise.all([loadTurntableModel(), loadVinylModel(vinylNormalTexture)])
   .then(([turntable, vinyl]) => {
@@ -713,11 +669,50 @@ Promise.all([loadTurntableModel(), loadVinylModel(vinylNormalTexture)])
     heroGroup.add(vinyl);
 
     cameraRig.frameObject(heroGroup, 2.6);
+
+    // Store the actual default camera target (bounding box center)
+    defaultCameraTarget.copy(cameraRig.getTarget());
+
+    // Initialize camera positions (will be set by updateCameraTargetsForWindowSize)
+    updateCameraTargetsForWindowSize();
+
     vinylUserRotation = 0;
   })
   .catch((error) => {
     console.error("Failed to load hero models", error);
   });
+
+const updateCameraTargetsForWindowSize = () => {
+  const canvas = document.querySelector("canvas");
+  const canvasWidth = canvas ? canvas.clientWidth : window.innerWidth;
+
+  const MIN_PAN_WIDTH = 900;
+  const MAX_PAN_WIDTH = 1440; // lower so fullscreen doesn't always max out
+  const MAX_LEFT_PAN = 30; // slightly smaller max
+
+  const t = Math.max(
+    0,
+    Math.min(
+      1,
+      (canvasWidth - MIN_PAN_WIDTH) / (MAX_PAN_WIDTH - MIN_PAN_WIDTH),
+    ),
+  );
+
+  const verticalPan = 20;
+  const leftwardPan = MAX_LEFT_PAN * t;
+
+  CAMERA_TARGETS["bottom-center"].set(
+    defaultCameraTarget.x,
+    defaultCameraTarget.y + verticalPan,
+    defaultCameraTarget.z,
+  );
+
+  CAMERA_TARGETS["bottom-left"].set(
+    defaultCameraTarget.x + leftwardPan,
+    defaultCameraTarget.y + verticalPan,
+    defaultCameraTarget.z,
+  );
+};
 
 const setSize = () => {
   const width = root.clientWidth || window.innerWidth;
@@ -727,6 +722,9 @@ const setSize = () => {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
   cameraRig.handleResize(width, height);
+
+  // Update camera positions for new window size
+  updateCameraTargetsForWindowSize();
 };
 
 window.addEventListener("resize", setSize);
@@ -737,6 +735,9 @@ const animate = (time: number) => {
   const delta = Math.min((time - lastTime) / 1000, 0.1);
   lastTime = time;
   tonearmPlayTime += delta;
+
+  // Update camera animation
+  cameraRig.updateAnimation(delta);
   // const isTonearmPlaying = turntableController?.isPlaying() ?? false;
 
   if (vinylModel) {
@@ -811,15 +812,6 @@ const animate = (time: number) => {
   const angularStep = turntableController?.getAngularStep() ?? 0;
   if (ON_TURNTABLE) {
     vinylSpinAngle += angularStep;
-  }
-
-  // Update FPS counter (smoothed)
-  const currentFps = delta > 0 ? 1 / delta : 0;
-  fpsSmoothed += (currentFps - fpsSmoothed) * 0.05;
-  fpsUpdateTimer += delta;
-  if (fpsUpdateTimer > 0.25) {
-    fpsDisplay.fps.textContent = `${Math.round(fpsSmoothed)}`;
-    fpsUpdateTimer = 0;
   }
 
   renderer.render(scene, camera);
@@ -978,6 +970,10 @@ function startCameraOrbit(event: PointerEvent) {
   cameraOrbitState.pointerId = event.pointerId;
   cameraOrbitState.lastX = event.clientX;
   cameraOrbitState.lastY = event.clientY;
+
+  // Save rotation state before user starts rotating
+  cameraRig.saveRotationState();
+
   canvas.setPointerCapture(event.pointerId);
 }
 
@@ -1008,6 +1004,56 @@ function endCameraOrbit(event: PointerEvent) {
   }
   cameraOrbitState.isOrbiting = false;
   cameraOrbitState.pointerId = -1;
+
+  // Restore to saved rotation state with animation
+  cameraRig.restoreRotationState();
+
+  try {
+    canvas.releasePointerCapture(event.pointerId);
+  } catch {
+    // ignore fallback
+  }
+}
+
+function startCameraPan(event: PointerEvent) {
+  cameraPanState.isPanning = true;
+  cameraPanState.pointerId = event.pointerId;
+  cameraPanState.lastX = event.clientX;
+  cameraPanState.lastY = event.clientY;
+  canvas.setPointerCapture(event.pointerId);
+}
+
+function handleCameraPanMove(event: PointerEvent) {
+  if (
+    !cameraPanState.isPanning ||
+    event.pointerId !== cameraPanState.pointerId
+  ) {
+    return false;
+  }
+  const deltaX = event.clientX - cameraPanState.lastX;
+  const deltaY = event.clientY - cameraPanState.lastY;
+  cameraPanState.lastX = event.clientX;
+  cameraPanState.lastY = event.clientY;
+
+  // Pan sensitivity scaled by zoom for consistent feel
+  const PAN_SENSITIVITY = 0.08;
+  const zoomScale = 1 / cameraRig.getZoomFactor();
+  cameraRig.pan(
+    -deltaX * PAN_SENSITIVITY * zoomScale,
+    deltaY * PAN_SENSITIVITY * zoomScale,
+  );
+  return true;
+}
+
+function endCameraPan(event: PointerEvent) {
+  if (
+    !cameraPanState.isPanning ||
+    event.pointerId !== cameraPanState.pointerId
+  ) {
+    return;
+  }
+  cameraPanState.isPanning = false;
+  cameraPanState.pointerId = -1;
   try {
     canvas.releasePointerCapture(event.pointerId);
   } catch {

@@ -17,6 +17,12 @@ import {
   fetchYouTubeMetadata,
 } from "./youtubeMetadataExtractor";
 
+import {
+  cleanupUnusedCovers,
+  recreateBlobUrlIfNeeded,
+  initializeCache,
+} from "./albumCoverCache";
+
 interface WidgetConfig {
   apiUrl: string;
   containerId: string;
@@ -44,6 +50,13 @@ export class EnhancedVinylLibraryWidget {
       return;
     }
 
+    // Initialize IndexedDB cache
+    try {
+      await initializeCache();
+    } catch (error) {
+      console.error("Failed to initialize cache:", error);
+    }
+
     // Render widget immediately (don't block on API call)
     if (this.config.compact) {
       this.renderCompact(container);
@@ -63,6 +76,33 @@ export class EnhancedVinylLibraryWidget {
   private async fetchAndRenderOwnerLibrary(): Promise<void> {
     try {
       this.ownerLibrary = await fetchOwnerLibrary(this.config.apiUrl);
+
+      console.log(
+        `[fetchAndRenderOwnerLibrary] Loaded ${this.ownerLibrary.length} entries`,
+      );
+
+      // Recreate blob URLs for cached covers
+      await Promise.all(
+        this.ownerLibrary.map(async (entry) => {
+          console.log(
+            `[Entry] id: ${entry.id}, releaseId: ${entry.releaseId}, imageUrl: ${entry.imageUrl}`,
+          );
+
+          if (entry.releaseId) {
+            const newUrl = await recreateBlobUrlIfNeeded(
+              entry.imageUrl,
+              entry.releaseId,
+            );
+            console.log(
+              `[Entry] Updated imageUrl from ${entry.imageUrl} to ${newUrl}`,
+            );
+            entry.imageUrl = newUrl;
+          } else {
+            console.log(`[Entry] No releaseId, skipping blob URL recreation`);
+          }
+        }),
+      );
+
       this.renderOwnerLibrary();
     } catch (error) {
       console.error("Failed to load owner library:", error);
@@ -577,8 +617,16 @@ export class EnhancedVinylLibraryWidget {
       // Step 3: Add to backend (admin) or localStorage (visitor)
       let entry = null;
 
+      console.log(
+        `[handleAddSong] About to save entry with metadata:`,
+        enrichedMetadata,
+      );
+
       if (this.config.isOwner && this.config.adminToken) {
         // Admin mode: Add to backend KV
+        console.log(
+          `[handleAddSong] Saving to backend with releaseId: ${enrichedMetadata.releaseId}`,
+        );
         entry = await addToOwnerLibrary(
           this.config.apiUrl,
           youtubeId,
@@ -589,16 +637,23 @@ export class EnhancedVinylLibraryWidget {
           this.config.adminToken,
           enrichedMetadata.genre,
           enrichedMetadata.releaseYear,
+          enrichedMetadata.releaseId,
         );
+        console.log(`[handleAddSong] Backend returned entry:`, entry);
       } else {
         // Visitor mode: Add to localStorage
+        console.log(
+          `[handleAddSong] Saving to localStorage with releaseId: ${enrichedMetadata.releaseId}`,
+        );
         entry = addVisitorLink(
           youtubeLink,
           enrichedMetadata.artistName,
           enrichedMetadata.songName,
           enrichedMetadata.imageUrl,
           note,
+          enrichedMetadata.releaseId,
         );
+        console.log(`[handleAddSong] localStorage returned entry:`, entry);
       }
 
       if (entry) {
@@ -650,6 +705,12 @@ export class EnhancedVinylLibraryWidget {
       if (success) {
         // Remove from local cache
         this.ownerLibrary = this.ownerLibrary.filter((e) => e.id !== entryId);
+
+        // Clean up unused album covers from cache
+        const usedImageUrls = this.ownerLibrary.map((e) => e.imageUrl);
+        cleanupUnusedCovers(usedImageUrls).catch((error) => {
+          console.error("Failed to cleanup cache:", error);
+        });
 
         // Re-render the library
         this.renderOwnerLibrary();

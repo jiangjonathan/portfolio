@@ -21,6 +21,23 @@ export class CameraRig {
   private zoomFactor = 1.35;
   private fitDistance = 4;
 
+  // Animation state
+  private isAnimating = false;
+  private isAnimatingViewDirection = false;
+  private animationStartTarget = new Vector3();
+  private animationEndTarget = new Vector3();
+  private animationStartAzimuth = 0;
+  private animationEndAzimuth = 0;
+  private animationStartPolar = 0;
+  private animationEndPolar = 0;
+  private animationProgress = 0;
+  private animationDuration = 0.6; // seconds
+
+  // Rotation memory for animated return
+  private savedAzimuth: number | null = null;
+  private savedPolar: number | null = null;
+  private savedTarget = new Vector3();
+
   constructor() {
     this.camera = new PerspectiveCamera(45, 1, 0.01, 500);
     this.updateOrbitFromDirection();
@@ -39,10 +56,31 @@ export class CameraRig {
     this.updateCameraPosition();
   }
 
-  setViewDirection(direction: Vector3) {
-    this.frameDirection.copy(direction).normalize();
-    this.updateOrbitFromDirection();
-    this.updateCameraPosition();
+  setViewDirection(direction: Vector3, animate = false) {
+    if (animate) {
+      this.animateViewDirection(direction);
+    } else {
+      this.frameDirection.copy(direction).normalize();
+      this.updateOrbitFromDirection();
+      this.updateCameraPosition();
+    }
+  }
+
+  private animateViewDirection(direction: Vector3) {
+    // Store current and target orbit angles for animation
+    const targetDirection = new Vector3().copy(direction).normalize();
+    const targetY = Math.max(-1, Math.min(1, targetDirection.y));
+    const targetPolar = Math.asin(targetY);
+    const targetAzimuth = Math.atan2(targetDirection.x, targetDirection.z);
+
+    // Start animation
+    this.isAnimating = true;
+    this.isAnimatingViewDirection = true;
+    this.animationProgress = 0;
+    this.animationStartAzimuth = this.orbitAzimuth;
+    this.animationStartPolar = this.orbitPolar;
+    this.animationEndAzimuth = targetAzimuth;
+    this.animationEndPolar = targetPolar;
   }
 
   setZoomFactor(factor: number) {
@@ -73,13 +111,140 @@ export class CameraRig {
     this.updateCameraPosition();
   }
 
+  pan(deltaX: number, deltaY: number) {
+    // Calculate pan vectors based on camera orientation
+    const right = new Vector3();
+    const up = new Vector3(0, 1, 0);
+
+    // Get the camera's right vector (perpendicular to look direction and up)
+    right
+      .crossVectors(this.camera.getWorldDirection(new Vector3()), up)
+      .normalize();
+
+    // Recalculate up to be perpendicular to both direction and right
+    up.crossVectors(
+      right,
+      this.camera.getWorldDirection(new Vector3()),
+    ).normalize();
+
+    // Apply pan translation to target
+    right.multiplyScalar(deltaX);
+    up.multiplyScalar(deltaY);
+
+    this.target.add(right).add(up);
+    this.updateCameraPosition();
+  }
+
   getOrbitAngles() {
     return { azimuth: this.orbitAzimuth, polar: this.orbitPolar };
   }
 
-  setLookTarget(newTarget: Vector3) {
-    this.target.copy(newTarget);
+  /**
+   * Save current rotation and target position before user starts rotating
+   */
+  saveRotationState() {
+    this.savedAzimuth = this.orbitAzimuth;
+    this.savedPolar = this.orbitPolar;
+    this.savedTarget.copy(this.target);
+    console.log(
+      `[CameraRig] Saved state: azimuth=${this.savedAzimuth}, polar=${this.savedPolar}, target=(${this.savedTarget.x.toFixed(2)}, ${this.savedTarget.y.toFixed(2)}, ${this.savedTarget.z.toFixed(2)})`,
+    );
+  }
+
+  /**
+   * Restore to saved rotation and target position with animation
+   */
+  restoreRotationState() {
+    if (this.savedAzimuth === null || this.savedPolar === null) {
+      console.warn("[CameraRig] No saved rotation state to restore");
+      return;
+    }
+
+    console.log(
+      `[CameraRig] Restoring to saved state: azimuth=${this.savedAzimuth}, polar=${this.savedPolar}, target=(${this.savedTarget.x.toFixed(2)}, ${this.savedTarget.y.toFixed(2)}, ${this.savedTarget.z.toFixed(2)})`,
+    );
+
+    // Start animation to the saved state (both position and rotation)
+    this.isAnimating = true;
+    this.isAnimatingViewDirection = true;
+    this.animationProgress = 0;
+    this.animationStartAzimuth = this.orbitAzimuth;
+    this.animationStartPolar = this.orbitPolar;
+    this.animationEndAzimuth = this.savedAzimuth;
+    this.animationEndPolar = this.savedPolar;
+    this.animationStartTarget.copy(this.target);
+    this.animationEndTarget.copy(this.savedTarget);
+  }
+
+  /**
+   * Clear the saved rotation state
+   */
+  clearRotationState() {
+    this.savedAzimuth = null;
+    this.savedPolar = null;
+  }
+
+  getTarget() {
+    return this.target;
+  }
+
+  setLookTarget(newTarget: Vector3, animate = true) {
+    if (animate) {
+      this.animateTo(newTarget);
+    } else {
+      this.target.copy(newTarget);
+      this.updateCameraPosition();
+    }
+  }
+
+  private animateTo(newTarget: Vector3) {
+    this.isAnimating = true;
+    this.animationProgress = 0;
+    this.animationStartTarget.copy(this.target);
+    this.animationEndTarget.copy(newTarget);
+  }
+
+  updateAnimation(deltaTime: number) {
+    if (!this.isAnimating) {
+      return;
+    }
+
+    this.animationProgress += deltaTime / this.animationDuration;
+
+    if (this.animationProgress >= 1) {
+      this.animationProgress = 1;
+      this.isAnimating = false;
+    }
+
+    // Easing function: ease-out cubic for smooth deceleration
+    const easeProgress = 1 - Math.pow(1 - this.animationProgress, 3);
+
+    // Interpolate target position
+    this.target.lerpVectors(
+      this.animationStartTarget,
+      this.animationEndTarget,
+      easeProgress,
+    );
+
+    // Interpolate view direction (orbit angles) only if animating view direction
+    if (this.isAnimatingViewDirection) {
+      this.orbitAzimuth =
+        this.animationStartAzimuth +
+        (this.animationEndAzimuth - this.animationStartAzimuth) * easeProgress;
+      this.orbitPolar =
+        this.animationStartPolar +
+        (this.animationEndPolar - this.animationStartPolar) * easeProgress;
+
+      // Update frame direction from interpolated angles
+      this.updateDirectionFromOrbit();
+    }
+
     this.updateCameraPosition();
+
+    // Clear view direction animation flag when done
+    if (this.animationProgress >= 1) {
+      this.isAnimatingViewDirection = false;
+    }
   }
 
   private updateFitMetrics() {
