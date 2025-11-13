@@ -1,0 +1,19 @@
+name = "vinyl-library-worker"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+# KV namespace binding
+[[kv_namespaces]]
+binding = "LIBRARY"
+id = "92ce731f967a4d2b97c2362627c889f7"
+
+# Environment variables (for local development)
+[vars]
+# ADMIN_TOKEN will be set as a secret via .dev.vars
+
+# Production environment (optional, for multi-environment setup)
+[env.production]
+name = "vinyl-library-worker"
+[[env.production.kv_namespaces]]
+binding = "LIBRARY"
+id = "YOUR_PRODUCTION_KV_NAMESPACE_ID"

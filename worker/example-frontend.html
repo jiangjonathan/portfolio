@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vinyl Library</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f0f0f;
+            color: #fff;
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            margin-bottom: 2rem;
+            font-size: 2rem;
+        }
+
+        .sections {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        @media (max-width: 768px) {
+            .sections {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .section {
+            background: #1a1a1a;
+            padding: 1.5rem;
+            border-radius: 8px;
+            border: 1px solid #333;
+        }
+
+        .section h2 {
+            font-size: 1.3rem;
+            margin-bottom: 1rem;
+            border-bottom: 2px solid #444;
+            padding-bottom: 0.5rem;
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-size: 0.9rem;
+            color: #aaa;
+        }
+
+        input[type="text"],
+        textarea {
+            width: 100%;
+            padding: 0.75rem;
+            background: #0f0f0f;
+            border: 1px solid #333;
+            border-radius: 4px;
+            color: #fff;
+            font-family: inherit;
+        }
+
+        input[type="text"]:focus,
+        textarea:focus {
+            outline: none;
+            border-color: #666;
+            background: #1a1a1a;
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 60px;
+        }
+
+        button {
+            background: #333;
+            color: #fff;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: #444;
+        }
+
+        button.primary {
+            background: #1db954;
+            color: #000;
+            font-weight: bold;
+        }
+
+        button.primary:hover {
+            background: #1ed760;
+        }
+
+        button.danger {
+            background: #dc2626;
+        }
+
+        button.danger:hover {
+            background: #ef4444;
+        }
+
+        .library-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .library-item {
+            background: #0f0f0f;
+            padding: 1rem;
+            border-radius: 4px;
+            border-left: 3px solid #1db954;
+        }
+
+        .library-item.owner {
+            border-left-color: #3b82f6;
+        }
+
+        .library-item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 0.5rem;
+        }
+
+        .library-item-title {
+            font-weight: bold;
+            word-break: break-all;
+            flex: 1;
+        }
+
+        .library-item-note {
+            color: #aaa;
+            font-size: 0.9rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .library-item-date {
+            color: #666;
+            font-size: 0.8rem;
+            margin-top: 0.5rem;
+        }
+
+        .empty-state {
+            color: #666;
+            text-align: center;
+            padding: 2rem 1rem;
+            font-size: 0.9rem;
+        }
+
+        .status-message {
+            padding: 0.75rem;
+            border-radius: 4px;
+            margin-bottom: 1rem;
+            font-size: 0.9rem;
+        }
+
+        .status-message.success {
+            background: #1a3a1a;
+            color: #86efac;
+            border: 1px solid #22c55e;
+        }
+
+        .status-message.error {
+            background: #3a1a1a;
+            color: #fca5a5;
+            border: 1px solid #dc2626;
+        }
+
+        .library-item-buttons {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.75rem;
+        }
+
+        .library-item-buttons button {
+            flex: 1;
+            padding: 0.5rem;
+            font-size: 0.8rem;
+        }
+
+        .youtube-embed {
+            margin-top: 0.75rem;
+        }
+
+        .youtube-embed iframe {
+            width: 100%;
+            height: 200px;
+            border-radius: 4px;
+            border: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎵 Vinyl Library</h1>
+
+        <div class="sections">
+            <!-- Visitor Library Section -->
+            <div class="section">
+                <h2>Your Library</h2>
+                <div id="visitorStatus"></div>
+
+                <div class="form-group">
+                    <label for="youtubeInput">YouTube Link or ID</label>
+                    <input
+                        type="text"
+                        id="youtubeInput"
+                        placeholder="https://www.youtube.com/watch?v=... or raw ID"
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label for="noteInput">Note (optional)</label>
+                    <textarea id="noteInput" placeholder="Your thoughts about this track..."></textarea>
+                </div>
+
+                <button class="primary" onclick="addToVisitorLibrary()">Add to My Library</button>
+
+                <div id="visitorLibrary" class="library-list" style="margin-top: 1.5rem;"></div>
+            </div>
+
+            <!-- Owner Library Section -->
+            <div class="section">
+                <h2>Owner's Library</h2>
+                <div id="ownerStatus"></div>
+                <button onclick="fetchOwnerLibrary()" style="margin-bottom: 1rem;">Refresh Library</button>
+                <div id="ownerLibrary" class="library-list"></div>
+            </div>
+        </div>
+
+        <!-- Configuration -->
+        <div class="section">
+            <h2>⚙️ Configuration</h2>
+            <div class="form-group">
+                <label for="apiUrl">API URL</label>
+                <input
+                    type="text"
+                    id="apiUrl"
+                    placeholder="https://vinyl-library-worker.YOUR_SUBDOMAIN.workers.dev"
+                    value="https://vinyl-library-worker.YOUR_SUBDOMAIN.workers.dev"
+                >
+            </div>
+            <button onclick="saveConfig()">Save Configuration</button>
+            <button onclick="clearVisitorStorage()" class="danger" style="margin-left: 0.5rem;">Clear All Data</button>
+        </div>
+    </div>
+
+    <script type="module">
+        import {
+            loadVisitorLibrary,
+            saveVisitorLibrary,
+            addVisitorLink,
+            removeVisitorLink,
+            clearVisitorLibrary,
+            fetchOwnerLibrary
+        } from '../src/visitorLibrary.js';
+
+        // Store references globally for HTML onclick handlers
+        window.visitorLibraryModule = {
+            loadVisitorLibrary,
+            saveVisitorLibrary,
+            addVisitorLink,
+            removeVisitorLink,
+            clearVisitorLibrary,
+            fetchOwnerLibrary
+        };
+
+        // Configuration
+        const CONFIG_KEY = 'vinylLibraryConfig';
+
+        function loadConfig() {
+            try {
+                const config = JSON.parse(localStorage.getItem(CONFIG_KEY)) || {};
+                return {
+                    apiUrl: config.apiUrl || 'https://vinyl-library-worker.YOUR_SUBDOMAIN.workers.dev',
+                    ...config
+                };
+            } catch {
+                return { apiUrl: 'https://vinyl-library-worker.YOUR_SUBDOMAIN.workers.dev' };
+            }
+        }
+
+        function getConfig() {
+            const apiUrlInput = document.getElementById('apiUrl');
+            return {
+                apiUrl: apiUrlInput?.value || 'https://vinyl-library-worker.YOUR_SUBDOMAIN.workers.dev'
+            };
+        }
+
+        // Initialize on load
+        function init() {
+            const config = loadConfig();
+            const apiUrlInput = document.getElementById('apiUrl');
+            if (apiUrlInput) {
+                apiUrlInput.value = config.apiUrl;
+            }
+            renderVisitorLibrary();
+            fetchOwnerLibrary();
+        }
+
+        // Render visitor library
+        function renderVisitorLibrary() {
+            const library = window.visitorLibraryModule.loadVisitorLibrary();
+            const container = document.getElementById('visitorLibrary');
+
+            if (!library.length) {
+                container.innerHTML = '<div class="empty-state">No entries yet. Add your first track!</div>';
+                return;
+            }
+
+            container.innerHTML = library.map(entry => `
+                <div class="library-item">
+                    <div class="library-item-header">
+                        <span class="library-item-title">ID: ${entry.youtubeId}</span>
+                    </div>
+                    ${entry.note ? `<div class="library-item-note">${escapeHtml(entry.note)}</div>` : ''}
+                    <div class="youtube-embed">
+                        <iframe
+                            src="https://www.youtube.com/embed/${entry.youtubeId}"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        ></iframe>
+                    </div>
+                    <div class="library-item-date">Added: ${new Date(entry.addedAt).toLocaleDateString()}</div>
+                    <div class="library-item-buttons">
+                        <button onclick="removeFromVisitorLibrary('${entry.id}')" class="danger">Remove</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Render owner library
+        function renderOwnerLibrary(entries) {
+            const container = document.getElementById('ownerLibrary');
+
+            if (!entries.length) {
+                container.innerHTML = '<div class="empty-state">Owner hasn\'t added any tracks yet.</div>';
+                return;
+            }
+
+            container.innerHTML = entries.map(entry => `
+                <div class="library-item owner">
+                    <div class="library-item-header">
+                        <span class="library-item-title">ID: ${entry.youtubeId}</span>
+                    </div>
+                    ${entry.note ? `<div class="library-item-note">${escapeHtml(entry.note)}</div>` : ''}
+                    <div class="youtube-embed">
+                        <iframe
+                            src="https://www.youtube.com/embed/${entry.youtubeId}"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        ></iframe>
+                    </div>
+                    <div class="library-item-date">Added: ${new Date(entry.addedAt).toLocaleDateString()}</div>
+                    <div class="library-item-buttons">
+                        <button onclick="copyToMyLibrary('${entry.youtubeId}', '${escapeHtml(entry.note || '')}')" class="primary">Add to My Library</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Global functions for onclick handlers
+        window.addToVisitorLibrary = function() {
+            const youtubeInput = document.getElementById('youtubeInput');
+            const noteInput = document.getElementById('noteInput');
+            const statusEl = document.getElementById('visitorStatus');
+
+            const youtube = youtubeInput?.value?.trim() || '';
+            const note = noteInput?.value?.trim() || '';
+
+            if (!youtube) {
+                showStatus(statusEl, 'Please enter a YouTube link or ID', 'error');
+                return;
+            }
+
+            const entry = window.visitorLibraryModule.addVisitorLink(youtube, note);
+
+            if (entry) {
+                showStatus(statusEl, '✓ Added to your library!', 'success');
+                youtubeInput.value = '';
+                noteInput.value = '';
+                renderVisitorLibrary();
+            } else {
+                showStatus(statusEl, 'Invalid YouTube URL or ID', 'error');
+            }
+        };
+
+        window.removeFromVisitorLibrary = function(entryId) {
+            if (window.visitorLibraryModule.removeVisitorLink(entryId)) {
+                document.getElementById('visitorStatus').innerHTML = '';
+                renderVisitorLibrary();
+            }
+        };
+
+        window.copyToMyLibrary = function(youtubeId, note) {
+            const entry = window.visitorLibraryModule.addVisitorLink(youtubeId, note);
+            if (entry) {
+                showStatus(document.getElementById('visitorStatus'), '✓ Copied to your library!', 'success');
+                renderVisitorLibrary();
+            }
+        };
+
+        window.fetchOwnerLibrary = async function() {
+            const statusEl = document.getElementById('ownerStatus');
+            const config = getConfig();
+
+            showStatus(statusEl, 'Loading...', 'error'); // Use error styling for neutral "loading"
+
+            const entries = await window.visitorLibraryModule.fetchOwnerLibrary(config.apiUrl);
+            renderOwnerLibrary(entries);
+            statusEl.innerHTML = '';
+        };
+
+        window.saveConfig = function() {
+            const config = getConfig();
+            localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
+            showStatus(document.getElementById('ownerStatus'), '✓ Configuration saved!', 'success');
+        };
+
+        window.clearVisitorStorage = function() {
+            if (confirm('Are you sure? This will delete all entries in your library.')) {
+                window.visitorLibraryModule.clearVisitorLibrary();
+                renderVisitorLibrary();
+                showStatus(document.getElementById('visitorStatus'), '✓ Library cleared', 'success');
+            }
+        };
+
+        // Utility functions
+        function showStatus(element, message, type) {
+            if (!element) return;
+            element.innerHTML = `<div class="status-message ${type}">${message}</div>`;
+        }
+
+        function escapeHtml(text) {
+            const map = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            };
+            return text.replace(/[&<>"']/g, m => map[m]);
+        }
+
+        // Initialize on page load
+        init();
+    </script>
+</body>
+</html>

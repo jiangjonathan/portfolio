@@ -39,6 +39,8 @@ export interface YouTubeBridge {
   isFullscreen(): boolean;
   onFullscreenChange(callback: (isFullscreen: boolean) => void): void;
   setIsTonearmInPlayAreaQuery(callback: () => boolean): void;
+  isPlayerCollapsed(): boolean;
+  setPlayerCollapsed(collapsed: boolean): void;
 }
 
 let apiReadyPromise: Promise<void> | null = null;
@@ -89,6 +91,193 @@ export function createYouTubePlayer(): YouTubeBridge {
   viewport.style.transition = "height 0.5s ease-out";
   viewport.style.transformOrigin = "center center";
   wrapper.appendChild(viewport);
+
+  // Button container that stays visible
+  const buttonContainer = document.createElement("div");
+  Object.assign(buttonContainer.style, {
+    position: "absolute",
+    top: "-10px",
+    right: "-10px",
+    zIndex: "1001",
+    pointerEvents: "none",
+    opacity: "0",
+    transition: "opacity 0.2s ease",
+  });
+  wrapper.appendChild(buttonContainer);
+
+  // Collapse/expand button with SVG
+  let isCollapsed = false;
+  const collapseButton = document.createElement("button");
+  collapseButton.tabIndex = -1;
+  Object.assign(collapseButton.style, {
+    width: "48px",
+    height: "48px",
+    padding: "0",
+    border: "none",
+    background: "transparent",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    transition: "all 0.2s ease",
+    outline: "none",
+  });
+  collapseButton.title = "Hide player";
+
+  // Prevent focus on mousedown
+  collapseButton.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+  });
+
+  // Create SVG arrow
+  const createArrowSvg = (direction: "up" | "down") => {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("width", "36");
+    svg.setAttribute("height", "36");
+    svg.style.display = "block";
+
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    if (direction === "up") {
+      path.setAttribute("d", "M7 14l5-5 5 5z");
+    } else {
+      path.setAttribute("d", "M7 10l5 5 5-5z");
+    }
+    path.setAttribute("fill", "#999");
+
+    svg.appendChild(path);
+    return svg;
+  };
+
+  let currentArrowSvg = createArrowSvg("up");
+  collapseButton.appendChild(currentArrowSvg);
+
+  collapseButton.addEventListener("mouseenter", () => {
+    const path = currentArrowSvg.querySelector("path") as SVGPathElement;
+    if (path) {
+      path.setAttribute("fill", "#bbb");
+    }
+  });
+
+  collapseButton.addEventListener("mouseleave", () => {
+    const path = currentArrowSvg.querySelector("path") as SVGPathElement;
+    if (path) {
+      path.setAttribute("fill", "#999");
+    }
+  });
+
+  collapseButton.addEventListener("click", () => {
+    isCollapsed = !isCollapsed;
+    if (isCollapsed) {
+      viewport.style.height = "0px";
+      collapseButton.title = "Show player";
+      // Replace SVG with down arrow
+      currentArrowSvg.remove();
+      currentArrowSvg = createArrowSvg("down");
+      collapseButton.appendChild(currentArrowSvg);
+      // Hide fullscreen button when collapsed so it doesn't cover the uncollapse button
+      fullscreenButtonContainer.style.display = "none";
+    } else {
+      // Restore to previous height or calculate it
+      const isTonearmInPlayArea = isTonearmInPlayAreaQuery?.() ?? false;
+      if (isTonearmInPlayArea) {
+        const targetHeight = 512 / DYNAMIC_VIDEO_ASPECT;
+        viewport.style.height = `${targetHeight}px`;
+      }
+      collapseButton.title = "Hide player";
+      // Replace SVG with up arrow
+      currentArrowSvg.remove();
+      currentArrowSvg = createArrowSvg("up");
+      collapseButton.appendChild(currentArrowSvg);
+      // Show fullscreen button when expanded
+      fullscreenButtonContainer.style.display = "flex";
+    }
+    // After state change, update button visibility based on current state
+    if (isCollapsed) {
+      // Show black button when collapsed
+      updateButtonVisibility();
+      updateFullscreenButtonVisibility();
+    } else {
+      // When uncollapsing, check if mouse is hovering
+      // If hovering, show buttons immediately; otherwise they'll show on next hover
+      const isMouseHovering = wrapper.matches(":hover");
+      if (isMouseHovering) {
+        // Show collapse button with grey color
+        buttonContainer.style.opacity = "1";
+        const path = currentArrowSvg.querySelector("path") as SVGPathElement;
+        if (path) {
+          path.setAttribute("fill", "#999");
+        }
+        // Show fullscreen button (viewport height may still be animating, but show it anyway)
+        fullscreenButtonContainer.style.opacity = "1";
+        // After height transition completes, validate visibility
+        setTimeout(() => {
+          updateFullscreenButtonVisibility();
+        }, 550);
+      } else {
+        // Mouse not hovering, hide buttons until next hover
+        buttonContainer.style.opacity = "0";
+        fullscreenButtonContainer.style.opacity = "0";
+      }
+    }
+  });
+
+  buttonContainer.appendChild(collapseButton);
+
+  // Show button on hover, or always show when collapsed
+  const updateButtonVisibility = () => {
+    const isPlayerVisible = viewport.clientHeight > 0;
+    // Show button if player is visible (on hover) OR if player is collapsed
+    if (isPlayerVisible || isCollapsed) {
+      buttonContainer.style.opacity = "1";
+      // Change button color: grey when player visible, black when collapsed
+      if (isCollapsed) {
+        const path = currentArrowSvg.querySelector("path") as SVGPathElement;
+        if (path) {
+          path.setAttribute("fill", "#000");
+        }
+      }
+    } else {
+      buttonContainer.style.opacity = "0";
+    }
+  };
+
+  // Show fullscreen button on hover when player is visible
+  const updateFullscreenButtonVisibility = () => {
+    const isPlayerVisible = viewport.clientHeight > 0;
+    const isTonearmInPlayArea = isTonearmInPlayAreaQuery?.() ?? false;
+    // Only show if player is visible AND not collapsed AND tonearm is in play area
+    if (isPlayerVisible && !isCollapsed && isTonearmInPlayArea) {
+      fullscreenButtonContainer.style.opacity = "1";
+      fullscreenButtonContainer.style.pointerEvents = "auto";
+    } else {
+      fullscreenButtonContainer.style.opacity = "0";
+      fullscreenButtonContainer.style.pointerEvents = "none";
+    }
+  };
+
+  wrapper.addEventListener("mouseenter", () => {
+    const isTonearmInPlayArea = isTonearmInPlayAreaQuery?.() ?? false;
+    if (!isCollapsed && isTonearmInPlayArea) {
+      const path = currentArrowSvg.querySelector("path") as SVGPathElement;
+      if (path) {
+        path.setAttribute("fill", "#999");
+      }
+      // Show button when hovering over expanded player
+      buttonContainer.style.opacity = "1";
+      buttonContainer.style.pointerEvents = "auto";
+      updateFullscreenButtonVisibility();
+    }
+  });
+
+  wrapper.addEventListener("mouseleave", () => {
+    // Only hide button if not collapsed. If collapsed, keep it visible
+    if (!isCollapsed) {
+      buttonContainer.style.opacity = "0";
+      buttonContainer.style.pointerEvents = "none";
+    }
+    fullscreenButtonContainer.style.opacity = "0";
+  });
 
   const playerSize = document.createElement("div");
   playerSize.id = "player-size";
@@ -247,30 +436,48 @@ export function createYouTubePlayer(): YouTubeBridge {
     });
   }
 
+  // Fullscreen button container (positioned in wrapper, similar to collapse button)
+  const fullscreenButtonContainer = document.createElement("div");
+  // Store original small mode position values
+  const SMALL_MODE_POSITION = {
+    position: "absolute",
+    bottom: "32px",
+    right: "-10px",
+    zIndex: "1001",
+  };
+  Object.assign(fullscreenButtonContainer.style, {
+    ...SMALL_MODE_POSITION,
+    pointerEvents: "none",
+    opacity: "0",
+    transition: "opacity 0.2s ease",
+  });
+  wrapper.appendChild(fullscreenButtonContainer);
+
   const createFullscreenToggle = () => {
     const toggle = document.createElement("button");
+    toggle.tabIndex = -1;
     Object.assign(toggle.style, {
-      position: "fixed",
-      bottom: "1.5rem",
-      right: "1.5rem",
-      width: "60px",
-      height: "60px",
+      width: "48px",
+      height: "48px",
       padding: "0",
       border: "none",
-      background: "#000",
+      background: "transparent",
       cursor: "pointer",
-      zIndex: "999",
-      opacity: "1",
-      transition: "opacity 1s ease-in-out, background 1s ease-in-out",
-      pointerEvents: "auto",
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
-      borderRadius: "0",
+      transition: "all 0.2s ease",
+      outline: "none",
+    });
+    toggle.title = "Fullscreen";
+
+    // Prevent focus on mousedown
+    toggle.addEventListener("mousedown", (e) => {
+      e.preventDefault();
     });
 
     const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    icon.setAttribute("viewBox", "0 0 16 16");
+    icon.setAttribute("viewBox", "0 0 24 24");
     icon.setAttribute("aria-hidden", "true");
     Object.assign(icon.style, {
       width: "32px",
@@ -279,11 +486,12 @@ export function createYouTubePlayer(): YouTubeBridge {
     });
 
     const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    // Fullscreen icon - arrows pointing outward to corners
     path.setAttribute(
       "d",
-      "M1 1h5v2H3v3H1V1zm9 0h5v5h-2V3h-3V1zM1 10h2v3h3v2H1v-5zm14 0v5h-5v-2h3v-3h2z",
+      "M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z",
     );
-    path.setAttribute("fill", "#fff");
+    path.setAttribute("fill", "#999");
     icon.appendChild(path);
     toggle.appendChild(icon);
 
@@ -292,26 +500,18 @@ export function createYouTubePlayer(): YouTubeBridge {
     });
 
     toggle.addEventListener("mouseenter", () => {
-      toggle.style.background = "#333";
+      path.setAttribute("fill", "#bbb");
     });
 
     toggle.addEventListener("mouseleave", () => {
-      toggle.style.background = "#000";
-    });
-
-    toggle.addEventListener("mousedown", () => {
-      toggle.style.background = "#555";
-    });
-
-    toggle.addEventListener("mouseup", () => {
-      toggle.style.background = "#333";
+      path.setAttribute("fill", "#999");
     });
 
     return toggle;
   };
 
   const fullscreenToggle = createFullscreenToggle();
-  document.body.appendChild(fullscreenToggle);
+  fullscreenButtonContainer.appendChild(fullscreenToggle);
 
   const createFullscreenControls = () => {
     const container = document.createElement("div");
@@ -393,12 +593,16 @@ export function createYouTubePlayer(): YouTubeBridge {
     if (isFullscreenMode && fullscreenControls) {
       fullscreenControls.style.opacity = "1";
       fullscreenControls.style.pointerEvents = "auto";
+      // Also show fullscreen button in fullscreen mode
+      fullscreenButtonContainer.style.opacity = "1";
 
       userActivityTimeout = window.setTimeout(() => {
         if (fullscreenControls) {
           fullscreenControls.style.opacity = "0";
           fullscreenControls.style.pointerEvents = "none";
         }
+        // Hide fullscreen button after inactivity
+        fullscreenButtonContainer.style.opacity = "0";
       }, 2000);
     }
   };
@@ -411,6 +615,13 @@ export function createYouTubePlayer(): YouTubeBridge {
     }
 
     if (enabled) {
+      // Uncollapse the player when entering fullscreen
+      isCollapsed = false;
+      collapseButton.title = "Hide player";
+      currentArrowSvg.remove();
+      currentArrowSvg = createArrowSvg("up");
+      collapseButton.appendChild(currentArrowSvg);
+
       const windowWidth = window.innerWidth;
       const windowHeight = window.innerHeight;
       const playerWidth = windowWidth;
@@ -460,10 +671,70 @@ export function createYouTubePlayer(): YouTubeBridge {
         fullscreenControls.style.display = "flex";
       }
 
+      // Handle ESC key to exit fullscreen
+      const handleFullscreenEsc = (event: KeyboardEvent) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          setFullscreen(false);
+        } else {
+          resetUserActivityTimer();
+        }
+      };
+
+      // Handle window resize to adjust viewport and player size dynamically
+      const handleFullscreenResize = () => {
+        const newWindowWidth = window.innerWidth;
+        const newWindowHeight = window.innerHeight;
+        const newPlayerWidth = newWindowWidth;
+        const newPlayerHeight = 2 * newWindowWidth;
+
+        wrapper.style.width = `${newWindowWidth}px`;
+        wrapper.style.height = `${newWindowHeight}px`;
+        viewport.style.width = `${newWindowWidth}px`;
+        viewport.style.height = `${newWindowHeight}px`;
+        Object.assign(playerSize.style, {
+          width: `${newPlayerWidth}px`,
+          height: `${newPlayerHeight}px`,
+        });
+        updateViewport();
+      };
+
       document.addEventListener("mousemove", resetUserActivityTimer);
       document.addEventListener("mousedown", resetUserActivityTimer);
-      document.addEventListener("keydown", resetUserActivityTimer);
+      document.addEventListener("keydown", handleFullscreenEsc);
+      window.addEventListener("resize", handleFullscreenResize);
       resetUserActivityTimer();
+
+      // Store references for cleanup
+      (wrapper as any)._fullscreenEscHandler = handleFullscreenEsc;
+      (wrapper as any)._fullscreenResizeHandler = handleFullscreenResize;
+
+      // Move fullscreen button outside wrapper and to fixed position for fullscreen
+      document.body.appendChild(fullscreenButtonContainer);
+      Object.assign(fullscreenButtonContainer.style, {
+        position: "fixed",
+        bottom: "1.5rem",
+        right: "1.5rem",
+        opacity: "1",
+        pointerEvents: "auto",
+        zIndex: "10002",
+      });
+      // Change to exit fullscreen icon (minimize - arrows pointing inward)
+      const fullscreenPath = fullscreenToggle.querySelector(
+        "path",
+      ) as SVGPathElement;
+      if (fullscreenPath) {
+        // Exit fullscreen icon - arrows pointing inward from corners
+        fullscreenPath.setAttribute(
+          "d",
+          "M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z",
+        );
+        fullscreenPath.removeAttribute("stroke");
+        fullscreenPath.removeAttribute("stroke-width");
+        fullscreenPath.removeAttribute("stroke-linecap");
+        fullscreenPath.removeAttribute("stroke-linejoin");
+        fullscreenPath.setAttribute("fill", "#999");
+      }
     } else {
       viewport.style.transition = "none";
       viewport.style.opacity = "0";
@@ -518,11 +789,47 @@ export function createYouTubePlayer(): YouTubeBridge {
 
       document.removeEventListener("mousemove", resetUserActivityTimer);
       document.removeEventListener("mousedown", resetUserActivityTimer);
-      document.removeEventListener("keydown", resetUserActivityTimer);
+
+      // Remove fullscreen-specific event listeners
+      const fullscreenEscHandler = (wrapper as any)._fullscreenEscHandler;
+      const fullscreenResizeHandler = (wrapper as any)._fullscreenResizeHandler;
+      if (fullscreenEscHandler) {
+        document.removeEventListener("keydown", fullscreenEscHandler);
+        (wrapper as any)._fullscreenEscHandler = null;
+      }
+      if (fullscreenResizeHandler) {
+        window.removeEventListener("resize", fullscreenResizeHandler);
+        (wrapper as any)._fullscreenResizeHandler = null;
+      }
+
       if (userActivityTimeout !== null) {
         clearTimeout(userActivityTimeout);
         userActivityTimeout = null;
       }
+
+      // Update button visibility after exiting fullscreen
+      updateButtonVisibility();
+
+      // Move fullscreen button back to wrapper and restore small mode position
+      wrapper.appendChild(fullscreenButtonContainer);
+      // Restore original small mode positioning
+      Object.assign(fullscreenButtonContainer.style, {
+        ...SMALL_MODE_POSITION,
+        opacity: "0",
+        pointerEvents: "auto",
+      });
+      // Revert icon back to fullscreen icon (arrows pointing outward)
+      const exitFullscreenPath = fullscreenToggle.querySelector(
+        "path",
+      ) as SVGPathElement;
+      if (exitFullscreenPath) {
+        exitFullscreenPath.setAttribute(
+          "d",
+          "M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z",
+        );
+        exitFullscreenPath.setAttribute("fill", "#999");
+      }
+      updateFullscreenButtonVisibility();
     }
 
     updateViewport();
@@ -610,9 +917,70 @@ export function createYouTubePlayer(): YouTubeBridge {
     setIsTonearmInPlayAreaQuery(callback: () => boolean) {
       isTonearmInPlayAreaQuery = callback;
     },
+    isPlayerCollapsed(): boolean {
+      return isCollapsed;
+    },
+    setPlayerCollapsed(collapsed: boolean): void {
+      if (collapsed === isCollapsed) {
+        return; // No change needed
+      }
+      isCollapsed = collapsed;
+      if (isCollapsed) {
+        viewport.style.height = "0px";
+        collapseButton.title = "Show player";
+        // Replace SVG with down arrow
+        currentArrowSvg.remove();
+        currentArrowSvg = createArrowSvg("down");
+        collapseButton.appendChild(currentArrowSvg);
+      } else {
+        // Restore to previous height or calculate it
+        const isTonearmInPlayArea = isTonearmInPlayAreaQuery?.() ?? false;
+        if (isTonearmInPlayArea) {
+          const targetHeight = 512 / DYNAMIC_VIDEO_ASPECT;
+          viewport.style.height = `${targetHeight}px`;
+        }
+        collapseButton.title = "Hide player";
+        // Replace SVG with up arrow
+        currentArrowSvg.remove();
+        currentArrowSvg = createArrowSvg("up");
+        collapseButton.appendChild(currentArrowSvg);
+      }
+    },
   };
 
   (bridge as any)._fullscreenControls = () => fullscreenControls;
+
+  // Add F key handler to toggle fullscreen mode (only when tonearm is in play area)
+  let isFPressed = false;
+  const handleFKeyToggle = (event: KeyboardEvent) => {
+    if ((event.key.toLowerCase() === "f" || event.key === "F") && !isFPressed) {
+      isFPressed = true;
+      // Don't toggle if the key is pressed within an input field or textarea
+      const target = event.target as HTMLElement;
+      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") {
+        return;
+      }
+      // Always prevent default for F key to prevent browser focus behavior
+      event.preventDefault();
+
+      // Only toggle if tonearm is in play area
+      const isTonearmInPlayArea = isTonearmInPlayAreaQuery?.() ?? false;
+      if (!isTonearmInPlayArea) {
+        return;
+      }
+      setFullscreen(!isFullscreenMode);
+    }
+  };
+
+  const handleFKeyUp = (event: KeyboardEvent) => {
+    if (event.key.toLowerCase() === "f" || event.key === "F") {
+      isFPressed = false;
+    }
+  };
+
+  document.addEventListener("keydown", handleFKeyToggle);
+  document.addEventListener("keyup", handleFKeyUp);
+  (bridge as any)._fKeyToggleHandler = handleFKeyToggle;
 
   return bridge;
 }
@@ -804,7 +1172,8 @@ export function createVideoControls(
   volumeSlider.value = "100";
   volumeSlider.className = "volume-slider";
   volumeSlider.style.width = "92px";
-  volumeSlider.style.height = "3px";
+  volumeSlider.style.height = "4px";
+  volumeSlider.tabIndex = -1;
 
   let clickSetVolume = false;
 
@@ -847,8 +1216,14 @@ export function createVideoControls(
     height: "14px",
     display: "block",
     cursor: "pointer",
+    outline: "none",
   });
-  volumeIcon.tabIndex = 0;
+  volumeIcon.tabIndex = -1;
+
+  // Prevent focus on mousedown
+  volumeIcon.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+  });
 
   const volumeSpeakerPath = document.createElementNS(
     "http://www.w3.org/2000/svg",

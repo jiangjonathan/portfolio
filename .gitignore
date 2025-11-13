@@ -22,3 +22,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Cloudflare Worker secrets (CRITICAL - never commit)
+worker/.env
+worker/.env.local
+worker/.dev.vars
+
+# Wrangler cache
+worker/.wrangler

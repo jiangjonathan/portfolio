@@ -46,6 +46,9 @@ import {
   RETURN_CLEARANCE,
   updateVinylAnimation,
 } from "./vinylAnimation";
+import { EnhancedVinylLibraryWidget } from "./vinylLibraryWidgetEnhanced";
+import { VinylLibraryViewer } from "./vinylLibraryViewer";
+import { extractDominantColor } from "./colorUtils";
 
 declare global {
   interface Window {
@@ -60,6 +63,138 @@ if (!root) {
 }
 
 root.innerHTML = "";
+
+// Create container for vinyl library widget (form)
+const vinylLibraryContainer = document.createElement("div");
+vinylLibraryContainer.id = "vinyl-library-widget";
+vinylLibraryContainer.style.cssText = `
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  max-width: 350px;
+  z-index: 100;
+  max-height: 80vh;
+  overflow-y: auto;
+`;
+root.appendChild(vinylLibraryContainer);
+
+// Create container for vinyl library viewer (grid)
+const vinylViewerContainer = document.createElement("div");
+vinylViewerContainer.id = "vinyl-library-viewer";
+vinylViewerContainer.style.cssText = `
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  max-width: 600px;
+  z-index: 100;
+  max-height: 80vh;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+`;
+// Hide scrollbar for webkit browsers and add global hyperlink button styles
+const style = document.createElement("style");
+style.textContent = `
+  #vinyl-library-viewer::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Centralized hyperlink button styling */
+  :root {
+    --vinyl-link-color: #000;
+    --vinyl-link-hover-color: #0066cc;
+    --vinyl-link-font-size: 0.85rem;
+    --vinyl-link-text-shadow: 0.2px 0 0 rgba(255, 0, 0, 0.5), -0.2px 0 0 rgba(0, 100, 200, 0.5);
+  }
+
+  .vinyl-hyperlink {
+    padding: 0;
+    background: transparent;
+    color: var(--vinyl-link-color);
+    border: none;
+    border-radius: 0;
+    font-weight: normal;
+    cursor: pointer;
+    font-size: var(--vinyl-link-font-size);
+    transition: color 0.15s;
+    letter-spacing: 0;
+    text-transform: none;
+    text-decoration: underline;
+    font-family: inherit;
+    -webkit-font-smoothing: none;
+    -moz-osx-font-smoothing: grayscale;
+    text-shadow: var(--vinyl-link-text-shadow);
+  }
+
+  .vinyl-hyperlink:hover {
+    background: transparent;
+    color: var(--vinyl-link-hover-color);
+  }
+
+  .vinyl-hyperlink:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  #turntable-position-button {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 100;
+    padding: 8px 16px;
+    background: rgba(0, 0, 0, 0.7);
+    color: #fff;
+    border: 1px solid #666;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 14px;
+    transition: background 0.15s;
+    -webkit-font-smoothing: none;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  #turntable-position-button:hover {
+    background: rgba(0, 0, 0, 0.9);
+  }
+`;
+document.head.appendChild(style);
+root.appendChild(vinylViewerContainer);
+
+// Turntable position cycling (camera view)
+type TurntablePosition = "default" | "bottom-center" | "bottom-left";
+let turntablePositionState: TurntablePosition = "default";
+const CAMERA_TARGETS: Record<TurntablePosition, Vector3> = {
+  default: new Vector3(0, 0.15, 0),
+  "bottom-center": new Vector3(0, 20 + 0.15, 0),
+  "bottom-left": new Vector3(30, 20 + 0.15, 0),
+};
+
+// Create position cycling button
+const positionButton = document.createElement("button");
+positionButton.id = "turntable-position-button";
+positionButton.textContent = "Position: Default";
+positionButton.addEventListener("click", () => {
+  const positions: TurntablePosition[] = [
+    "default",
+    "bottom-center",
+    "bottom-left",
+  ];
+  const currentIndex = positions.indexOf(turntablePositionState);
+  const nextIndex = (currentIndex + 1) % positions.length;
+  turntablePositionState = positions[nextIndex];
+
+  cameraRig.setLookTarget(CAMERA_TARGETS[turntablePositionState]);
+
+  const labels: Record<TurntablePosition, string> = {
+    default: "Position: Default",
+    "bottom-center": "Position: Bottom Center",
+    "bottom-left": "Position: Bottom Left",
+  };
+  positionButton.textContent = labels[turntablePositionState];
+});
+root.appendChild(positionButton);
 
 const canvas = document.createElement("canvas");
 canvas.id = "vinyl-viewer";
@@ -198,6 +333,74 @@ const {
   ready: youtubeReady,
 } = youtubePlayer;
 
+// Listen for song clicks from the viewer
+window.addEventListener("load-vinyl-song", async (event: any) => {
+  const { videoId, artistName, songName } = event.detail;
+
+  // Reset the fade-out flag for the new video
+  hasStartedFadeOut = false;
+
+  // Reset turntable state when new video loads
+  if (turntableController) {
+    turntableController.resetState();
+  }
+
+  // Randomize vinyl rotation on song load
+  if (vinylModel) {
+    const randomRotation = Math.random() * Math.PI * 2;
+    vinylReturnBaseTwist = randomRotation;
+  }
+
+  // Load the video with forced metadata update
+  await youtubePlayer.loadVideo(videoId, (videoMetadata) => {
+    // Force update to override any locked metadata
+    applyMetadataToLabels(videoMetadata, true);
+  });
+
+  // Extract dominant color from thumbnail and update labels
+  const thumbnailUrl = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
+  try {
+    const dominantColor = await extractDominantColor(thumbnailUrl);
+    labelVisuals.background = dominantColor;
+  } catch (error) {
+    console.warn("Failed to extract dominant color, using fallback");
+    labelVisuals.background = "#1a1a1a";
+  }
+
+  rebuildLabelTextures();
+
+  // Apply updated textures to vinyl if it's loaded
+  if (vinylModel) {
+    applyLabelTextures(vinylModel, labelTextures, labelOptions, labelVisuals);
+  }
+
+  // Update turntable controller with new duration
+  const duration = youtubePlayer.getDuration();
+  if (duration > 1 && turntableController) {
+    turntableController.setMediaDuration(duration);
+  }
+
+  // Update the timeline display with new duration
+  videoControls.setProgress(0, duration);
+
+  // Show the video controls if tonearm is in play area OR if player is not collapsed
+  const isPlayerCollapsed = yt.isPlayerCollapsed();
+  if (turntableController?.isTonearmInPlayArea() || !isPlayerCollapsed) {
+    yt.setControlsVisible(true);
+  }
+
+  // Auto-play briefly to show first frame instead of thumbnail (muted)
+  yt.setVolume(0);
+  yt.play();
+  setTimeout(() => {
+    yt.pause();
+    yt.seek(0);
+    yt.setVolume(100);
+  }, 300);
+
+  console.log(`Loaded from viewer: ${artistName} - ${songName}`);
+});
+
 // Initially hide the player controls (only show when tonearm is in play area)
 yt.setControlsVisible(false);
 
@@ -278,8 +481,11 @@ const youtubeURLInput = createYouTubeURLInput({
       applyLabelTextures(vinylModel, labelTextures, labelOptions, labelVisuals);
     }
 
-    // Show the video controls only if tonearm is in play area
-    if (turntableController?.isTonearmInPlayArea()) {
+    // Show the video controls if tonearm is in play area OR if player is not collapsed
+    // When collapsed, controls should still be visible (they appear under the collapsed viewport)
+    const isPlayerCollapsed = yt.isPlayerCollapsed();
+
+    if (turntableController?.isTonearmInPlayArea() || !isPlayerCollapsed) {
       yt.setControlsVisible(true);
     }
 
@@ -335,6 +541,32 @@ cameraRig.setViewDirection(
 );
 
 canvas.addEventListener("contextmenu", (event) => event.preventDefault());
+
+// Spacebar to toggle start/stop (only when not typing in input fields)
+let isSpacePressed = false;
+
+document.addEventListener("keydown", (event) => {
+  // Check if user is typing in an input or textarea
+  const target = event.target as HTMLElement;
+  const isTyping = target.tagName === "INPUT" || target.tagName === "TEXTAREA";
+
+  // Ignore keyboard shortcuts when typing
+  if (isTyping) {
+    return;
+  }
+
+  if ((event.code === "Space" || event.key === " ") && !isSpacePressed) {
+    isSpacePressed = true;
+    event.preventDefault();
+    turntableController?.toggleStartStop();
+  }
+});
+
+document.addEventListener("keyup", (event) => {
+  if (event.code === "Space" || event.key === " ") {
+    isSpacePressed = false;
+  }
+});
 
 canvas.addEventListener("pointerdown", (event) => {
   if (event.button === 2) {
@@ -544,14 +776,18 @@ const animate = (time: number) => {
     const tonearmNowInPlayArea =
       turntableController?.isTonearmInPlayArea() ?? false;
     if (tonearmNowInPlayArea && !isTonearmInPlayArea) {
-      // Tonearm just entered play area - show player
+      // Tonearm just entered play area - show player (if not manually collapsed)
       isTonearmInPlayArea = true;
-      const viewport = root.querySelector(".yt-player-viewport") as HTMLElement;
-      if (viewport && youtubePlayer.getDuration() > 0) {
+      if (!yt.isPlayerCollapsed() && youtubePlayer.getDuration() > 0) {
         yt.setControlsVisible(true);
         // Animate viewport back in using the current video's aspect ratio
         const targetHeight = 512 / yt.getAspectRatio();
-        viewport.style.height = `${targetHeight}px`;
+        const viewport = root.querySelector(
+          ".yt-player-viewport",
+        ) as HTMLElement;
+        if (viewport) {
+          viewport.style.height = `${targetHeight}px`;
+        }
       }
     } else if (!tonearmNowInPlayArea && isTonearmInPlayArea) {
       // Tonearm just left play area - hide player (unless we're in the last 2 seconds)
@@ -559,11 +795,14 @@ const animate = (time: number) => {
       if (timeRemaining > 2) {
         isTonearmInPlayArea = false;
         yt.setControlsVisible(false);
-        const viewport = root.querySelector(
-          ".yt-player-viewport",
-        ) as HTMLElement;
-        if (viewport) {
-          viewport.style.height = "0px";
+        // Only collapse player if it wasn't manually collapsed by user
+        if (!yt.isPlayerCollapsed()) {
+          const viewport = root.querySelector(
+            ".yt-player-viewport",
+          ) as HTMLElement;
+          if (viewport) {
+            viewport.style.height = "0px";
+          }
         }
       }
     }
@@ -789,3 +1028,57 @@ function endCameraOrbit(event: PointerEvent) {
 
 // moved to src/ui.ts
 // moved to ui.ts
+
+// Initialize Vinyl Library Widget (Form)
+(async () => {
+  // Check for admin query parameter
+  const params = new URLSearchParams(window.location.search);
+  const adminKey = params.get("admin");
+  const ADMIN_SECRET = import.meta.env.VITE_ADMIN_KEY || ""; // Read from .env
+  const isOwner = adminKey === ADMIN_SECRET && ADMIN_SECRET !== "";
+  const ADMIN_API_TOKEN = import.meta.env.VITE_ADMIN_API_TOKEN || ""; // API token for backend
+
+  const WORKER_API_URL =
+    import.meta.env.VITE_WORKER_API_URL || "http://localhost:57053";
+
+  const vinylLibraryWidget = new EnhancedVinylLibraryWidget({
+    apiUrl: WORKER_API_URL,
+    containerId: "vinyl-library-widget",
+    compact: true, // Compact mode for fixed sidebar
+    isOwner: isOwner, // Show note field if admin parameter is correct
+    adminToken: isOwner ? ADMIN_API_TOKEN : undefined, // Only pass token if admin
+  });
+
+  try {
+    await vinylLibraryWidget.init();
+    console.log("✓ Vinyl library widget initialized");
+  } catch (error) {
+    console.error("✗ Failed to initialize vinyl library widget:", error);
+  }
+})();
+
+// Initialize Vinyl Library Viewer (Grid)
+(async () => {
+  // Check for admin query parameter
+  const params = new URLSearchParams(window.location.search);
+  const adminKey = params.get("admin");
+  const ADMIN_SECRET = import.meta.env.VITE_ADMIN_KEY || "";
+  const isAdmin = adminKey === ADMIN_SECRET && ADMIN_SECRET !== "";
+  const ADMIN_API_TOKEN = import.meta.env.VITE_ADMIN_API_TOKEN || "";
+  const WORKER_API_URL =
+    import.meta.env.VITE_WORKER_API_URL || "http://localhost:57053";
+
+  const vinylLibraryViewer = new VinylLibraryViewer({
+    containerId: "vinyl-library-viewer",
+    apiUrl: WORKER_API_URL,
+    isAdmin: isAdmin,
+    adminToken: isAdmin ? ADMIN_API_TOKEN : undefined,
+  });
+
+  try {
+    await vinylLibraryViewer.init();
+    console.log("✓ Vinyl library viewer initialized");
+  } catch (error) {
+    console.error("✗ Failed to initialize vinyl library viewer:", error);
+  }
+})();

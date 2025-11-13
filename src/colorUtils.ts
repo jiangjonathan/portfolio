@@ -137,8 +137,9 @@ export function getColorLuminance(hexColor: string): number {
  */
 export function getContrastTextColor(
   backgroundColor: string,
-): "white" | "black" {
+): "#ffffff" | "#000000" {
   const luminance = getColorLuminance(backgroundColor);
   // Use white text for dark backgrounds, black for light backgrounds
-  return luminance > 0.5 ? "black" : "white";
+  // Using WCAG 2.0 threshold for better contrast
+  return luminance > 0.179 ? "#000000" : "#ffffff";
 }

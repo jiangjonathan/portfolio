@@ -77,6 +77,11 @@ export class CameraRig {
     return { azimuth: this.orbitAzimuth, polar: this.orbitPolar };
   }
 
+  setLookTarget(newTarget: Vector3) {
+    this.target.copy(newTarget);
+    this.updateCameraPosition();
+  }
+
   private updateFitMetrics() {
     if (!this.framedObject) {
       return;
