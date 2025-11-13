@@ -13,6 +13,8 @@ export interface VisitorEntry {
   addedAt: string;
   releaseId?: string; // MusicBrainz release ID for cached covers
   aspectRatio?: number; // Video aspect ratio (16/9, 4/3, 1, etc.)
+  genre?: string; // Genre metadata
+  releaseYear?: string; // Release year metadata
 }
 
 const STORAGE_KEY = "visitorLibrary";

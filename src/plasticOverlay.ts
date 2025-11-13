@@ -46,11 +46,22 @@ function getRandomMirror(): string {
   return MIRROR_OPTIONS[randomIndex];
 }
 
+// Cache to store consistent plastic overlays per entry ID
+const plasticOverlayCache = new Map<string, string>();
+
 /**
  * Generate plastic overlay HTML element with random texture, rotation, and mirroring
+ * Uses consistent overlay for each entry ID
+ * @param entryId - Unique identifier for the entry
  * @returns HTML string for the plastic overlay
  */
-export function generatePlasticOverlay(): string {
+export function generatePlasticOverlay(entryId: string): string {
+  // Check if we already have a cached overlay for this entry
+  if (plasticOverlayCache.has(entryId)) {
+    return plasticOverlayCache.get(entryId)!;
+  }
+
+  // Generate new overlay
   const texture = getRandomPlasticTexture();
   const rotation = getRandomRotation();
   const mirror = getRandomMirror();
@@ -61,10 +72,15 @@ export function generatePlasticOverlay(): string {
     .filter(Boolean)
     .join(" ");
 
-  return `
+  const overlayHTML = `
     <div class="plastic-overlay" style="background-image: url('${textureUrl}'); transform: ${transforms}; opacity: ${PLASTIC_OVERLAY_OPACITY};" title="Plastic texture overlay">
     </div>
   `;
+
+  // Cache it
+  plasticOverlayCache.set(entryId, overlayHTML);
+
+  return overlayHTML;
 }
 
 /**

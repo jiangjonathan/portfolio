@@ -36,13 +36,11 @@ export class VinylLibraryViewer {
   private ownerLibrary: VisitorEntry[] = [];
   private showVisitorOnly: boolean = false;
 
-  // Carousel/infinite scroll properties
   private scrollContainer: HTMLElement | null = null;
-  private carouselItems: ExtendedEntry[] = []; // Duplicated list for seamless looping
   private itemHeight: number = 292; // 280px card + 12px gap
-  private isResettingScroll: boolean = false;
 
   private suppressNextLibraryUpdateEvent: boolean = false;
+  private customOrder: Map<string, number> = new Map(); // Session-based custom ordering
 
   constructor(config: ViewerConfig) {
     this.config = config;
@@ -280,9 +278,13 @@ export class VinylLibraryViewer {
       this.library = combinedEntries;
     }
 
-    // Update carousel items when library changes
-    if (this.library.length > 0) {
-      this.carouselItems = [...this.library, ...this.library, ...this.library];
+    // Apply custom ordering if any entries have been reordered
+    if (this.customOrder.size > 0) {
+      this.library.sort((a, b) => {
+        const orderA = this.customOrder.get(a.id) ?? Infinity;
+        const orderB = this.customOrder.get(b.id) ?? Infinity;
+        return orderA - orderB;
+      });
     }
   }
 
@@ -320,13 +322,12 @@ export class VinylLibraryViewer {
 
           .vinyl-viewer-widget .album-card {
             display: flex;
-            flex-direction: row;
-            align-items: center;
+            flex-direction: column;
+            align-items: flex-start;
             gap: 0;
             background: transparent;
             border-radius: 2px;
             overflow: visible;
-            transition: none;
             border: none;
             cursor: default;
             width: 430px;
@@ -334,6 +335,67 @@ export class VinylLibraryViewer {
             margin-bottom: 0.75rem;
             content-visibility: auto;
             contain-intrinsic-size: 430px 292px;
+          }
+
+          .vinyl-viewer-widget .album-main {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            gap: 0;
+            width: 100%;
+          }
+
+          .vinyl-viewer-widget .album-card.swapping-out {
+            transition: opacity 0.4s ease-out;
+            position: fixed;
+            z-index: 999;
+            opacity: 0;
+          }
+
+          .vinyl-viewer-widget .album-card.focused {
+            position: fixed;
+            top: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            width: 600px;
+            animation: fade-in-focus 0.4s ease-out forwards;
+            flex-direction: row;
+            gap: 1rem;
+          }
+
+          .vinyl-viewer-widget .album-metadata {
+            display: none;
+          }
+
+          .vinyl-viewer-widget .album-card.focused .album-metadata {
+            display: block;
+            padding: 0.5rem;
+            font-size: 0.75rem;
+            color: #555;
+            line-height: 1.4;
+          }
+
+          .vinyl-viewer-widget .album-card.focused .album-metadata div {
+            margin-bottom: 0.3rem;
+          }
+
+          .vinyl-viewer-widget .album-card.focused .album-metadata strong {
+            color: #000;
+            font-weight: 600;
+          }
+
+          @keyframes fade-in-focus {
+            from {
+              opacity: 0;
+            }
+            to {
+              opacity: 1;
+            }
+          }
+
+          .vinyl-viewer-widget .album-card.focused:hover {
+            transform: translateX(-50%);
           }
 
           .vinyl-viewer-widget .album-card:hover {
@@ -360,7 +422,7 @@ export class VinylLibraryViewer {
             height: 250px;
             flex-shrink: 0;
             border-radius: 2px;
-            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
+            // box-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
           }
 
           .vinyl-viewer-widget .plastic-overlay {
@@ -409,6 +471,13 @@ export class VinylLibraryViewer {
             font-weight: 500;
             font-size: 0.8rem;
             color: #000;
+            line-height: 1.1;
+          }
+
+          .vinyl-viewer-widget .album-year {
+            font-size: 0.65rem;
+            color: #888;
+            margin-top: 0.15rem;
             line-height: 1.1;
           }
 
@@ -586,6 +655,9 @@ export class VinylLibraryViewer {
 
         <div class="filter-controls">
           <button id="vinyl-filter-btn" class="filter-btn vinyl-hyperlink">show mine only</button>
+          <button id="vinyl-jump-top-btn" class="filter-btn vinyl-hyperlink">jump to top</button>
+          <button id="vinyl-search-btn" class="filter-btn vinyl-hyperlink">search</button>
+          <button id="vinyl-sort-btn" class="filter-btn vinyl-hyperlink">sort</button>
         </div>
         <div class="library-grid" id="vinyl-viewer-grid"></div>
       </div>
@@ -627,107 +699,22 @@ export class VinylLibraryViewer {
 
     this.scrollContainer = gridContainer;
 
-    // Create carousel items: 3x copies for seamless wrapping (minimal memory)
-    this.carouselItems = [...this.library, ...this.library, ...this.library];
-
     // Initial render
     this.updateVisibleItems();
     this.attachCardListeners();
 
-    // The actual scrolling happens on the parent container
+    // Add scroll position capping to prevent over-scroll lag
     const scrollingContainer = document.getElementById("vinyl-library-viewer");
-
     if (scrollingContainer) {
-      // Listen for scroll on the ACTUAL scrolling element
       scrollingContainer.addEventListener(
         "scroll",
         () => {
-          console.log("[scroll event] Scroll event fired");
-          this.handleInfiniteScroll();
+          if (scrollingContainer.scrollTop < 0) {
+            scrollingContainer.scrollTop = 0;
+          }
         },
-        { passive: true },
+        { passive: false },
       );
-      console.log(
-        "[renderGrid] Scroll event listener attached to #vinyl-library-viewer",
-      );
-    } else {
-      console.error("[renderGrid] #vinyl-library-viewer not found!");
-    }
-
-    // Start at middle set, a few items before the first item for better circular scrolling
-    const oneSetHeight = this.library.length * this.itemHeight;
-
-    if (scrollingContainer) {
-      // Scroll to a position that shows the correct view (adjust offset as needed)
-      const offset = this.itemHeight * 4; // Start 4 items up from middle set start
-      const startScrollPosition = oneSetHeight - offset;
-      scrollingContainer.scrollTop = startScrollPosition;
-      console.log(
-        `[renderGrid] Set initial scroll position: ${startScrollPosition}`,
-      );
-    }
-  }
-
-  /**
-   * Handle infinite scroll by detecting when we've scrolled too far
-   * and resetting to the middle section invisibly
-   */
-  private handleInfiniteScroll(): void {
-    if (
-      !this.scrollContainer ||
-      this.library.length === 0 ||
-      this.isResettingScroll
-    )
-      return;
-
-    // Get the actual scrolling container
-    const actualScrollContainer = document.getElementById(
-      "vinyl-library-viewer",
-    );
-    if (!actualScrollContainer) return;
-
-    const oneSetHeight = this.library.length * this.itemHeight;
-    const scrollTop = actualScrollContainer.scrollTop;
-    const scrollHeight = actualScrollContainer.scrollHeight;
-    const clientHeight = actualScrollContainer.clientHeight;
-
-    // Calculate thresholds for wrapping - trigger earlier to prevent reaching actual bottom
-    const bottomThreshold = scrollHeight - clientHeight - this.itemHeight * 2;
-    const topThreshold = this.itemHeight * 2;
-
-    console.log(
-      `[handleInfiniteScroll] scrollTop=${scrollTop}, topThreshold=${topThreshold}, bottomThreshold=${bottomThreshold}, scrollHeight=${scrollHeight}`,
-    );
-
-    // If scrolled near bottom, jump back to middle
-    if (scrollTop > bottomThreshold) {
-      console.log(
-        `[handleInfiniteScroll] NEAR BOTTOM - Jumping back to middle`,
-      );
-      this.isResettingScroll = true;
-      const newScrollTop = scrollTop - oneSetHeight;
-      actualScrollContainer.scrollTop = newScrollTop;
-      console.log(
-        `[handleInfiniteScroll] Jumped from ${scrollTop} to ${newScrollTop}`,
-      );
-      requestAnimationFrame(() => {
-        this.isResettingScroll = false;
-      });
-    }
-    // If scrolled near top, jump forward to middle
-    else if (scrollTop < topThreshold) {
-      console.log(
-        `[handleInfiniteScroll] NEAR TOP - Jumping forward to middle`,
-      );
-      this.isResettingScroll = true;
-      const newScrollTop = scrollTop + oneSetHeight;
-      actualScrollContainer.scrollTop = newScrollTop;
-      console.log(
-        `[handleInfiniteScroll] Jumped from ${scrollTop} to ${newScrollTop}`,
-      );
-      requestAnimationFrame(() => {
-        this.isResettingScroll = false;
-      });
     }
   }
 
@@ -737,42 +724,50 @@ export class VinylLibraryViewer {
   private updateVisibleItems(): void {
     if (!this.scrollContainer || this.library.length === 0) return;
 
-    // Ensure carousel items are up to date with 3x duplication
-    this.carouselItems = [...this.library, ...this.library, ...this.library];
-
     let itemsHtml = "";
 
-    // Render all carousel items (duplicates create seamless loop)
-    this.carouselItems.forEach((entry, index) => {
+    // Render all library items
+    this.library.forEach((entry, index) => {
       const isOwner = entry.isOwnerEntry || false;
       const canDelete = !isOwner || this.config.isAdmin;
       const artistName = entry.artistName || "Unknown Artist";
       const songName = entry.songName || entry.note || "Unknown Song";
-      const plasticOverlay = generatePlasticOverlay();
+      const plasticOverlay = generatePlasticOverlay(entry.id);
+
+      const genre = entry.genre || "";
+      const releaseYear = entry.releaseYear || "";
+      const note = entry.note || "";
 
       itemsHtml += `
-      <div class="album-card" data-entry-id="${entry.id}" data-index="${index % this.library.length}">
-        <div class="album-cover-wrapper">
-          <img
-            src="${this.getImageWithFallback(entry.imageUrl)}"
-            alt="${this.escapeHtml(songName)}"
-            class="album-cover"
-            loading="lazy"
-          >
-          ${plasticOverlay}
-        </div>
-        ${isOwner ? '<div class="owner-badge">Owner</div>' : ""}
-        ${canDelete ? `<button class="delete-btn" data-entry-id="${entry.id}" data-is-owner="${isOwner}" title="Delete from collection">×</button>` : ""}
-        <div class="album-info">
-          <div class="album-artist">
-            <span class="album-artist-text">${this.escapeHtml(artistName)}</span>
-          </div>
-          <div class="album-song">
-            <span class="album-song-text">${this.escapeHtml(songName)}</span>
-          </div>
-        </div>
-      </div>
-    `;
+            <div class="album-card" data-entry-id="${entry.id}" data-index="${index}">
+              <div class="album-main">
+                <div class="album-cover-wrapper">
+                  <img
+                    src="${this.getImageWithFallback(entry.imageUrl)}"
+                    alt="${this.escapeHtml(songName)}"
+                    class="album-cover"
+                    loading="lazy"
+                  >
+                  ${plasticOverlay}
+                </div>
+                ${isOwner ? '<div class="owner-badge">Owner</div>' : ""}
+                ${canDelete ? `<button class="delete-btn" data-entry-id="${entry.id}" data-is-owner="${isOwner}" title="Delete from collection">×</button>` : ""}
+                <div class="album-info">
+                  <div class="album-artist">
+                    <span class="album-artist-text">${this.escapeHtml(artistName)}</span>
+                  </div>
+                  <div class="album-song">
+                    <span class="album-song-text">${this.escapeHtml(songName)}</span>
+                  </div>
+                  ${releaseYear ? `<div class="album-year" style="margin-left:0.5px;">${this.escapeHtml(releaseYear)}</div>` : ""}
+                </div>
+                <div class="album-metadata">
+                  ${genre ? `<div><strong>Genre:</strong> ${this.escapeHtml(genre)}</div>` : ""}
+                  ${note ? `<div>${this.escapeHtml(note)}</div>` : ""}
+                </div>
+              </div>
+            </div>
+          `;
     });
 
     this.scrollContainer.innerHTML = itemsHtml;
@@ -826,7 +821,7 @@ export class VinylLibraryViewer {
    * Attach event listeners to album cards
    */
   private attachCardListeners(): void {
-    // Album card click handler - load video
+    // Album card click handler - load video and focus card
     const albumCards = document.querySelectorAll(
       ".vinyl-viewer-widget .album-card",
     );
@@ -836,7 +831,40 @@ export class VinylLibraryViewer {
         if ((e.target as HTMLElement).classList.contains("delete-btn")) {
           return;
         }
+
+        // Get the entry-id for the new card
         const entryId = (card as HTMLElement).getAttribute("data-entry-id");
+
+        // Move this card to the front of the custom order
+        if (entryId) {
+          this.customOrder.set(entryId, Date.now());
+          this.mergeLibraries();
+          this.updateVisibleItems();
+          this.attachCardListeners();
+        }
+
+        // Remove focus from all focused cards (including duplicates in carousel)
+        const previouslyFocused = document.querySelectorAll(
+          ".vinyl-viewer-widget .album-card.focused",
+        );
+
+        // Fade out old card and fade in new card
+        previouslyFocused.forEach((c) => {
+          (c as HTMLElement).classList.add("swapping-out");
+          setTimeout(() => {
+            (c as HTMLElement).classList.remove("focused");
+            (c as HTMLElement).classList.remove("swapping-out");
+          }, 400);
+        });
+
+        // Get all duplicate cards with the new entry and add focus to all of them
+        const allMatchingCards = document.querySelectorAll(
+          `.vinyl-viewer-widget .album-card[data-entry-id="${entryId}"]`,
+        );
+        allMatchingCards.forEach((c) => {
+          (c as HTMLElement).classList.add("focused");
+        });
+
         const entry = this.library.find((e) => e.id === entryId);
         if (entry) {
           window.dispatchEvent(
@@ -887,6 +915,104 @@ export class VinylLibraryViewer {
         this.attachCardListeners();
       });
     }
+
+    const jumpTopBtn = document.getElementById("vinyl-jump-top-btn");
+    if (jumpTopBtn) {
+      jumpTopBtn.addEventListener("click", () => {
+        const scrollingContainer = document.getElementById(
+          "vinyl-library-viewer",
+        );
+        if (scrollingContainer) {
+          scrollingContainer.scrollTo({
+            top: 0,
+            behavior: "smooth",
+          });
+        }
+      });
+    }
+
+    const searchBtn = document.getElementById("vinyl-search-btn");
+    if (searchBtn) {
+      searchBtn.addEventListener("click", () => {
+        const query = prompt("Search by artist or song name:");
+        if (query) {
+          this.searchLibrary(query);
+        }
+      });
+    }
+
+    const sortBtn = document.getElementById("vinyl-sort-btn");
+    if (sortBtn) {
+      sortBtn.addEventListener("click", () => {
+        const sortOption = prompt(
+          "Sort by:\n1. Artist (A-Z)\n2. Genre\n3. Release Year\n4. Reset to default\n\nEnter 1, 2, 3, or 4:",
+        );
+        if (sortOption) {
+          this.sortLibrary(sortOption);
+        }
+      });
+    }
+  }
+
+  /**
+   * Search the library by artist or song name
+   */
+  private searchLibrary(query: string): void {
+    const lowerQuery = query.toLowerCase();
+    const filtered = this.library.filter((entry) => {
+      const artist = (entry.artistName || "").toLowerCase();
+      const song = (entry.songName || "").toLowerCase();
+      return artist.includes(lowerQuery) || song.includes(lowerQuery);
+    });
+
+    if (filtered.length === 0) {
+      alert("No results found");
+      return;
+    }
+
+    // Scroll to first result
+    const firstResult = filtered[0];
+    const cards = document.querySelectorAll(
+      `.vinyl-viewer-widget .album-card[data-entry-id="${firstResult.id}"]`,
+    );
+    if (cards.length > 0) {
+      cards[0].scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }
+
+  /**
+   * Sort the library by different criteria
+   */
+  private sortLibrary(option: string): void {
+    switch (option) {
+      case "1":
+        this.library.sort((a, b) =>
+          (a.artistName || "").localeCompare(b.artistName || ""),
+        );
+        break;
+      case "2":
+        this.library.sort((a, b) =>
+          (a.genre || "").localeCompare(b.genre || ""),
+        );
+        break;
+      case "3":
+        this.library.sort((a, b) =>
+          (b.releaseYear || "").localeCompare(a.releaseYear || ""),
+        );
+        break;
+      case "4":
+        this.customOrder.clear();
+        this.mergeLibraries();
+        this.updateVisibleItems();
+        this.attachCardListeners();
+        return;
+      default:
+        alert("Invalid option");
+        return;
+    }
+
+    this.updateVisibleItems();
+    this.attachCardListeners();
   }
 
   /**
