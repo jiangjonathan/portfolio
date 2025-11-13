@@ -69,16 +69,16 @@ initializeCache().catch((error) => {
   // Continue even if cache initialization fails
 });
 
-// Create container for vinyl library widget (form)
+// Create container for vinyl library widget (form) - moved to bottom left
 const vinylLibraryContainer = document.createElement("div");
 vinylLibraryContainer.id = "vinyl-library-widget";
 vinylLibraryContainer.style.cssText = `
   position: fixed;
   bottom: 20px;
-  right: 20px;
+  left: 20px;
   max-width: 350px;
   z-index: 100;
-  max-height: 80vh;
+  max-height: auto;
   overflow-y: auto;
 `;
 root.appendChild(vinylLibraryContainer);
@@ -90,9 +90,9 @@ vinylViewerContainer.style.cssText = `
   position: fixed;
   top: 20px;
   right: 20px;
+  bottom: 20px;
   max-width: 600px;
   z-index: 100;
-  max-height: 80vh;
   overflow-y: auto;
   scrollbar-width: none;
   -ms-overflow-style: none;

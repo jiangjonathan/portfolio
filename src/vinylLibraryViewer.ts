@@ -223,13 +223,15 @@ export class VinylLibraryViewer {
             display: flex;
             flex-direction: row;
             align-items: center;
-            gap: 0.5rem;
+            gap: 0;
             background: transparent;
             border-radius: 2px;
             overflow: visible;
             transition: none;
             border: none;
             cursor: default;
+            width: 450px;
+            flex-shrink: 0;
           }
 
           .vinyl-viewer-widget .album-card:hover {
@@ -242,8 +244,8 @@ export class VinylLibraryViewer {
           }
 
           .vinyl-viewer-widget .album-cover {
-            width: 256px;
-            height: 256px;
+            width: 250px;
+            height: 250px;
             flex-shrink: 0;
             object-fit: cover;
             background: #222;
@@ -253,12 +255,23 @@ export class VinylLibraryViewer {
           }
 
           .vinyl-viewer-widget .album-info {
-            padding: 0;
-            flex: 1;
+            padding: 0 0.5rem;
             display: flex;
             flex-direction: column;
             background: transparent;
             justify-content: center;
+            min-width: 0;
+            width: 200px;
+            flex-shrink: 0;
+            overflow: hidden;
+          }
+
+          .vinyl-viewer-widget .album-artist,
+          .vinyl-viewer-widget .album-song {
+            white-space: nowrap;
+            overflow: hidden;
+            width: 100%;
+            position: relative;
           }
 
           .vinyl-viewer-widget .album-artist {
@@ -274,10 +287,91 @@ export class VinylLibraryViewer {
             font-size: 0.8rem;
             color: #000;
             line-height: 1.1;
-            display: -webkit-box;
-            -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical;
+          }
+
+          /* Scrolling text animation on hover - only for overflowing text */
+          @keyframes scroll-text {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(calc(-50% - 1rem)); }
+          }
+
+          .vinyl-viewer-widget .album-artist-text,
+          .vinyl-viewer-widget .album-song-text {
+            display: inline-block;
+            padding-right: 2rem;
+          }
+
+          /* Only animate if text is overflowing (controlled by JS) */
+          .vinyl-viewer-widget .album-card:hover .album-artist.overflowing,
+          .vinyl-viewer-widget .album-card:hover .album-song.overflowing {
+            animation: scroll-text 10s linear infinite;
+          }
+
+          /* Smooth collapse so rows below "scroll up" into the gap */
+          @keyframes fade-out-collapse {
+            0% {
+              opacity: 1;
+              max-height: 250px;      /* approximate card height */
+              margin-bottom: 0.75rem;
+              padding-top: 0.5rem;    /* whatever your current paddings roughly are */
+              padding-bottom: 0.5rem;
+            }
+            100% {
+              opacity: 0;
+              max-height: 0;
+              margin-bottom: 0;
+              padding-top: 0;
+              padding-bottom: 0;
+            }
+          }
+
+          .vinyl-viewer-widget .album-card.deleting {
+            animation: fade-out-collapse 100ms ease-out forwards !important;
+            overflow: hidden;         /* hide shrinking contents */
+            pointer-events: none;
+          }
+
+          .vinyl-viewer-widget .album-card.deleting {
+            animation: fade-out-collapse 1.5s ease-in-out forwards !important;
+            pointer-events: none;
             overflow: hidden;
+          }
+
+          /* Insertion animation for new albums */
+          @keyframes slide-in-expand {
+            0% {
+              opacity: 0;
+              height: 0;
+              margin-bottom: 0;
+              transform: scale(0.1) translateX(-50px);
+            }
+            50% {
+              opacity: 1;
+              height: auto;
+              margin-bottom: 0.75rem;
+              transform: scale(1.2) translateX(0);
+            }
+            100% {
+              opacity: 1;
+              height: auto;
+              margin-bottom: 0.75rem;
+              transform: scale(1) translateX(0);
+            }
+          }
+
+          .vinyl-viewer-widget .album-card.inserting {
+            animation: slide-in-expand 4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards !important;
+            overflow: hidden;
+          }
+
+          .vinyl-viewer-widget .album-card.inserting .album-info {
+            animation: fade-in-text 1.5s ease-out 2s forwards !important;
+            opacity: 0;
+          }
+
+          @keyframes fade-in-text {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
           }
 
           .vinyl-viewer-widget .empty-state {
@@ -465,14 +559,62 @@ export class VinylLibraryViewer {
         ${isOwner ? '<div class="owner-badge">Owner</div>' : ""}
         ${canDelete ? `<button class="delete-btn" data-entry-id="${entry.id}" data-is-owner="${isOwner}" title="Delete from collection">×</button>` : ""}
         <div class="album-info">
-          <div class="album-artist">${this.escapeHtml(artistName)}</div>
-          <div class="album-song">${this.escapeHtml(songName)}</div>
+          <div class="album-artist">
+            <span class="album-artist-text">${this.escapeHtml(artistName)}</span>
+          </div>
+          <div class="album-song">
+            <span class="album-song-text">${this.escapeHtml(songName)}</span>
+          </div>
         </div>
       </div>
     `;
     });
 
     this.scrollContainer.innerHTML = itemsHtml;
+
+    // Check for text overflow and mark overflowing elements
+    this.markOverflowingText();
+  }
+
+  /**
+   * Mark text elements that overflow their container and add duplicate for scrolling
+   */
+  private markOverflowingText(): void {
+    const artistElements = document.querySelectorAll(
+      ".vinyl-viewer-widget .album-artist",
+    );
+    const songElements = document.querySelectorAll(
+      ".vinyl-viewer-widget .album-song",
+    );
+
+    [...artistElements, ...songElements].forEach((element) => {
+      const el = element as HTMLElement;
+      const textSpan = el.querySelector(
+        ".album-artist-text, .album-song-text",
+      ) as HTMLElement;
+
+      if (!textSpan) return;
+
+      // Check if content is wider than container
+      if (el.scrollWidth > el.clientWidth) {
+        el.classList.add("overflowing");
+
+        // Add duplicate text for seamless scrolling if not already present
+        if (el.childElementCount === 1) {
+          const duplicate = textSpan.cloneNode(true) as HTMLElement;
+          duplicate.setAttribute("aria-hidden", "true");
+          el.appendChild(duplicate);
+        }
+      } else {
+        el.classList.remove("overflowing");
+
+        // Remove duplicate if present
+        if (el.childElementCount > 1) {
+          const duplicate = el.children[1];
+          duplicate.remove();
+        }
+      }
+    });
   }
 
   /**
@@ -560,6 +702,20 @@ export class VinylLibraryViewer {
     );
     if (!confirmed) return;
 
+    // Save scroll position before deletion
+    const scrollPosBefore = this.scrollContainer?.scrollTop || 0;
+
+    // Trigger fade out animation on all cards with this entry ID
+    const cards = document.querySelectorAll(
+      `.vinyl-viewer-widget .album-card[data-entry-id="${entryId}"]`,
+    );
+    cards.forEach((card) => card.classList.add("deleting"));
+
+    const DELETION_ANIMATION_MS = 2002;
+
+    // Wait for animation to complete before actually removing
+    await new Promise((resolve) => setTimeout(resolve, DELETION_ANIMATION_MS));
+
     if (isOwner) {
       // Delete from backend owner collection
       if (!this.config.apiUrl) {
@@ -578,8 +734,17 @@ export class VinylLibraryViewer {
           // Reload owner library
           this.ownerLibrary = await fetchOwnerLibrary(this.config.apiUrl);
           this.mergeLibraries();
-          this.updateVisibleItems();
-          this.attachCardListeners();
+
+          // Only remove the animated cards from DOM, don't re-render everything
+          const cardsToRemove = document.querySelectorAll(
+            `.vinyl-viewer-widget .album-card.deleting[data-entry-id="${entryId}"]`,
+          );
+          cardsToRemove.forEach((card) => card.remove());
+
+          // Restore scroll position to maintain view
+          if (this.scrollContainer) {
+            this.scrollContainer.scrollTop = scrollPosBefore;
+          }
 
           // Dispatch event so other widgets update
           window.dispatchEvent(new CustomEvent("vinyl-library-updated"));
@@ -598,8 +763,17 @@ export class VinylLibraryViewer {
         // Update visitor library and re-merge
         this.visitorLibrary = loadVisitorLibrary();
         this.mergeLibraries();
-        this.updateVisibleItems();
-        this.attachCardListeners();
+
+        // Only remove the animated cards from DOM, don't re-render everything
+        const cardsToRemove = document.querySelectorAll(
+          `.vinyl-viewer-widget .album-card.deleting[data-entry-id="${entryId}"]`,
+        );
+        cardsToRemove.forEach((card) => card.remove());
+
+        // Restore scroll position to maintain view
+        if (this.scrollContainer) {
+          this.scrollContainer.scrollTop = scrollPosBefore;
+        }
 
         // Dispatch event so other widgets update
         window.dispatchEvent(new CustomEvent("vinyl-library-updated"));
@@ -623,7 +797,11 @@ export class VinylLibraryViewer {
     });
 
     // Also listen for custom events dispatched by the widget
-    window.addEventListener("vinyl-library-updated", async () => {
+    window.addEventListener("vinyl-library-updated", async (event: Event) => {
+      const customEvent = event as CustomEvent;
+      const isNewAddition = customEvent.detail?.isNewAddition;
+      const newEntryId = customEvent.detail?.entryId;
+
       this.visitorLibrary = loadVisitorLibrary();
 
       // Reload owner library from API if configured
@@ -641,6 +819,16 @@ export class VinylLibraryViewer {
       this.mergeLibraries();
       this.updateVisibleItems();
       this.attachCardListeners();
+
+      // Trigger insertion animation for new additions
+      if (isNewAddition && newEntryId) {
+        requestAnimationFrame(() => {
+          const cards = document.querySelectorAll(
+            `.vinyl-viewer-widget .album-card[data-entry-id="${newEntryId}"]`,
+          );
+          cards.forEach((card) => card.classList.add("inserting"));
+        });
+      }
     });
   }
 
