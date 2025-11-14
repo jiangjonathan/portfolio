@@ -355,10 +355,10 @@ export class VinylLibraryViewer {
           .vinyl-viewer-widget .album-card.focused {
             position: fixed;
             top: 24px;
-            left: 50%;
+            left: 52.5%;
             transform: translateX(-50%);
             z-index: 1000;
-            width: 600px;
+            width: 700px;
             animation: fade-in-focus 0.4s ease-out forwards;
             flex-direction: row;
             gap: 1rem;
@@ -482,22 +482,52 @@ export class VinylLibraryViewer {
           }
 
           /* Scrolling text animation on hover - only for overflowing text */
+          /* Scrolling text animation on hover - only for overflowing text */
           @keyframes scroll-text {
-            0% { transform: translateX(0); }
-            100% { transform: translateX(calc(-50% - 1rem)); }
+            0% {
+              transform: translateX(0);
+            }
+            100% {
+              transform: translateX(calc(-50% - 1rem));
+            }
           }
 
+          .vinyl-viewer-widget .album-artist,
+          .vinyl-viewer-widget .album-song {
+            white-space: nowrap;
+            overflow: hidden;
+            width: 100%;
+            position: relative;
+          }
+
+          /* Inner spans hold the scrolling content */
           .vinyl-viewer-widget .album-artist-text,
           .vinyl-viewer-widget .album-song-text {
             display: inline-block;
             padding-right: 2rem;
+            will-change: transform;
           }
 
-          /* Only animate if text is overflowing (controlled by JS) */
-          .vinyl-viewer-widget .album-card:hover .album-artist.overflowing,
-          .vinyl-viewer-widget .album-card:hover .album-song.overflowing {
+          /* Only animate the inner text spans, not the container */
+          .vinyl-viewer-widget
+            .album-card:hover
+            .album-artist.overflowing
+            .album-artist-text,
+          .vinyl-viewer-widget
+            .album-card:hover
+            .album-artist.overflowing
+            .album-artist-text[aria-hidden="true"],
+          .vinyl-viewer-widget
+            .album-card:hover
+            .album-song.overflowing
+            .album-song-text,
+          .vinyl-viewer-widget
+            .album-card:hover
+            .album-song.overflowing
+            .album-song-text[aria-hidden="true"] {
             animation: scroll-text 10s linear infinite;
           }
+
 
           /* Smooth collapse so rows below "scroll up" into the gap */
           @keyframes fade-out-collapse {
