@@ -35,6 +35,7 @@ export interface YouTubeBridge {
   setControlsVisible(visible: boolean): void;
   onPlaybackProgress(callback: (progress: number) => void): void;
   getAspectRatio(): number;
+  setAspectRatio(aspectRatio: number | null): void;
   setFullscreen(enabled: boolean): void;
   isFullscreen(): boolean;
   onFullscreenChange(callback: (isFullscreen: boolean) => void): void;
@@ -71,6 +72,8 @@ function loadYouTubeIframeAPI(): Promise<void> {
 }
 
 let DYNAMIC_VIDEO_ASPECT = 16 / 9;
+let aspectRatioChangeCallback: ((aspectRatio: number) => void) | null = null;
+let manualAspectRatioOverride: number | null = null;
 
 /**
  * Set the aspect ratio for the current video manually
@@ -79,6 +82,10 @@ let DYNAMIC_VIDEO_ASPECT = 16 / 9;
 export function setVideoAspectRatio(aspectRatio: number): void {
   DYNAMIC_VIDEO_ASPECT = aspectRatio;
   console.log(`[YouTube] Manually set aspect ratio to ${aspectRatio}`);
+  // Notify the player to update its dimensions
+  if (aspectRatioChangeCallback) {
+    aspectRatioChangeCallback(aspectRatio);
+  }
 }
 
 export function createYouTubePlayer(): YouTubeBridge {
@@ -343,6 +350,29 @@ export function createYouTubePlayer(): YouTubeBridge {
   resizeObserver.observe(playerSize);
   resizeObserver.observe(viewport);
 
+  // Function to update viewport height based on aspect ratio
+  const updateViewportForAspectRatio = () => {
+    // Only update if player is not collapsed and not in fullscreen
+    if (!isCollapsed && !isFullscreenMode) {
+      const isTonearmInPlayArea = isTonearmInPlayAreaQuery?.() ?? false;
+      if (isTonearmInPlayArea) {
+        const targetHeight = 512 / DYNAMIC_VIDEO_ASPECT;
+        viewport.style.height = `${targetHeight}px`;
+        console.log(
+          `[YouTube] Updated viewport height to ${targetHeight}px for aspect ratio ${DYNAMIC_VIDEO_ASPECT}`,
+        );
+      }
+    }
+  };
+
+  // Register callback for aspect ratio changes
+  aspectRatioChangeCallback = (aspectRatio: number) => {
+    console.log(
+      `[YouTube] Aspect ratio changed to ${aspectRatio}, updating viewport`,
+    );
+    updateViewportForAspectRatio();
+  };
+
   const ensureApi = () => loadYouTubeIframeAPI();
 
   const updateVideoMetadata = () => {
@@ -357,6 +387,16 @@ export function createYouTubePlayer(): YouTubeBridge {
   };
 
   const detectAndUpdateAspectRatio = async (videoId: string) => {
+    // If there's a manual aspect ratio override, use it instead of detecting
+    if (manualAspectRatioOverride !== null) {
+      console.log(
+        `[YouTube] Using manual aspect ratio override: ${manualAspectRatioOverride}`,
+      );
+      DYNAMIC_VIDEO_ASPECT = manualAspectRatioOverride;
+      updateViewport();
+      return;
+    }
+
     try {
       const endpoint = "https://www.youtube.com/oembed";
       const params = new URLSearchParams({
@@ -920,6 +960,20 @@ export function createYouTubePlayer(): YouTubeBridge {
     getAspectRatio() {
       return DYNAMIC_VIDEO_ASPECT;
     },
+    setAspectRatio(aspectRatio: number | null) {
+      if (aspectRatio === null) {
+        // Clear manual override
+        manualAspectRatioOverride = null;
+        console.log(`[YouTube] Cleared manual aspect ratio override`);
+      } else {
+        DYNAMIC_VIDEO_ASPECT = aspectRatio;
+        manualAspectRatioOverride = aspectRatio;
+        console.log(
+          `[YouTube] Set manual aspect ratio override to ${aspectRatio}`,
+        );
+        updateViewportForAspectRatio();
+      }
+    },
     setFullscreen(enabled: boolean) {
       setFullscreen(enabled);
     },
@@ -970,9 +1024,13 @@ export function createYouTubePlayer(): YouTubeBridge {
   const handleFKeyToggle = (event: KeyboardEvent) => {
     if ((event.key.toLowerCase() === "f" || event.key === "F") && !isFPressed) {
       isFPressed = true;
-      // Don't toggle if the key is pressed within an input field or textarea
+      // Don't toggle if the key is pressed within an input, textarea, or contenteditable element
       const target = event.target as HTMLElement;
-      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") {
+      if (
+        target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.isContentEditable
+      ) {
         return;
       }
       // Always prevent default for F key to prevent browser focus behavior

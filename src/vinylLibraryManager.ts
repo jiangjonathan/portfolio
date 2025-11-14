@@ -31,7 +31,7 @@ interface WidgetConfig {
   adminToken?: string; // Admin token for delete operations
 }
 
-export class EnhancedVinylLibraryWidget {
+export class VinylLibraryManager {
   private config: WidgetConfig;
   private ownerLibrary: VisitorEntry[] = [];
   private isLoading = false;
@@ -639,6 +639,7 @@ export class EnhancedVinylLibraryWidget {
           enrichedMetadata.releaseYear,
           enrichedMetadata.releaseId,
           enrichedMetadata.aspectRatio,
+          enrichedMetadata.originalImageUrl,
         );
         console.log(`[handleAddSong] Backend returned entry:`, entry);
       } else {

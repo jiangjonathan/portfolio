@@ -16,6 +16,7 @@ export interface VisitorEntry {
   genre?: string; // Genre metadata
   releaseYear?: string; // Release year metadata
   originalImageUrl?: string; // Original image URL stored as fallback for stale blob URLs
+  duration?: string; // Video duration in seconds (client-side only, not stored in backend)
 }
 
 const STORAGE_KEY = "visitorLibrary";
@@ -119,7 +120,7 @@ export function addVisitorLink(
   };
 
   const library = loadVisitorLibrary();
-  library.push(newEntry);
+  library.unshift(newEntry); // Add to the top of the list
 
   if (saveVisitorLibrary(library)) {
     return newEntry;
@@ -220,6 +221,7 @@ export async function addToOwnerLibrary(
   releaseYear?: string,
   releaseId?: string,
   aspectRatio?: number,
+  originalImageUrl?: string,
 ): Promise<VisitorEntry | null> {
   try {
     const headers: Record<string, string> = {
@@ -251,6 +253,9 @@ export async function addToOwnerLibrary(
     }
     if (aspectRatio !== undefined) {
       requestBody.aspectRatio = aspectRatio;
+    }
+    if (originalImageUrl) {
+      requestBody.originalImageUrl = originalImageUrl;
     }
 
     const response = await fetch(`${apiUrl}/api/library`, {

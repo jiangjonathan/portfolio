@@ -13,6 +13,7 @@ export interface LibraryEntry {
   genre?: string; // Music genre from MusicBrainz
   releaseYear?: string; // Release year from MusicBrainz (YYYY format)
   releaseId?: string; // MusicBrainz release ID for caching
+  aspectRatio?: number; // Video aspect ratio (16/9, 4/3, 1, etc.)
   originalImageUrl?: string; // Original image URL stored as fallback for stale blob URLs
   addedAt: string;
 }
@@ -58,8 +59,9 @@ export function extractYouTubeId(input: string): string | null {
 function corsHeaders(): Record<string, string> {
   return {
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers":
+      "Content-Type, Authorization, X-Admin-Token",
   };
 }
 
@@ -68,8 +70,17 @@ function corsHeaders(): Record<string, string> {
  */
 async function handleGetLibrary(env: Env): Promise<Response> {
   try {
-    const entriesJson = await env.LIBRARY.get("entries");
-    const entries: LibraryEntry[] = entriesJson ? JSON.parse(entriesJson) : [];
+    const list = await env.LIBRARY.list({ prefix: "entry:" });
+    const promises = list.keys.map((key) => env.LIBRARY.get(key.name));
+    const values = await Promise.all(promises);
+    const entries: LibraryEntry[] = values
+      .map((value) => (value ? JSON.parse(value) : null))
+      .filter((entry): entry is LibraryEntry => entry !== null);
+
+    // Sort entries by addedAt date, newest first
+    entries.sort(
+      (a, b) => new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime(),
+    );
 
     return new Response(JSON.stringify({ entries }), {
       status: 200,
@@ -155,6 +166,8 @@ async function handlePostLibrary(
     genre,
     releaseYear,
     releaseId,
+    aspectRatio,
+    originalImageUrl,
   } = body;
 
   if (!rawYoutubeId || typeof rawYoutubeId !== "string") {
@@ -235,17 +248,14 @@ async function handlePostLibrary(
     genre: genre || undefined,
     releaseYear: releaseYear || undefined,
     releaseId: releaseId || undefined,
-    originalImageUrl: imageUrl, // Store the original URL as fallback for blob URLs
+    aspectRatio: aspectRatio || undefined,
+    originalImageUrl: originalImageUrl || imageUrl, // Store the original URL as fallback for blob URLs
     addedAt: new Date().toISOString(),
   };
 
-  // Get existing entries and add new one
+  // Save the new entry under its own key
   try {
-    const entriesJson = await env.LIBRARY.get("entries");
-    const entries: LibraryEntry[] = entriesJson ? JSON.parse(entriesJson) : [];
-    entries.push(newEntry);
-
-    await env.LIBRARY.put("entries", JSON.stringify(entries));
+    await env.LIBRARY.put(`entry:${newEntry.id}`, JSON.stringify(newEntry));
 
     return new Response(JSON.stringify({ success: true, entry: newEntry }), {
       status: 201,
@@ -287,24 +297,9 @@ async function handleDeleteLibrary(
     });
   }
 
-  // Get existing entries and remove the one with matching ID
+  // Delete the entry from KV by its key
   try {
-    const entriesJson = await env.LIBRARY.get("entries");
-    const entries: LibraryEntry[] = entriesJson ? JSON.parse(entriesJson) : [];
-
-    const filteredEntries = entries.filter((entry) => entry.id !== entryId);
-
-    if (filteredEntries.length === entries.length) {
-      return new Response(JSON.stringify({ error: "Entry not found" }), {
-        status: 404,
-        headers: {
-          "Content-Type": "application/json",
-          ...corsHeaders(),
-        },
-      });
-    }
-
-    await env.LIBRARY.put("entries", JSON.stringify(filteredEntries));
+    await env.LIBRARY.delete(`entry:${entryId}`);
 
     return new Response(JSON.stringify({ success: true }), {
       status: 200,
@@ -315,6 +310,106 @@ async function handleDeleteLibrary(
     });
   } catch (error) {
     return new Response(JSON.stringify({ error: "Failed to delete entry" }), {
+      status: 500,
+      headers: {
+        "Content-Type": "application/json",
+        ...corsHeaders(),
+      },
+    });
+  }
+}
+
+/**
+ * Handle PUT /api/library/:id - owner-only endpoint
+ */
+async function handlePutLibrary(
+  entryId: string,
+  request: Request,
+  env: Env,
+): Promise<Response> {
+  // Check authorization
+  const authError = verifyAdminAuth(request, env);
+  if (authError) return authError;
+
+  if (!entryId) {
+    return new Response(JSON.stringify({ error: "Missing entry ID" }), {
+      status: 400,
+      headers: {
+        "Content-Type": "application/json",
+        ...corsHeaders(),
+      },
+    });
+  }
+
+  // Get existing entry
+  const existingEntryJson = await env.LIBRARY.get(`entry:${entryId}`);
+  if (!existingEntryJson) {
+    return new Response(JSON.stringify({ error: "Entry not found" }), {
+      status: 404,
+      headers: {
+        "Content-Type": "application/json",
+        ...corsHeaders(),
+      },
+    });
+  }
+
+  const existingEntry: LibraryEntry = JSON.parse(existingEntryJson);
+
+  // Parse request body
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return new Response(JSON.stringify({ error: "Invalid JSON body" }), {
+      status: 400,
+      headers: {
+        "Content-Type": "application/json",
+        ...corsHeaders(),
+      },
+    });
+  }
+
+  // Update entry with new values (keeping existing values if not provided)
+  const updatedEntry: LibraryEntry = {
+    ...existingEntry,
+    artistName:
+      body.artistName !== undefined
+        ? body.artistName
+        : existingEntry.artistName,
+    songName:
+      body.songName !== undefined ? body.songName : existingEntry.songName,
+    imageUrl:
+      body.imageUrl !== undefined ? body.imageUrl : existingEntry.imageUrl,
+    note: body.note !== undefined ? body.note : existingEntry.note,
+    genre: body.genre !== undefined ? body.genre : existingEntry.genre,
+    releaseYear:
+      body.releaseYear !== undefined
+        ? body.releaseYear
+        : existingEntry.releaseYear,
+    releaseId:
+      body.releaseId !== undefined ? body.releaseId : existingEntry.releaseId,
+    aspectRatio:
+      body.aspectRatio !== undefined
+        ? body.aspectRatio
+        : existingEntry.aspectRatio,
+  };
+
+  // Save updated entry
+  try {
+    await env.LIBRARY.put(`entry:${entryId}`, JSON.stringify(updatedEntry));
+
+    return new Response(
+      JSON.stringify({ success: true, entry: updatedEntry }),
+      {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          ...corsHeaders(),
+        },
+      },
+    );
+  } catch (error) {
+    return new Response(JSON.stringify({ error: "Failed to update entry" }), {
       status: 500,
       headers: {
         "Content-Type": "application/json",
@@ -351,6 +446,13 @@ export default {
     if (deleteMatch && request.method === "DELETE") {
       const entryId = deleteMatch[1];
       return handleDeleteLibrary(entryId, request, env);
+    }
+
+    // Route: PUT /api/library/:id
+    const putMatch = url.pathname.match(/^\/api\/library\/([^\/]+)$/);
+    if (putMatch && request.method === "PUT") {
+      const entryId = putMatch[1];
+      return handlePutLibrary(entryId, request, env);
     }
 
     // 404 for unknown routes

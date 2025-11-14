@@ -5,6 +5,7 @@
 
 import {
   loadVisitorLibrary,
+  saveVisitorLibrary,
   removeVisitorLink,
   fetchOwnerLibrary,
   deleteOwnerEntry,
@@ -36,13 +37,17 @@ export class VinylLibraryViewer {
   private ownerLibrary: VisitorEntry[] = [];
   private showVisitorOnly: boolean = false;
   private searchQuery: string = ""; // Current search query
+  private sortState: {
+    category: "artist" | "genre" | "year" | null;
+    direction: "asc" | "desc";
+  } = { category: null, direction: "asc" };
 
   private scrollContainer: HTMLElement | null = null;
-  private itemHeight: number = 292; // 280px card + 12px gap
 
   private suppressNextLibraryUpdateEvent: boolean = false;
   private customOrder: Map<string, number> = new Map(); // Session-based custom ordering
   private isEditMode: boolean = false; // Toggle for showing delete buttons
+  private focusedEntryId: string | null = null; // Track currently focused entry
 
   constructor(config: ViewerConfig) {
     this.config = config;
@@ -102,6 +107,9 @@ export class VinylLibraryViewer {
 
     // Watch for changes in localStorage
     this.watchStorageChanges();
+
+    // Listen for video duration updates from the player
+    this.watchVideoDurationUpdates();
   }
 
   /**
@@ -171,9 +179,9 @@ export class VinylLibraryViewer {
 
   /**
    * Merge owner and visitor libraries, marking each entry's source
-   * If insertAtVisibleMiddle is provided, insert new entry at middle of visible area
+   * If insertAtTop is provided, insert new entry at the top of the list
    */
-  private mergeLibraries(insertAtVisibleMiddle?: string): void {
+  private mergeLibraries(insertAtTop?: string): void {
     const ownerEntries: ExtendedEntry[] = this.ownerLibrary.map((entry) => ({
       ...entry,
       isOwnerEntry: true,
@@ -188,8 +196,8 @@ export class VinylLibraryViewer {
 
     let combinedEntries: ExtendedEntry[];
 
-    // If we have an entry ID to insert at visible middle
-    if (insertAtVisibleMiddle && this.scrollContainer) {
+    // If we have an entry ID to insert at top
+    if (insertAtTop) {
       // First get all entries in their default order
       const allEntries = [...ownerEntries, ...visitorEntries];
       console.log(
@@ -200,7 +208,7 @@ export class VinylLibraryViewer {
       );
 
       // Find the new entry
-      const newEntry = allEntries.find((e) => e.id === insertAtVisibleMiddle);
+      const newEntry = allEntries.find((e) => e.id === insertAtTop);
       console.log(
         `[mergeLibraries] Found new entry:`,
         newEntry ? `yes (id: ${newEntry.id})` : "NO",
@@ -208,73 +216,21 @@ export class VinylLibraryViewer {
 
       if (newEntry) {
         // Remove the new entry from the list
-        const allOtherEntries = allEntries.filter(
-          (e) => e.id !== insertAtVisibleMiddle,
-        );
+        const allOtherEntries = allEntries.filter((e) => e.id !== insertAtTop);
         console.log(
           `[mergeLibraries] Other entries after removing new: ${allOtherEntries.length}`,
         );
 
-        // Calculate middle visible index based on OLD library length
-        const scrollTop = this.scrollContainer.scrollTop;
-        const visibleHeight =
-          this.scrollContainer.getBoundingClientRect().height;
+        // Insert at the top (index 0)
+        console.log(`[mergeLibraries] Inserting at top (index 0)`);
 
-        // Use the OLD library to calculate position (before adding new entry)
-        const oldLibraryLength = allOtherEntries.length;
-        const oneSetHeight = oldLibraryLength * this.itemHeight;
-
-        // Get the scroll position within the middle set (set 1 of 3)
-        const middleSetStart = oneSetHeight;
-        const middleSetEnd = oneSetHeight * 2;
-
-        let adjustedScroll: number;
-        if (scrollTop < middleSetStart) {
-          // In first set, use first set position
-          adjustedScroll = scrollTop;
-        } else if (scrollTop >= middleSetEnd) {
-          // In third set, use third set position minus 2 sets
-          adjustedScroll = scrollTop - oneSetHeight * 2;
-        } else {
-          // In middle set, use middle set position minus 1 set
-          adjustedScroll = scrollTop - oneSetHeight;
-        }
-
-        const visibleMiddleIndex = Math.floor(
-          (adjustedScroll + visibleHeight / 2) / this.itemHeight,
-        );
-
-        console.log(
-          `[mergeLibraries] scrollTop=${scrollTop}, visibleHeight=${visibleHeight}`,
-        );
-        console.log(
-          `[mergeLibraries] oldLibraryLength=${oldLibraryLength}, oneSetHeight=${oneSetHeight}`,
-        );
-        console.log(
-          `[mergeLibraries] adjustedScroll=${adjustedScroll}, itemHeight=${this.itemHeight}`,
-        );
-        console.log(
-          `[mergeLibraries] Calculated visibleMiddleIndex=${visibleMiddleIndex} of ${oldLibraryLength} total entries`,
-        );
-
-        // Insert at the middle visible index
-        const insertIndex = Math.max(
-          0,
-          Math.min(visibleMiddleIndex, allOtherEntries.length),
-        );
-        console.log(`[mergeLibraries] Final insertIndex=${insertIndex}`);
-
-        combinedEntries = [
-          ...allOtherEntries.slice(0, insertIndex),
-          newEntry,
-          ...allOtherEntries.slice(insertIndex),
-        ];
+        combinedEntries = [newEntry, ...allOtherEntries];
 
         console.log(
           `[mergeLibraries] Combined entries after insertion: ${combinedEntries.length}`,
         );
         console.log(
-          `[mergeLibraries] New entry is now at index: ${combinedEntries.findIndex((e) => e.id === insertAtVisibleMiddle)}`,
+          `[mergeLibraries] New entry is now at index: ${combinedEntries.findIndex((e) => e.id === insertAtTop)}`,
         );
       } else {
         // Fallback if entry not found
@@ -296,6 +252,11 @@ export class VinylLibraryViewer {
     if (this.searchQuery.trim()) {
       const lowerQuery = this.searchQuery.toLowerCase();
       this.library = this.library.filter((entry) => {
+        // Always include the focused entry regardless of search query
+        if (this.focusedEntryId && entry.id === this.focusedEntryId) {
+          return true;
+        }
+
         const artist = (entry.artistName || "").toLowerCase();
         const song = (entry.songName || "").toLowerCase();
         const genre = (entry.genre || "").toLowerCase();
@@ -345,6 +306,8 @@ export class VinylLibraryViewer {
             overflow-y: scroll;
             overflow-x: hidden;
             scrollbar-width: none;
+            position: relative;
+            z-index: 1;
           }
 
           .vinyl-viewer-widget .library-grid::-webkit-scrollbar {
@@ -377,10 +340,176 @@ export class VinylLibraryViewer {
           }
 
           .vinyl-viewer-widget .album-card.swapping-out {
-            transition: opacity 0.4s ease-out;
+            transition: opacity 0.2s ease-out;
             position: fixed;
             z-index: 999;
             opacity: 0;
+          }
+
+          .focus-card-container {
+            position: fixed;
+            top: 24px;
+            left: 52.5%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            width: 700px;
+            pointer-events: none;
+            isolation: isolate;
+          }
+
+          .focus-card-container .album-card {
+            pointer-events: auto;
+            animation: fade-in-focus 0.4s ease-out forwards;
+            flex-direction: row;
+            gap: 1rem;
+            width: 100%;
+            position: relative;
+          }
+
+          .focus-card-container .hide-focus-btn {
+            position: absolute;
+            top: 0.5rem;
+            right: 0.5rem;
+            opacity: 0;
+            transition: opacity 0.2s;
+            z-index: 10;
+          }
+
+          .focus-card-container .album-card:hover .hide-focus-btn {
+            opacity: 1;
+          }
+
+          .focus-card-container .album-cover-wrapper {
+            position: relative;
+            width: 250px;
+            height: 250px;
+            flex-shrink: 0;
+            border-radius: 2px;
+            overflow: visible;
+          }
+
+          .focus-card-container .album-cover {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            background: #222;
+            border: none;
+            display: block;
+          }
+
+          .focus-card-container .plastic-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            pointer-events: none;
+            mix-blend-mode: ${PLASTIC_OVERLAY_BLEND_MODE};
+            border-radius: 2px;
+          }
+
+          .focus-card-container .album-info {
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            background: transparent;
+            justify-content: center;
+            min-width: 0;
+            width: 180px;
+            flex-shrink: 0;
+            overflow: visible;
+            position: relative;
+          }
+
+          .focus-card-container .album-artist,
+          .focus-card-container .album-song {
+            white-space: nowrap;
+            overflow: hidden;
+            width: 100%;
+            position: relative;
+          }
+
+          .focus-card-container .album-artist {
+            font-size: 0.7rem;
+            color: #000;
+            margin-bottom: 0.15rem;
+            line-height: 1.1;
+            font-weight: normal;
+          }
+
+          .focus-card-container .album-song {
+            font-weight: 500;
+            font-size: 0.8rem;
+            color: #000;
+            line-height: 1.1;
+          }
+
+          .focus-card-container .album-year {
+            font-size: 0.65rem;
+            color: #888;
+            margin-top: 0.15rem;
+            line-height: 1.1;
+          }
+
+          .focus-card-container .album-aspect-ratio {
+            font-size: 0.65rem;
+            color: #888;
+            margin-top: 0.15rem;
+            line-height: 1.1;
+            display: none;
+          }
+
+          .focus-card-container .album-aspect-ratio.editing-enabled {
+            display: block;
+          }
+
+          .focus-card-container .owner-badge {
+            position: absolute;
+            top: 0.5rem;
+            left: 0.5rem;
+            background: rgba(0, 0, 0, 0.8);
+            color: #fff;
+            padding: 0.2rem 0.5rem;
+            font-size: 0.65rem;
+            border-radius: 2px;
+            z-index: 9;
+            text-transform: lowercase;
+            letter-spacing: 0.5px;
+            opacity: 0;
+            transition: opacity 0.2s;
+          }
+
+          .focus-card-container .album-card:hover .owner-badge {
+            opacity: 1;
+          }
+
+          .focus-card-container .delete-btn {
+            position: absolute;
+            top: 0.5rem;
+            right: 0.5rem;
+            background: rgba(220, 38, 38, 0.9);
+            color: #fff;
+            border: none;
+            border-radius: 2px;
+            padding: 0.3rem 0.6rem;
+            font-size: 0.7rem;
+            cursor: pointer;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s;
+            z-index: 10;
+          }
+
+          .vinyl-viewer-widget.edit-mode .focus-card-container .delete-btn {
+            opacity: 1 !important;
+            pointer-events: auto !important;
+          }
+
+          .focus-card-container .delete-btn:hover {
+            background: rgba(153, 27, 27, 0.9);
           }
 
           .vinyl-viewer-widget .album-card.focused {
@@ -395,28 +524,131 @@ export class VinylLibraryViewer {
             gap: 1rem;
           }
 
+          .vinyl-viewer-widget .album-card.focused .album-main,
+          .focus-card-container .album-main {
+            position: relative;
+            display: flex;
+            flex-direction: row;
+            gap: 1rem;
+            align-items: center;
+            flex: 1;
+          }
+
           .vinyl-viewer-widget .album-metadata {
             display: none;
           }
 
-          .vinyl-viewer-widget .album-card.focused .album-metadata {
+          .vinyl-viewer-widget .album-card.focused .album-metadata,
+          .focus-card-container .album-metadata {
             display: block;
-            padding: 0.5rem;
+            padding: 0;
             font-size: 0.75rem;
             color: #555;
             line-height: 1.4;
+            flex: 1;
+            max-width: 200px;
           }
 
-          .vinyl-viewer-widget .album-card.focused .album-metadata div {
+          .vinyl-viewer-widget .album-card.focused .album-metadata div,
+          .focus-card-container .album-metadata div {
             margin-bottom: 0.3rem;
           }
 
-          .vinyl-viewer-widget .album-card.focused .album-metadata strong {
+          .focus-card-container .apply-changes-btn {
+            position: absolute;
+            bottom: 0.5rem;
+            right: 0.5rem;
+            padding: 0;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 0.75rem;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease;
+          }
+
+          .focus-card-container .apply-changes-btn.visible {
+            opacity: 1;
+            pointer-events: auto;
+          }
+
+          .vinyl-viewer-widget .album-card.focused .album-metadata strong,
+          .focus-card-container .album-metadata strong {
             color: #000;
             font-weight: 600;
           }
 
+          .vinyl-viewer-widget .album-genre {
+            display: none;
+          }
+
+          .vinyl-viewer-widget .album-card.focused .album-genre {
+            display: block;
+            position: absolute;
+            bottom: 0.5rem;
+            left: 0.5rem;
+            font-size: 0.7rem;
+            color: #666;
+            font-style: italic;
+            max-width: 280px;
+            z-index: 5;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 0.2rem 0.4rem;
+            border-radius: 2px;
+          }
+
+          .focus-card-container .album-genre {
+            display: block;
+            font-size: 0.65rem;
+            color: #888;
+            margin-top: 0.5rem;
+            line-height: 1.1;
+            font-style: italic;
+          }
+
+          .focus-card-container .editable-field {
+            outline: none;
+            transition: background-color 0.2s, border 0.2s;
+          }
+
+          .focus-card-container .editable-field.editing-enabled {
+            background-color: rgba(255, 255, 200, 0.3);
+            border: 1px dashed #ccc;
+            padding: 2px 4px;
+            border-radius: 2px;
+            cursor: text;
+          }
+
+          .focus-card-container .editable-field.editing-enabled:hover {
+            background-color: rgba(255, 255, 200, 0.5);
+          }
+
+          .focus-card-container .editable-field.editing-enabled:focus {
+            background-color: rgba(255, 255, 200, 0.6);
+            border-color: #999;
+          }
+
+          .focus-card-container .empty-field {
+            color: #999;
+            font-style: italic;
+            display: none;
+          }
+
+          .focus-card-container .empty-field.editing-enabled {
+            display: block;
+          }
+
           @keyframes fade-in-focus {
+            from {
+              opacity: 0;
+            }
+            to {
+              opacity: 1;
+            }
+          }
+
+          @keyframes fade-in-duration {
             from {
               opacity: 0;
             }
@@ -453,6 +685,7 @@ export class VinylLibraryViewer {
             height: 250px;
             flex-shrink: 0;
             border-radius: 2px;
+            overflow: visible;
             // box-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
           }
 
@@ -512,7 +745,6 @@ export class VinylLibraryViewer {
             line-height: 1.1;
           }
 
-          /* Scrolling text animation on hover - only for overflowing text */
           /* Scrolling text animation on hover - only for overflowing text */
           @keyframes scroll-text {
             0% {
@@ -584,7 +816,7 @@ export class VinylLibraryViewer {
           }
 
           .vinyl-viewer-widget .album-card.deleting {
-            animation: fade-out-collapse 2000ms ease-in-out forwards !important;
+            animation: fade-out-collapse 800ms ease-in-out forwards !important;
             overflow: hidden;
             pointer-events: none;
           }
@@ -609,6 +841,14 @@ export class VinylLibraryViewer {
               padding-top: 0.5rem;
               padding-bottom: 0.5rem;
             }
+            95% {
+              opacity: 1;
+              max-height: 280px;      /* Final card height */
+              margin-top: 0;
+              margin-bottom: 0.75rem; /* Final gap */
+              padding-top: 0.5rem;
+              padding-bottom: 0.5rem;
+            }
             100% {
               opacity: 1;
               max-height: 280px;      /* Final card height */
@@ -620,7 +860,7 @@ export class VinylLibraryViewer {
           }
 
           .vinyl-viewer-widget .album-card.inserting {
-            animation: slide-in-expand 2500ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards !important;
+            animation: slide-in-expand 1000ms cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards !important;
             overflow: visible !important;
             z-index: 10;
             position: relative;
@@ -683,23 +923,61 @@ export class VinylLibraryViewer {
             gap: 0.5rem;
             position: sticky;
             top: 0;
-            background: #f7f7f7;
+            background: transparent;
             z-index: 100;
             padding: 0.5rem 0;
           }
 
           .vinyl-viewer-widget .filter-btn {
             /* Uses centralized .vinyl-hyperlink styles from main.ts */
+            display: inline-block;
+            vertical-align: baseline;
+            line-height: 1.2;
           }
 
           .vinyl-viewer-widget .filter-btn.active {
             color: var(--vinyl-link-hover-color);
           }
 
+          .vinyl-viewer-widget .sort-container {
+            position: relative;
+            display: inline-block;
+            vertical-align: baseline;
+          }
+
+          .vinyl-viewer-widget .sort-container .filter-btn {
+            vertical-align: baseline;
+            line-height: 1;
+          }
+
+          .vinyl-viewer-widget .sort-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            background: white;
+            border: 1px solid #ddd;
+            margin-top: 0.25rem;
+            min-width: 120px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            z-index: 1000;
+          }
+
+          .vinyl-viewer-widget .sort-option {
+            padding: 0.5rem 1rem;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: background 0.2s;
+          }
+
+          .vinyl-viewer-widget .sort-option:hover {
+            background: #f5f5f5;
+          }
+
           .vinyl-viewer-widget .search-container {
             display: flex;
             align-items: baseline;
             gap: 0.3rem;
+            min-width: 200px;
           }
 
           .vinyl-viewer-widget .search-label {
@@ -710,6 +988,7 @@ export class VinylLibraryViewer {
             -moz-osx-font-smoothing: grayscale;
             position: relative;
             top: 0px;
+            flex-shrink: 0;
           }
 
           .vinyl-viewer-widget .search-input {
@@ -719,6 +998,7 @@ export class VinylLibraryViewer {
             font-size: 0.85rem;
             font-family: inherit;
             width: 120px;
+            min-width: 120px;
             -webkit-font-smoothing: none;
             -moz-osx-font-smoothing: grayscale;
             line-height: 1;
@@ -765,7 +1045,7 @@ export class VinylLibraryViewer {
             font-size: 0.65rem;
             border-radius: 2px;
             z-index: 9;
-            text-transform: uppercase;
+            text-transform: lowercase;
             letter-spacing: 0.5px;
             opacity: 0;
             transition: opacity 0.2s;
@@ -786,9 +1066,16 @@ export class VinylLibraryViewer {
             >
             <button id="vinyl-clear-search-btn" class="clear-search-btn">×</button>
           </div>
+          <div class="sort-container">
+            <button id="vinyl-sort-btn" class="filter-btn vinyl-hyperlink">sort</button>
+            <div id="vinyl-sort-dropdown" class="sort-dropdown" style="display: none;">
+              <div class="sort-option" data-category="artist">artist</div>
+              <div class="sort-option" data-category="genre">genre</div>
+              <div class="sort-option" data-category="year">year</div>
+            </div>
+          </div>
           <button id="vinyl-filter-btn" class="filter-btn vinyl-hyperlink">show mine only</button>
-          <button id="vinyl-jump-top-btn" class="filter-btn vinyl-hyperlink">jump to top</button>
-          <button id="vinyl-sort-btn" class="filter-btn vinyl-hyperlink">sort</button>
+          <button id="vinyl-jump-top-btn" class="filter-btn vinyl-hyperlink">to top</button>
           <button id="vinyl-edit-btn" class="filter-btn vinyl-hyperlink">edit</button>
         </div>
         <div class="library-grid" id="vinyl-viewer-grid"></div>
@@ -875,12 +1162,13 @@ export class VinylLibraryViewer {
               <div class="album-main">
                 <div class="album-cover-wrapper">
                   <img
-                    src="${this.getImageWithFallback(entry.imageUrl)}"
+                    src="${this.getImageWithFallback(entry.imageUrl, entry)}"
                     alt="${this.escapeHtml(songName)}"
                     class="album-cover"
                     loading="lazy"
                   >
                   ${plasticOverlay}
+                  ${genre ? `<div class="album-genre">${this.escapeHtml(genre)}</div>` : ""}
                 </div>
                 ${isOwner ? '<div class="owner-badge">Owner</div>' : ""}
                 ${canDelete ? `<button class="delete-btn" data-entry-id="${entry.id}" data-is-owner="${isOwner}" title="Delete from collection">×</button>` : ""}
@@ -894,7 +1182,6 @@ export class VinylLibraryViewer {
                   ${releaseYear ? `<div class="album-year" style="margin-left:0.5px;">${this.escapeHtml(releaseYear)}</div>` : ""}
                 </div>
                 <div class="album-metadata">
-                  ${genre ? `<div><strong>Genre:</strong> ${this.escapeHtml(genre)}</div>` : ""}
                   ${note ? `<div>${this.escapeHtml(note)}</div>` : ""}
                 </div>
               </div>
@@ -950,6 +1237,370 @@ export class VinylLibraryViewer {
   }
 
   /**
+   * Show the currently focused card (public method for show focus button)
+   */
+  public showFocusCard(): void {
+    if (!this.focusedEntryId) return;
+
+    const entry = this.library.find((e) => e.id === this.focusedEntryId);
+    if (entry) {
+      const focusContainer = document.getElementById(
+        "vinyl-focus-card-container-root",
+      );
+      if (focusContainer) {
+        // Fade in animation
+        focusContainer.style.opacity = "0";
+        this.renderFocusCard(entry);
+
+        requestAnimationFrame(() => {
+          focusContainer.style.transition = "opacity 0.3s ease";
+          focusContainer.style.opacity = "1";
+        });
+      }
+    }
+  }
+
+  /**
+   * Render the focus card in the dedicated container
+   */
+  public renderFocusCard(entry: ExtendedEntry): void {
+    const focusContainer = document.getElementById(
+      "vinyl-focus-card-container-root",
+    );
+    if (!focusContainer) return;
+
+    // Hide the "show focus" button since we're showing the focus card
+    const showFocusBtn = document.getElementById("vinyl-show-focus-btn");
+    if (showFocusBtn) {
+      showFocusBtn.style.display = "none";
+    }
+
+    const isOwner = entry.isOwnerEntry || false;
+    const canDelete = !isOwner || this.config.isAdmin;
+    const canEdit = canDelete; // Same permission as delete
+    const artistName = entry.artistName || "Unknown Artist";
+    const songName = entry.songName || entry.note || "Unknown Song";
+    const plasticOverlay = generatePlasticOverlay(entry.id);
+
+    const genre = entry.genre || "";
+    const releaseYear = entry.releaseYear || "";
+    const note = entry.note || "";
+    const aspectRatio =
+      entry.aspectRatio !== undefined ? String(entry.aspectRatio) : "";
+
+    console.log(
+      `[renderFocusCard] Entry ${entry.id} duration:`,
+      entry.duration,
+    );
+
+    focusContainer.innerHTML = `
+      <div class="album-card" data-entry-id="${entry.id}">
+        <button class="hide-focus-btn vinyl-hyperlink">hide focus</button>
+        <div class="album-main">
+          <div class="album-cover-wrapper">
+            <img
+              src="${this.getImageWithFallback(entry.imageUrl, entry)}"
+              alt="${this.escapeHtml(songName)}"
+              class="album-cover"
+            >
+            ${plasticOverlay}
+          </div>
+          ${isOwner ? '<div class="owner-badge">Owner</div>' : ""}
+          ${canDelete ? `<button class="delete-btn" data-entry-id="${entry.id}" data-is-owner="${isOwner}" title="Delete from collection">×</button>` : ""}
+          <div class="album-info">
+            <div class="album-artist">
+              <span class="album-artist-text ${canEdit ? "editable-field" : ""}" ${canEdit ? 'contenteditable="false"' : ""} data-field="artistName">${this.escapeHtml(artistName)}</span>
+            </div>
+            <div class="album-song">
+              <span class="album-song-text ${canEdit ? "editable-field" : ""}" ${canEdit ? 'contenteditable="false"' : ""} data-field="songName">${this.escapeHtml(songName)}</span>
+            </div>
+            ${releaseYear ? `<div class="album-year ${canEdit ? "editable-field" : ""}" ${canEdit ? 'contenteditable="false"' : ""} data-field="releaseYear" style="margin-left:0.5px;">${this.escapeHtml(releaseYear)}</div>` : canEdit ? `<div class="album-year editable-field empty-field" contenteditable="false" data-field="releaseYear" style="margin-left:0.5px;">Add year</div>` : ""}
+            ${genre ? `<div class="album-genre ${canEdit ? "editable-field" : ""}" ${canEdit ? 'contenteditable="false"' : ""} data-field="genre">${this.escapeHtml(genre)}</div>` : canEdit ? `<div class="album-genre editable-field empty-field" contenteditable="false" data-field="genre">Add genre</div>` : ""}
+            ${canEdit ? (aspectRatio ? `<div class="album-aspect-ratio editable-field" contenteditable="false" data-field="aspectRatio" style="margin-left:0.5px;">aspect ratio: ${this.escapeHtml(aspectRatio)}</div>` : `<div class="album-aspect-ratio editable-field empty-field" contenteditable="false" data-field="aspectRatio" style="margin-left:0.5px;">Add aspect ratio</div>`) : ""}
+          </div>
+          ${entry.duration ? `<div class="album-duration" style="position: absolute; bottom: 0.5rem; left: 266px; color: #888; font-size: 0.7rem; opacity: 0; animation: fade-in-duration 0.5s ease-out 0.2s forwards;">Length: ${this.formatDuration(entry.duration)}</div>` : ""}
+          ${
+            note
+              ? `<div class="album-metadata">
+            <div class="${canEdit ? "editable-field" : ""}" ${canEdit ? 'contenteditable="false"' : ""} data-field="note">${this.escapeHtml(note)}</div>
+          </div>`
+              : canEdit
+                ? `<div class="album-metadata">
+            <div class="editable-field empty-field" contenteditable="false" data-field="note">Add note</div>
+          </div>`
+                : ""
+          }
+        </div>
+        ${canEdit ? `<button class="apply-changes-btn vinyl-hyperlink">apply changes</button>` : ""}
+      </div>
+    `;
+
+    // Attach delete button listener if present
+    const deleteBtn = focusContainer.querySelector(".delete-btn");
+    if (deleteBtn) {
+      deleteBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const entryId = (deleteBtn as HTMLElement).getAttribute(
+          "data-entry-id",
+        );
+        const isOwner =
+          (deleteBtn as HTMLElement).getAttribute("data-is-owner") === "true";
+        if (entryId) {
+          this.handleDelete(entryId, isOwner);
+        }
+      });
+    }
+
+    // Attach hide focus button listener
+    const hideFocusBtn = focusContainer.querySelector(".hide-focus-btn");
+    if (hideFocusBtn) {
+      hideFocusBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        // Fade out animation
+        focusContainer.style.transition = "opacity 0.3s ease";
+        focusContainer.style.opacity = "0";
+
+        setTimeout(() => {
+          focusContainer.innerHTML = "";
+          focusContainer.style.opacity = "1";
+          // DON'T clear focusedEntryId - we need it to show the card again
+
+          // Show the "show focus" button
+          const showFocusBtn = document.getElementById("vinyl-show-focus-btn");
+          if (showFocusBtn) {
+            showFocusBtn.style.display = "inline";
+          }
+        }, 300);
+      });
+    }
+
+    // Setup editable fields
+    if (canEdit) {
+      this.setupEditableFields(focusContainer, entry);
+    }
+  }
+
+  /**
+   * Setup editable fields for focus card
+   */
+  private setupEditableFields(
+    container: HTMLElement,
+    entry: ExtendedEntry,
+  ): void {
+    const editableFields = container.querySelectorAll(".editable-field");
+
+    // Get apply button
+    const applyBtn = container.querySelector(".apply-changes-btn");
+
+    // Listen for edit mode changes
+    const updateEditableState = () => {
+      const isEditMode = this.isEditMode;
+      editableFields.forEach((field) => {
+        (field as HTMLElement).contentEditable = isEditMode ? "true" : "false";
+        if (isEditMode) {
+          field.classList.add("editing-enabled");
+        } else {
+          field.classList.remove("editing-enabled");
+        }
+      });
+
+      // Show/hide apply button based on edit mode
+      if (applyBtn) {
+        if (isEditMode) {
+          applyBtn.classList.add("visible");
+        } else {
+          applyBtn.classList.remove("visible");
+        }
+      }
+    };
+
+    // Initial state
+    updateEditableState();
+
+    // Watch for edit mode changes globally
+    const observer = new MutationObserver(() => {
+      updateEditableState();
+    });
+    const widgetContainer = document.querySelector(".vinyl-viewer-widget");
+    if (widgetContainer) {
+      observer.observe(widgetContainer, {
+        attributes: true,
+        attributeFilter: ["class"],
+      });
+    }
+
+    // Clear placeholder text when field is focused
+    editableFields.forEach((field) => {
+      field.addEventListener("focus", () => {
+        const text = (field as HTMLElement).textContent?.trim() || "";
+        // Check if this is a placeholder (starts with "Add ")
+        if (text.startsWith("Add ")) {
+          (field as HTMLElement).textContent = "";
+        }
+      });
+    });
+
+    // Add apply button handler
+    console.log("[Apply Button] Found apply button:", applyBtn);
+    if (applyBtn) {
+      applyBtn.addEventListener("click", async () => {
+        console.log("[Apply Button] Button clicked!");
+        const updatedEntry = { ...entry };
+        let hasChanges = false;
+
+        // Collect all changes from editable fields
+        editableFields.forEach((field) => {
+          const fieldName = (field as HTMLElement).getAttribute("data-field");
+          const newValue = (field as HTMLElement).textContent?.trim() || "";
+
+          if (!fieldName) return;
+
+          // Don't save if it's still placeholder text
+          if (newValue.startsWith("Add ")) return;
+
+          // Parse aspect ratio field
+          let valueToSave: string | number | undefined = newValue;
+          if (fieldName === "aspectRatio") {
+            // Extract just the number from "aspect ratio: X" or allow direct number input
+            const cleanValue = newValue.replace(/aspect ratio:\s*/i, "").trim();
+            if (cleanValue === "") {
+              valueToSave = undefined; // Clear the aspect ratio
+            } else {
+              let parsed: number;
+              // Handle formats like "16:9", "4:3", "16/9", "4/3"
+              if (cleanValue.includes(":")) {
+                const [width, height] = cleanValue
+                  .split(":")
+                  .map((s) => parseFloat(s.trim()));
+                if (!isNaN(width) && !isNaN(height) && height > 0) {
+                  parsed = width / height;
+                } else {
+                  console.warn("Invalid aspect ratio format:", cleanValue);
+                  return; // Skip invalid values
+                }
+              } else if (cleanValue.includes("/")) {
+                const [width, height] = cleanValue
+                  .split("/")
+                  .map((s) => parseFloat(s.trim()));
+                if (!isNaN(width) && !isNaN(height) && height > 0) {
+                  parsed = width / height;
+                } else {
+                  console.warn("Invalid aspect ratio format:", cleanValue);
+                  return; // Skip invalid values
+                }
+              } else {
+                // Direct decimal number
+                parsed = parseFloat(cleanValue);
+                if (isNaN(parsed) || parsed <= 0) {
+                  console.warn("Invalid aspect ratio value:", cleanValue);
+                  return; // Skip invalid values
+                }
+              }
+              valueToSave = parsed;
+            }
+          }
+
+          // Check if value changed
+          if ((updatedEntry as any)[fieldName] !== valueToSave) {
+            (updatedEntry as any)[fieldName] = valueToSave;
+            hasChanges = true;
+            console.log(`Changed ${fieldName} to:`, valueToSave);
+          }
+        });
+
+        if (!hasChanges) {
+          console.log("No changes to apply");
+          return;
+        }
+
+        // Save to appropriate storage
+        if (
+          entry.isOwnerEntry &&
+          this.config.apiUrl &&
+          this.config.adminToken
+        ) {
+          // Save to backend
+          await this.updateOwnerEntry(updatedEntry);
+        } else {
+          // Save to localStorage
+          this.updateVisitorEntry(updatedEntry);
+        }
+
+        console.log("✓ Changes applied successfully");
+
+        // Update the entry reference
+        Object.assign(entry, updatedEntry);
+
+        // If aspect ratio was changed and this is the focused entry, update the player live
+        if (
+          hasChanges &&
+          updatedEntry.aspectRatio !== undefined &&
+          this.focusedEntryId === entry.id
+        ) {
+          // Dispatch event to update aspect ratio live
+          const aspectRatioEvent = new CustomEvent("update-aspect-ratio", {
+            detail: { aspectRatio: updatedEntry.aspectRatio },
+          });
+          window.dispatchEvent(aspectRatioEvent);
+        }
+      });
+    }
+  }
+
+  /**
+   * Update owner entry in backend
+   */
+  private async updateOwnerEntry(entry: ExtendedEntry): Promise<void> {
+    if (!this.config.apiUrl || !this.config.adminToken) return;
+
+    try {
+      const response = await fetch(
+        `${this.config.apiUrl}/api/library/${entry.id}`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${this.config.adminToken}`,
+          },
+          body: JSON.stringify(entry),
+        },
+      );
+
+      if (response.ok) {
+        console.log("✓ Entry updated in backend");
+        // Refresh owner library
+        this.ownerLibrary = await fetchOwnerLibrary(this.config.apiUrl);
+        // Recreate blob URLs after fetching from backend
+        await this.recreateBlobUrls();
+        this.mergeLibraries();
+      } else {
+        console.error("Failed to update entry:", await response.text());
+      }
+    } catch (error) {
+      console.error("Error updating entry:", error);
+    }
+  }
+
+  /**
+   * Update visitor entry in localStorage
+   */
+  private updateVisitorEntry(entry: ExtendedEntry): void {
+    const library = loadVisitorLibrary();
+    const index = library.findIndex((e) => e.id === entry.id);
+
+    if (index !== -1) {
+      library[index] = entry;
+      localStorage.setItem("visitorLibrary", JSON.stringify(library));
+      this.visitorLibrary = library;
+      this.mergeLibraries();
+      console.log("✓ Entry updated in localStorage");
+    }
+  }
+
+  /**
    * Attach event listeners to album cards
    */
   private attachCardListeners(): void {
@@ -976,6 +1627,9 @@ export class VinylLibraryViewer {
           return;
         }
 
+        // Track the focused entry ID
+        this.focusedEntryId = entryId;
+
         // Move this card to the front of the custom order
         if (entryId) {
           this.customOrder.set(entryId, Date.now());
@@ -984,30 +1638,11 @@ export class VinylLibraryViewer {
           this.attachCardListeners();
         }
 
-        // Remove focus from all focused cards (including duplicates in carousel)
-        const previouslyFocused = document.querySelectorAll(
-          ".vinyl-viewer-widget .album-card.focused",
-        );
-
-        // Fade out old card and fade in new card
-        previouslyFocused.forEach((c) => {
-          (c as HTMLElement).classList.add("swapping-out");
-          setTimeout(() => {
-            (c as HTMLElement).classList.remove("focused");
-            (c as HTMLElement).classList.remove("swapping-out");
-          }, 400);
-        });
-
-        // Get all duplicate cards with the new entry and add focus to all of them
-        const allMatchingCards = document.querySelectorAll(
-          `.vinyl-viewer-widget .album-card[data-entry-id="${entryId}"]`,
-        );
-        allMatchingCards.forEach((c) => {
-          (c as HTMLElement).classList.add("focused");
-        });
-
         const entry = this.library.find((e) => e.id === entryId);
         if (entry) {
+          // Render the focus card in the separate container
+          this.renderFocusCard(entry);
+
           window.dispatchEvent(
             new CustomEvent("load-vinyl-song", {
               detail: {
@@ -1048,8 +1683,8 @@ export class VinylLibraryViewer {
       filterBtn.addEventListener("click", () => {
         this.showVisitorOnly = !this.showVisitorOnly;
         filterBtn.textContent = this.showVisitorOnly
-          ? "Show All"
-          : "Show Mine Only";
+          ? "show combined"
+          : "show mine only";
         filterBtn.classList.toggle("active", this.showVisitorOnly);
         this.mergeLibraries();
         this.updateVisibleItems();
@@ -1109,14 +1744,52 @@ export class VinylLibraryViewer {
     }
 
     const sortBtn = document.getElementById("vinyl-sort-btn");
-    if (sortBtn) {
-      sortBtn.addEventListener("click", () => {
-        const sortOption = prompt(
-          "Sort by:\n1. Artist (A-Z)\n2. Genre\n3. Release Year\n4. Reset to default\n\nEnter 1, 2, 3, or 4:",
-        );
-        if (sortOption) {
-          this.sortLibrary(sortOption);
+    const sortDropdown = document.getElementById("vinyl-sort-dropdown");
+
+    if (sortBtn && sortDropdown) {
+      // Toggle dropdown or cycle sort direction
+      sortBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+
+        if (this.sortState.category === null) {
+          // No category selected - show dropdown
+          sortDropdown.style.display =
+            sortDropdown.style.display === "none" ? "block" : "none";
+        } else {
+          // Category selected - toggle direction or reset
+          if (this.sortState.direction === "asc") {
+            this.sortState.direction = "desc";
+            this.applySorting();
+            this.updateSortButtonText();
+          } else {
+            // Reset to no sort
+            this.sortState = { category: null, direction: "asc" };
+            this.customOrder.clear();
+            this.mergeLibraries();
+            this.updateVisibleItems();
+            this.attachCardListeners();
+            this.updateSortButtonText();
+          }
         }
+      });
+
+      // Handle dropdown option selection
+      sortDropdown.querySelectorAll(".sort-option").forEach((option) => {
+        option.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const category = (option as HTMLElement).getAttribute(
+            "data-category",
+          ) as "artist" | "genre" | "year";
+          this.sortState = { category, direction: "asc" };
+          sortDropdown.style.display = "none";
+          this.applySorting();
+          this.updateSortButtonText();
+        });
+      });
+
+      // Close dropdown when clicking outside
+      document.addEventListener("click", () => {
+        sortDropdown.style.display = "none";
       });
     }
 
@@ -1129,65 +1802,76 @@ export class VinylLibraryViewer {
     }
   }
 
-  /**
-   * Search the library by artist or song name
-   */
-  private searchLibrary(query: string): void {
-    const lowerQuery = query.toLowerCase();
-    const filtered = this.library.filter((entry) => {
-      const artist = (entry.artistName || "").toLowerCase();
-      const song = (entry.songName || "").toLowerCase();
-      return artist.includes(lowerQuery) || song.includes(lowerQuery);
-    });
-
-    if (filtered.length === 0) {
-      alert("No results found");
-      return;
-    }
-
-    // Scroll to first result
-    const firstResult = filtered[0];
-    const cards = document.querySelectorAll(
-      `.vinyl-viewer-widget .album-card[data-entry-id="${firstResult.id}"]`,
-    );
-    if (cards.length > 0) {
-      cards[0].scrollIntoView({ behavior: "smooth", block: "center" });
-    }
-  }
+  // Commented out unused search functionality - can be re-enabled later
+  // private _searchLibrary(query: string): void {
+  //   const lowerQuery = query.toLowerCase();
+  //   const filtered = this.library.filter((entry) => {
+  //     const artist = (entry.artistName || "").toLowerCase();
+  //     const song = (entry.songName || "").toLowerCase();
+  //     return artist.includes(lowerQuery) || song.includes(lowerQuery);
+  //   });
+  //
+  //   if (filtered.length === 0) {
+  //     alert("No results found");
+  //     return;
+  //   }
+  //
+  //   // Scroll to first result
+  //   const firstResult = filtered[0];
+  //   const cards = document.querySelectorAll(
+  //     `.vinyl-viewer-widget .album-card[data-entry-id="${firstResult.id}"]`,
+  //   );
+  //   if (cards.length > 0) {
+  //     cards[0].scrollIntoView({ behavior: "smooth", block: "center" });
+  //   }
+  // }
 
   /**
-   * Sort the library by different criteria
+   * Apply current sort state to library
    */
-  private sortLibrary(option: string): void {
-    switch (option) {
-      case "1":
-        this.library.sort((a, b) =>
-          (a.artistName || "").localeCompare(b.artistName || ""),
+  private applySorting(): void {
+    if (!this.sortState.category) return;
+
+    const direction = this.sortState.direction === "asc" ? 1 : -1;
+
+    switch (this.sortState.category) {
+      case "artist":
+        this.library.sort(
+          (a, b) =>
+            direction * (a.artistName || "").localeCompare(b.artistName || ""),
         );
         break;
-      case "2":
-        this.library.sort((a, b) =>
-          (a.genre || "").localeCompare(b.genre || ""),
+      case "genre":
+        this.library.sort(
+          (a, b) => direction * (a.genre || "").localeCompare(b.genre || ""),
         );
         break;
-      case "3":
-        this.library.sort((a, b) =>
-          (b.releaseYear || "").localeCompare(a.releaseYear || ""),
+      case "year":
+        this.library.sort(
+          (a, b) =>
+            direction *
+            (b.releaseYear || "").localeCompare(a.releaseYear || ""),
         );
         break;
-      case "4":
-        this.customOrder.clear();
-        this.mergeLibraries();
-        this.updateVisibleItems();
-        this.attachCardListeners();
-        return;
-      default:
-        alert("Invalid option");
-        return;
     }
 
     this.updateVisibleItems();
     this.attachCardListeners();
+  }
+
+  /**
+   * Update sort button text to show current sort state
+   */
+  private updateSortButtonText(): void {
+    const sortBtn = document.getElementById("vinyl-sort-btn");
+    if (!sortBtn) return;
+
+    if (this.sortState.category === null) {
+      sortBtn.textContent = "sort";
+    } else {
+      const arrow = this.sortState.direction === "asc" ? "▲" : "▼";
+      sortBtn.textContent = `sort: ${this.sortState.category} ${arrow}`;
+    }
   }
 
   /**
@@ -1290,6 +1974,71 @@ export class VinylLibraryViewer {
   }
 
   /**
+   * Watch for video duration updates from the player
+   */
+  private watchVideoDurationUpdates(): void {
+    window.addEventListener("video-duration-loaded", ((event: CustomEvent) => {
+      const { videoId, duration } = event.detail;
+      console.log(
+        `[vinylLibraryViewer] Received duration for video ${videoId}: ${duration}s`,
+      );
+
+      // Update the entry in both libraries
+      const visitorEntry = this.visitorLibrary.find(
+        (e) => e.youtubeId === videoId,
+      );
+      if (visitorEntry) {
+        visitorEntry.duration = String(duration);
+        saveVisitorLibrary(this.visitorLibrary);
+        console.log(`[vinylLibraryViewer] Updated visitor entry with duration`);
+      }
+
+      const ownerEntry = this.ownerLibrary.find((e) => e.youtubeId === videoId);
+      if (ownerEntry) {
+        ownerEntry.duration = String(duration);
+        console.log(
+          `[vinylLibraryViewer] Updated owner entry with duration (not persisted to backend)`,
+        );
+      }
+
+      // Refresh the display if this is the focused entry
+      if (this.focusedEntryId) {
+        const focusedEntry = this.library.find(
+          (e) => e.id === this.focusedEntryId,
+        );
+        if (focusedEntry && focusedEntry.youtubeId === videoId) {
+          focusedEntry.duration = String(duration);
+
+          // Just update the duration text in the existing DOM instead of re-rendering
+          const focusContainer = document.getElementById(
+            "vinyl-focus-card-container-root",
+          );
+          if (focusContainer) {
+            const albumCard = focusContainer.querySelector(".album-card");
+            if (albumCard) {
+              // Remove any existing duration elements first to prevent duplicates
+              const existingDurations =
+                albumCard.querySelectorAll(".album-duration");
+              existingDurations.forEach((el) => el.remove());
+
+              // Create and append duration element at the bottom of the card, next to cover
+              const durationDiv = document.createElement("div");
+              durationDiv.className = "album-duration";
+              durationDiv.style.cssText =
+                "position: absolute; bottom: 0.5rem; left: 266px; color: #888; font-size: 0.7rem; opacity: 0; animation: fade-in-duration 0.5s ease-out forwards;";
+              durationDiv.textContent = `Length: ${this.formatDuration(duration)}`;
+              albumCard.appendChild(durationDiv);
+              console.log(
+                `[vinylLibraryViewer] Updated focus card duration without re-render`,
+              );
+            }
+          }
+        }
+      }
+    }) as EventListener);
+  }
+
+  /**
    * Watch for changes in localStorage to update the viewer
    */
   private watchStorageChanges(): void {
@@ -1338,7 +2087,7 @@ export class VinylLibraryViewer {
 
       if (isNewAddition && newEntryId) {
         console.log(
-          `[vinyl-library-updated] Calling mergeLibraries with insertAtVisibleMiddle="${newEntryId}"`,
+          `[vinyl-library-updated] Calling mergeLibraries with insertAtTop="${newEntryId}"`,
         );
         // Don't set the flag yet - we'll set it after render
         this.mergeLibraries(newEntryId);
@@ -1395,7 +2144,7 @@ export class VinylLibraryViewer {
                 cards.forEach((card) => {
                   card.classList.remove("inserting");
                 });
-              }, 2500);
+              }, 1000);
             }
           });
         });
@@ -1436,7 +2185,19 @@ export class VinylLibraryViewer {
   /**
    * Get image URL with fallback
    */
-  private getImageWithFallback(imageUrl: string | null): string {
+  private getImageWithFallback(
+    imageUrl: string | null,
+    entry?: VisitorEntry,
+  ): string {
+    // If imageUrl is a blob URL, try to use originalImageUrl instead
+    if (imageUrl && imageUrl.startsWith("blob:")) {
+      if (
+        entry?.originalImageUrl &&
+        !entry.originalImageUrl.startsWith("blob:")
+      ) {
+        return entry.originalImageUrl;
+      }
+    }
     if (imageUrl) return imageUrl;
     return 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"%3E%3Crect fill="%23333" width="200" height="200"/%3E%3Ctext x="100" y="100" text-anchor="middle" dy=".3em" fill="%23999" font-size="14"%3ENo Image%3C/text%3E%3C/svg%3E';
   }
@@ -1453,6 +2214,25 @@ export class VinylLibraryViewer {
       "'": "&#039;",
     };
     return text.replace(/[&<>"']/g, (m) => map[m]);
+  }
+
+  /**
+   * Format duration from seconds to MM:SS or HH:MM:SS
+   */
+  private formatDuration(seconds: string | number): string {
+    const totalSeconds =
+      typeof seconds === "string" ? parseInt(seconds, 10) : seconds;
+    if (isNaN(totalSeconds)) return "";
+
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const secs = totalSeconds % 60;
+
+    if (hours > 0) {
+      return `${hours}:${minutes.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+    } else {
+      return `${minutes}:${secs.toString().padStart(2, "0")}`;
+    }
   }
 
   /**

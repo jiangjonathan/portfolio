@@ -1,25 +1,16 @@
 import "./style.css";
 import {
-  ACESFilmicToneMapping,
-  AmbientLight,
   Box3,
   Color,
-  DirectionalLight,
   Group,
-  LinearSRGBColorSpace,
   Material,
   Mesh,
   Object3D,
   Quaternion,
   Plane,
-  PointLight,
   Raycaster,
-  Scene,
-  SRGBColorSpace,
-  TextureLoader,
   Vector2,
   Vector3,
-  WebGLRenderer,
 } from "three";
 import { loadVinylModel } from "./vinyl";
 import {
@@ -31,19 +22,38 @@ import {
   type LabelTextures,
 } from "./labels";
 import { loadTurntableModel, TurntableController } from "./turntable";
-import { CameraRig } from "./cameraRig";
+import {
+  createScene,
+  createLights,
+  createRenderer,
+  createCameraRig,
+  loadTextures,
+} from "./scene";
 import {} from // createTonearmRotationDisplay,
 // createCameraInfoDisplay,
 "./ui";
 import { initializeYouTubePlayer } from "./youtube";
 import { createMetadataController } from "./metadata";
-import { clampValue } from "./utils";
+import { clampValue, updatePointer } from "./utils";
+import {
+  MIN_ZOOM,
+  MAX_ZOOM,
+  CAMERA_ORBIT_SENSITIVITY,
+  PAN_SENSITIVITY,
+  UI_MAX_WIDTH,
+  UI_Z_INDEX,
+  VIEWER_MAX_WIDTH,
+  HIDE_BUTTON_Z_INDEX,
+  LINK_COLOR,
+  LINK_HOVER_COLOR,
+  FALLBACK_BACKGROUND_COLOR,
+} from "./config";
 import {
   createVinylAnimationState,
   RETURN_CLEARANCE,
   updateVinylAnimation,
 } from "./vinylAnimation";
-import { EnhancedVinylLibraryWidget } from "./vinylLibraryWidgetEnhanced";
+import { VinylLibraryManager } from "./vinylLibraryManager";
 import { VinylLibraryViewer } from "./vinylLibraryViewer";
 import { extractDominantColor } from "./colorUtils";
 import { initializeCache } from "./albumCoverCache";
@@ -76,8 +86,8 @@ vinylLibraryContainer.style.cssText = `
   position: fixed;
   bottom: 20px;
   left: 20px;
-  max-width: 350px;
-  z-index: 100;
+  max-width: ${UI_MAX_WIDTH};
+  z-index: ${UI_Z_INDEX};
   max-height: auto;
   overflow-y: auto;
 `;
@@ -88,16 +98,17 @@ const vinylViewerContainer = document.createElement("div");
 vinylViewerContainer.id = "vinyl-library-viewer";
 vinylViewerContainer.style.cssText = `
   position: fixed;
-  top: 20px;
-  right: 20px;
-  bottom: 20px;
-  max-width: 600px;
-  z-index: 100;
+  top: 0;
+  right: -20px;
+  bottom: 0;
+  max-width: ${VIEWER_MAX_WIDTH};
+  z-index: ${UI_Z_INDEX};
   overflow-y: auto;
   scrollbar-width: none;
   -ms-overflow-style: none;
   transition: opacity 0.3s ease;
   opacity: 1;
+  padding: 20px 40px 20px 20px;
 `;
 
 // Create hide/show library button (positioned outside the viewer container)
@@ -109,23 +120,79 @@ hideLibraryBtn.style.cssText = `
   position: fixed;
   bottom: 20px;
   right: 20px;
-  z-index: 101;
+  z-index: ${HIDE_BUTTON_Z_INDEX};
   transition: opacity 0.3s ease, transform 0.3s ease;
   opacity: 1;
 `;
 hideLibraryBtn.addEventListener("click", () => {
-  const isHidden = vinylViewerContainer.style.opacity === "0";
+  const libraryGrid = document.getElementById("vinyl-viewer-grid");
+  const filterControls = document.querySelector(".filter-controls");
+
+  if (!libraryGrid) return;
+
+  const isHidden = libraryGrid.style.opacity === "0";
   if (isHidden) {
-    vinylViewerContainer.style.opacity = "1";
-    vinylViewerContainer.style.pointerEvents = "auto";
+    // Fade in
+    libraryGrid.style.display = "";
+    if (filterControls) (filterControls as HTMLElement).style.display = "";
+
+    requestAnimationFrame(() => {
+      libraryGrid.style.transition = "opacity 0.3s ease";
+      libraryGrid.style.opacity = "1";
+      if (filterControls) {
+        (filterControls as HTMLElement).style.transition = "opacity 0.3s ease";
+        (filterControls as HTMLElement).style.opacity = "1";
+      }
+    });
+
     hideLibraryBtn.textContent = "hide library";
   } else {
-    vinylViewerContainer.style.opacity = "0";
-    vinylViewerContainer.style.pointerEvents = "none";
+    // Fade out
+    libraryGrid.style.transition = "opacity 0.3s ease";
+    libraryGrid.style.opacity = "0";
+    if (filterControls) {
+      (filterControls as HTMLElement).style.transition = "opacity 0.3s ease";
+      (filterControls as HTMLElement).style.opacity = "0";
+    }
+
+    setTimeout(() => {
+      libraryGrid.style.display = "none";
+      if (filterControls)
+        (filterControls as HTMLElement).style.display = "none";
+    }, 300);
+
     hideLibraryBtn.textContent = "show library";
   }
 });
 root.appendChild(hideLibraryBtn);
+
+// Create focus card container (outside vinyl-library-viewer to avoid overflow clipping in Safari)
+const focusCardContainer = document.createElement("div");
+focusCardContainer.id = "vinyl-focus-card-container-root";
+focusCardContainer.className = "focus-card-container";
+root.appendChild(focusCardContainer);
+
+// Create show focus button (positioned next to hide library button)
+const showFocusBtn = document.createElement("button");
+showFocusBtn.id = "vinyl-show-focus-btn";
+showFocusBtn.className = "vinyl-hyperlink";
+showFocusBtn.textContent = "show focus";
+showFocusBtn.style.cssText = `
+  position: fixed;
+  bottom: 20px;
+  right: 110px;
+  z-index: ${HIDE_BUTTON_Z_INDEX};
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  opacity: 1;
+  display: none;
+`;
+showFocusBtn.addEventListener("click", () => {
+  const viewer = (window as any).vinylLibraryViewer;
+  if (viewer) {
+    viewer.showFocusCard();
+  }
+});
+root.appendChild(showFocusBtn);
 
 // Hide scrollbar for webkit browsers and add global hyperlink button styles
 const style = document.createElement("style");
@@ -136,8 +203,8 @@ style.textContent = `
 
   /* Centralized hyperlink button styling */
   :root {
-    --vinyl-link-color: #000;
-    --vinyl-link-hover-color: #0066cc;
+    --vinyl-link-color: ${LINK_COLOR};
+    --vinyl-link-hover-color: ${LINK_HOVER_COLOR};
     --vinyl-link-font-size: 0.85rem;
     --vinyl-link-text-shadow: 0.2px 0 0 rgba(255, 0, 0, 0.5), -0.2px 0 0 rgba(0, 100, 200, 0.5);
   }
@@ -240,33 +307,15 @@ const canvas = document.createElement("canvas");
 canvas.id = "vinyl-viewer";
 root.appendChild(canvas);
 
-const renderer = new WebGLRenderer({ canvas, antialias: true, alpha: true });
-renderer.outputColorSpace = SRGBColorSpace;
-renderer.toneMapping = ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.1;
-
-const scene = new Scene();
-scene.background = null; // Transparent background
-
-const cameraRig = new CameraRig();
-const { camera } = cameraRig;
-
-const ambientLight = new AmbientLight(0xffffff, 0.9);
-const keyLight = new DirectionalLight(0xffffff, 1.25);
-keyLight.position.set(2.5, 3.5, 3.5);
-
-const fillLight = new DirectionalLight(0xcad7ff, 0.55);
-fillLight.position.set(-3, 2, -2);
-
-const rimLight = new PointLight(0xfff5dc, 0.8, 10);
-rimLight.position.set(0, 1.2, 2.5);
-
+const renderer = createRenderer(canvas);
+const scene = createScene();
+const { ambientLight, keyLight, fillLight, rimLight } = createLights();
 scene.add(ambientLight, keyLight, fillLight, rimLight);
 
-const textureLoader = new TextureLoader();
-const vinylNormalTexture = textureLoader.load("/vinyl-normal.png");
-vinylNormalTexture.colorSpace = LinearSRGBColorSpace;
-vinylNormalTexture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+const cameraRig = createCameraRig();
+const { camera } = cameraRig;
+
+const { vinylNormalTexture } = loadTextures(renderer);
 
 let labelVisuals: LabelVisualOptions = createDefaultLabelVisuals();
 
@@ -290,8 +339,6 @@ let labelOptions: LabelApplicationOptions = {
 const heroGroup = new Group();
 scene.add(heroGroup);
 
-const MIN_ZOOM = 0.7;
-const MAX_ZOOM = 5;
 let zoomFactor = 1.8;
 cameraRig.setZoomFactor(zoomFactor);
 
@@ -316,7 +363,6 @@ const cameraOrbitState = {
   lastX: 0,
   lastY: 0,
 };
-const CAMERA_ORBIT_SENSITIVITY = 0.0045;
 
 const cameraPanState = {
   isPanning: false,
@@ -394,11 +440,13 @@ window.addEventListener("load-vinyl-song", async (event: any) => {
     vinylReturnBaseTwist = randomRotation;
   }
 
-  // Apply aspect ratio if provided
+  // Apply aspect ratio if provided, otherwise clear any manual override
   if (aspectRatio !== undefined) {
-    const { setVideoAspectRatio } = await import("./youtube");
-    setVideoAspectRatio(aspectRatio);
+    yt.setAspectRatio(aspectRatio);
     console.log(`[main] Applied aspect ratio: ${aspectRatio}`);
+  } else {
+    // Clear manual override to allow auto-detection
+    yt.setAspectRatio(null as any);
   }
 
   // Load the video with corrected metadata from library
@@ -410,6 +458,17 @@ window.addEventListener("load-vinyl-song", async (event: any) => {
       album: videoMetadata?.album || "",
     };
     applyMetadataToLabels(correctedMetadata, true);
+
+    // Get duration from player and dispatch event to update the library entry
+    const duration = youtubePlayer.getDuration();
+    if (duration > 0) {
+      console.log(`[main] Video duration loaded: ${duration} seconds`);
+      window.dispatchEvent(
+        new CustomEvent("video-duration-loaded", {
+          detail: { videoId, duration: Math.floor(duration) },
+        }),
+      );
+    }
   });
 
   // Extract dominant color from thumbnail and update labels
@@ -419,7 +478,7 @@ window.addEventListener("load-vinyl-song", async (event: any) => {
     labelVisuals.background = dominantColor;
   } catch (error) {
     console.warn("Failed to extract dominant color, using fallback");
-    labelVisuals.background = "#1a1a1a";
+    labelVisuals.background = FALLBACK_BACKGROUND_COLOR;
   }
 
   rebuildLabelTextures();
@@ -440,7 +499,6 @@ window.addEventListener("load-vinyl-song", async (event: any) => {
 
   // Don't show player controls immediately when clicking an album
   // Controls will only show when tonearm enters play area
-  const isPlayerCollapsed = yt.isPlayerCollapsed();
 
   // Auto-play briefly to show first frame instead of thumbnail (muted)
   yt.setVolume(0);
@@ -452,6 +510,13 @@ window.addEventListener("load-vinyl-song", async (event: any) => {
   }, 300);
 
   console.log(`Loaded from viewer: ${artistName} - ${songName}`);
+});
+
+// Listen for aspect ratio updates from the focus card
+window.addEventListener("update-aspect-ratio", (event: any) => {
+  const { aspectRatio } = event.detail;
+  console.log(`[main] Updating aspect ratio live to: ${aspectRatio}`);
+  yt.setAspectRatio(aspectRatio);
 });
 
 // Initially hide the player controls (only show when tonearm is in play area)
@@ -542,9 +607,12 @@ canvas.addEventListener("contextmenu", (event) => event.preventDefault());
 let isSpacePressed = false;
 
 document.addEventListener("keydown", (event) => {
-  // Check if user is typing in an input or textarea
+  // Check if user is typing in an input, textarea, or contenteditable element
   const target = event.target as HTMLElement;
-  const isTyping = target.tagName === "INPUT" || target.tagName === "TEXTAREA";
+  const isTyping =
+    target.tagName === "INPUT" ||
+    target.tagName === "TEXTAREA" ||
+    target.isContentEditable;
 
   // Ignore keyboard shortcuts when typing
   if (isTyping) {
@@ -579,7 +647,7 @@ canvas.addEventListener("pointerdown", (event) => {
   if (turntableController && turntableController.handlePointerDown(event)) {
     return;
   }
-  if (!vinylModel || !updatePointerFromEvent(event)) {
+  if (!vinylModel || !updatePointer(event, pointerNDC, canvas)) {
     return;
   }
   raycaster.setFromCamera(pointerNDC, camera);
@@ -827,17 +895,19 @@ const animate = (time: number) => {
     const tonearmNowInPlayArea =
       turntableController?.isTonearmInPlayArea() ?? false;
     if (tonearmNowInPlayArea && !isTonearmInPlayArea) {
-      // Tonearm just entered play area - show player (if not manually collapsed)
+      // Tonearm just entered play area - show controls/timeline
       isTonearmInPlayArea = true;
-      if (!yt.isPlayerCollapsed() && youtubePlayer.getDuration() > 0) {
+      if (youtubePlayer.getDuration() > 0) {
         yt.setControlsVisible(true);
-        // Animate viewport back in using the current video's aspect ratio
-        const targetHeight = 512 / yt.getAspectRatio();
-        const viewport = root.querySelector(
-          ".yt-player-viewport",
-        ) as HTMLElement;
-        if (viewport) {
-          viewport.style.height = `${targetHeight}px`;
+        // Animate viewport back in only if not manually collapsed
+        if (!yt.isPlayerCollapsed()) {
+          const targetHeight = 512 / yt.getAspectRatio();
+          const viewport = root.querySelector(
+            ".yt-player-viewport",
+          ) as HTMLElement;
+          if (viewport) {
+            viewport.style.height = `${targetHeight}px`;
+          }
         }
       }
     } else if (!tonearmNowInPlayArea && isTonearmInPlayArea) {
@@ -935,7 +1005,7 @@ function positionVinylOnTurntable(vinyl: Object3D, turntable: Object3D) {
 }
 
 function pickPointOnPlane(event: PointerEvent) {
-  if (!updatePointerFromEvent(event)) {
+  if (!updatePointer(event, pointerNDC, canvas)) {
     return null;
   }
 
@@ -945,16 +1015,6 @@ function pickPointOnPlane(event: PointerEvent) {
     return null;
   }
   return dragIntersectPoint;
-}
-
-function updatePointerFromEvent(event: PointerEvent) {
-  const rect = canvas.getBoundingClientRect();
-  if (rect.width === 0 || rect.height === 0) {
-    return false;
-  }
-  pointerNDC.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-  pointerNDC.y = -(((event.clientY - rect.top) / rect.height) * 2 - 1);
-  return true;
 }
 
 // start/stop + speed slide handled by controller
@@ -1086,7 +1146,6 @@ function handleCameraPanMove(event: PointerEvent) {
   cameraPanState.lastY = event.clientY;
 
   // Pan sensitivity scaled by zoom for consistent feel
-  const PAN_SENSITIVITY = 0.08;
   const zoomScale = 1 / cameraRig.getZoomFactor();
   cameraRig.pan(
     -deltaX * PAN_SENSITIVITY * zoomScale,
@@ -1137,7 +1196,7 @@ function endCameraPan(event: PointerEvent) {
   const WORKER_API_URL =
     import.meta.env.VITE_WORKER_API_URL || "http://localhost:57053";
 
-  const vinylLibraryWidget = new EnhancedVinylLibraryWidget({
+  const vinylLibraryWidget = new VinylLibraryManager({
     apiUrl: WORKER_API_URL,
     containerId: "vinyl-library-widget",
     compact: true, // Compact mode for fixed sidebar
@@ -1174,6 +1233,9 @@ function endCameraPan(event: PointerEvent) {
   try {
     await vinylLibraryViewer.init();
     console.log("✓ Vinyl library viewer initialized");
+
+    // Expose viewer instance to window for show focus button
+    (window as any).vinylLibraryViewer = vinylLibraryViewer;
   } catch (error) {
     console.error("✗ Failed to initialize vinyl library viewer:", error);
   }

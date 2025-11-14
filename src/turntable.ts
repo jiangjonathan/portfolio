@@ -2,7 +2,7 @@ import type { Camera, Object3D } from "three";
 import { Raycaster, Vector2 } from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { mediaTimeToYaw } from "./media";
-import { clampValue } from "./utils";
+import { clampValue, updatePointer } from "./utils";
 
 export interface TurntableControllerOptions {
   camera: Camera;
@@ -139,7 +139,7 @@ export class TurntableController {
   }
 
   handlePointerDown(e: PointerEvent): boolean {
-    if (!this.updatePointer(e)) return false;
+    if (!updatePointer(e, this.pointerNDC, this.canvas)) return false;
     // Start/Stop
     if (this.hit(this.startStopButton)) {
       this.toggleStart();
@@ -167,7 +167,7 @@ export class TurntableController {
   }
 
   handlePointerMove(e: PointerEvent): boolean {
-    this.updatePointer(e);
+    updatePointer(e, this.pointerNDC, this.canvas);
     if (this.isDraggingTonearm) {
       const dx = e.clientX - this.tonearmDragLastX;
       this.tonearmDragLastX = e.clientX;
@@ -427,14 +427,6 @@ export class TurntableController {
 
   private rpmToAngularSpeed(rpm: number) {
     return (rpm / 60) * Math.PI * 2;
-  }
-
-  private updatePointer(event: PointerEvent) {
-    const rect = this.canvas.getBoundingClientRect();
-    if (!rect.width || !rect.height) return false;
-    this.pointerNDC.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-    this.pointerNDC.y = -(((event.clientY - rect.top) / rect.height) * 2 - 1);
-    return true;
   }
 
   private hit(obj: Object3D | null) {
