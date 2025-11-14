@@ -35,12 +35,14 @@ export class VinylLibraryViewer {
   private visitorLibrary: VisitorEntry[] = [];
   private ownerLibrary: VisitorEntry[] = [];
   private showVisitorOnly: boolean = false;
+  private searchQuery: string = ""; // Current search query
 
   private scrollContainer: HTMLElement | null = null;
   private itemHeight: number = 292; // 280px card + 12px gap
 
   private suppressNextLibraryUpdateEvent: boolean = false;
   private customOrder: Map<string, number> = new Map(); // Session-based custom ordering
+  private isEditMode: boolean = false; // Toggle for showing delete buttons
 
   constructor(config: ViewerConfig) {
     this.config = config;
@@ -111,21 +113,27 @@ export class VinylLibraryViewer {
     await Promise.all(
       this.ownerLibrary.map(async (entry) => {
         console.log(
-          `[Owner Entry] id: ${entry.id}, releaseId: ${entry.releaseId}, imageUrl: ${entry.imageUrl}`,
+          `[Owner Entry] id: ${entry.id}, releaseId: ${entry.releaseId}, imageUrl: ${entry.imageUrl}, originalImageUrl: ${entry.originalImageUrl}`,
         );
 
-        if (entry.releaseId) {
-          const newUrl = await recreateBlobUrlIfNeeded(
-            entry.imageUrl,
-            entry.releaseId,
-          );
+        // For entries without originalImageUrl, construct it from releaseId
+        let fallbackUrl = entry.originalImageUrl;
+        if (!fallbackUrl && entry.releaseId) {
+          fallbackUrl = `https://coverartarchive.org/release/${entry.releaseId}/front`;
           console.log(
-            `[Owner Entry] Updated imageUrl from ${entry.imageUrl} to ${newUrl}`,
+            `[Owner Entry] Constructed fallback URL from releaseId: ${fallbackUrl}`,
           );
-          entry.imageUrl = newUrl;
-        } else {
-          console.log(`[Owner Entry] No releaseId, skipping`);
         }
+
+        const newUrl = await recreateBlobUrlIfNeeded(
+          entry.imageUrl,
+          entry.releaseId,
+          fallbackUrl, // Pass original URL or constructed URL as fallback
+        );
+        console.log(
+          `[Owner Entry] Updated imageUrl from ${entry.imageUrl} to ${newUrl}`,
+        );
+        entry.imageUrl = newUrl;
       }),
     );
 
@@ -134,21 +142,27 @@ export class VinylLibraryViewer {
     await Promise.all(
       this.visitorLibrary.map(async (entry) => {
         console.log(
-          `[Visitor Entry] id: ${entry.id}, releaseId: ${entry.releaseId}, imageUrl: ${entry.imageUrl}`,
+          `[Visitor Entry] id: ${entry.id}, releaseId: ${entry.releaseId}, imageUrl: ${entry.imageUrl}, originalImageUrl: ${entry.originalImageUrl}`,
         );
 
-        if (entry.releaseId) {
-          const newUrl = await recreateBlobUrlIfNeeded(
-            entry.imageUrl,
-            entry.releaseId,
-          );
+        // For entries without originalImageUrl, construct it from releaseId
+        let fallbackUrl = entry.originalImageUrl;
+        if (!fallbackUrl && entry.releaseId) {
+          fallbackUrl = `https://coverartarchive.org/release/${entry.releaseId}/front`;
           console.log(
-            `[Visitor Entry] Updated imageUrl from ${entry.imageUrl} to ${newUrl}`,
+            `[Visitor Entry] Constructed fallback URL from releaseId: ${fallbackUrl}`,
           );
-          entry.imageUrl = newUrl;
-        } else {
-          console.log(`[Visitor Entry] No releaseId, skipping`);
         }
+
+        const newUrl = await recreateBlobUrlIfNeeded(
+          entry.imageUrl,
+          entry.releaseId,
+          fallbackUrl, // Pass original URL or constructed URL as fallback
+        );
+        console.log(
+          `[Visitor Entry] Updated imageUrl from ${entry.imageUrl} to ${newUrl}`,
+        );
+        entry.imageUrl = newUrl;
       }),
     );
 
@@ -276,6 +290,23 @@ export class VinylLibraryViewer {
       this.library = combinedEntries.filter((e) => !e.isOwnerEntry);
     } else {
       this.library = combinedEntries;
+    }
+
+    // Apply search filter if active
+    if (this.searchQuery.trim()) {
+      const lowerQuery = this.searchQuery.toLowerCase();
+      this.library = this.library.filter((entry) => {
+        const artist = (entry.artistName || "").toLowerCase();
+        const song = (entry.songName || "").toLowerCase();
+        const genre = (entry.genre || "").toLowerCase();
+        const note = (entry.note || "").toLowerCase();
+        return (
+          artist.includes(lowerQuery) ||
+          song.includes(lowerQuery) ||
+          genre.includes(lowerQuery) ||
+          note.includes(lowerQuery)
+        );
+      });
     }
 
     // Apply custom ordering if any entries have been reordered
@@ -630,12 +661,14 @@ export class VinylLibraryViewer {
             font-size: 0.7rem;
             cursor: pointer;
             opacity: 0;
+            pointer-events: none;
             transition: opacity 0.2s;
             z-index: 10;
           }
 
-          .vinyl-viewer-widget .album-card:hover .delete-btn {
-            opacity: 1;
+          .vinyl-viewer-widget.edit-mode .delete-btn {
+            opacity: 1 !important;
+            pointer-events: auto !important;
           }
 
           .vinyl-viewer-widget .delete-btn:hover {
@@ -645,6 +678,7 @@ export class VinylLibraryViewer {
           .vinyl-viewer-widget .filter-controls {
             display: flex;
             justify-content: flex-end;
+            align-items: center;
             margin-bottom: 1rem;
             gap: 0.5rem;
             position: sticky;
@@ -660,6 +694,65 @@ export class VinylLibraryViewer {
 
           .vinyl-viewer-widget .filter-btn.active {
             color: var(--vinyl-link-hover-color);
+          }
+
+          .vinyl-viewer-widget .search-container {
+            display: flex;
+            align-items: baseline;
+            gap: 0.3rem;
+          }
+
+          .vinyl-viewer-widget .search-label {
+            font-size: var(--vinyl-link-font-size);
+            color: var(--vinyl-link-color);
+            text-shadow: var(--vinyl-link-text-shadow);
+            -webkit-font-smoothing: none;
+            -moz-osx-font-smoothing: grayscale;
+            position: relative;
+            top: 0px;
+          }
+
+          .vinyl-viewer-widget .search-input {
+            padding: 0;
+            border: none;
+            background: transparent;
+            font-size: 0.85rem;
+            font-family: inherit;
+            width: 120px;
+            -webkit-font-smoothing: none;
+            -moz-osx-font-smoothing: grayscale;
+            line-height: 1;
+            vertical-align: baseline;
+            text-decoration: underline;
+            text-underline-offset: 1px;
+          }
+
+          .vinyl-viewer-widget .search-input::placeholder {
+            color: transparent;
+          }
+
+          .vinyl-viewer-widget .search-input:focus {
+            outline: none;
+            border-bottom-color: #000;
+          }
+
+          .vinyl-viewer-widget .clear-search-btn {
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            font-size: 1rem;
+            line-height: 1;
+            color: #666;
+            padding: 0;
+            display: none;
+          }
+
+          .vinyl-viewer-widget .clear-search-btn.visible {
+            display: inline;
+          }
+
+          .vinyl-viewer-widget .clear-search-btn:hover {
+            color: #000;
           }
 
           .vinyl-viewer-widget .owner-badge {
@@ -684,10 +777,19 @@ export class VinylLibraryViewer {
         </style>
 
         <div class="filter-controls">
+          <div class="search-container">
+            <span class="search-label">search:</span>
+            <input
+              type="text"
+              id="vinyl-search-input"
+              class="search-input"
+            >
+            <button id="vinyl-clear-search-btn" class="clear-search-btn">×</button>
+          </div>
           <button id="vinyl-filter-btn" class="filter-btn vinyl-hyperlink">show mine only</button>
           <button id="vinyl-jump-top-btn" class="filter-btn vinyl-hyperlink">jump to top</button>
-          <button id="vinyl-search-btn" class="filter-btn vinyl-hyperlink">search</button>
           <button id="vinyl-sort-btn" class="filter-btn vinyl-hyperlink">sort</button>
+          <button id="vinyl-edit-btn" class="filter-btn vinyl-hyperlink">edit</button>
         </div>
         <div class="library-grid" id="vinyl-viewer-grid"></div>
       </div>
@@ -857,13 +959,22 @@ export class VinylLibraryViewer {
     );
     albumCards.forEach((card) => {
       card.addEventListener("click", (e) => {
-        // Don't trigger if clicking the delete button
-        if ((e.target as HTMLElement).classList.contains("delete-btn")) {
+        // Only trigger on album cover or its children (not the whole card)
+        const target = e.target as HTMLElement;
+        const albumCoverWrapper = card.querySelector(
+          ".album-cover-wrapper",
+        ) as HTMLElement;
+        if (!albumCoverWrapper?.contains(target)) {
           return;
         }
 
         // Get the entry-id for the new card
         const entryId = (card as HTMLElement).getAttribute("data-entry-id");
+
+        // Don't re-focus if this card is already focused
+        if ((card as HTMLElement).classList.contains("focused")) {
+          return;
+        }
 
         // Move this card to the front of the custom order
         if (entryId) {
@@ -961,13 +1072,39 @@ export class VinylLibraryViewer {
       });
     }
 
-    const searchBtn = document.getElementById("vinyl-search-btn");
-    if (searchBtn) {
-      searchBtn.addEventListener("click", () => {
-        const query = prompt("Search by artist or song name:");
-        if (query) {
-          this.searchLibrary(query);
+    const searchInput = document.getElementById(
+      "vinyl-search-input",
+    ) as HTMLInputElement;
+    const clearSearchBtn = document.getElementById("vinyl-clear-search-btn");
+
+    if (searchInput) {
+      searchInput.addEventListener("input", () => {
+        this.searchQuery = searchInput.value;
+        this.mergeLibraries();
+        this.updateVisibleItems();
+        this.attachCardListeners();
+
+        // Show/hide clear button
+        if (clearSearchBtn) {
+          if (this.searchQuery.trim()) {
+            clearSearchBtn.classList.add("visible");
+          } else {
+            clearSearchBtn.classList.remove("visible");
+          }
         }
+      });
+    }
+
+    if (clearSearchBtn) {
+      clearSearchBtn.addEventListener("click", () => {
+        this.searchQuery = "";
+        if (searchInput) {
+          searchInput.value = "";
+        }
+        clearSearchBtn.classList.remove("visible");
+        this.mergeLibraries();
+        this.updateVisibleItems();
+        this.attachCardListeners();
       });
     }
 
@@ -980,6 +1117,14 @@ export class VinylLibraryViewer {
         if (sortOption) {
           this.sortLibrary(sortOption);
         }
+      });
+    }
+
+    const editBtn = document.getElementById("vinyl-edit-btn");
+    if (editBtn) {
+      editBtn.addEventListener("click", () => {
+        this.toggleEditMode();
+        editBtn.textContent = this.isEditMode ? "edit on" : "edit";
       });
     }
   }
@@ -1052,17 +1197,20 @@ export class VinylLibraryViewer {
     const entry = this.library.find((e) => e.id === entryId);
     if (!entry) return;
 
-    // Use fallback values for display
-    const artistName = entry.artistName || "Unknown Artist";
-    const songName = entry.songName || entry.note || "Unknown Song";
+    // Skip confirmation if in edit mode
+    if (!this.isEditMode) {
+      // Use fallback values for display
+      const artistName = entry.artistName || "Unknown Artist";
+      const songName = entry.songName || entry.note || "Unknown Song";
 
-    const collectionType = isOwner
-      ? "backend collection"
-      : "your local collection";
-    const confirmed = confirm(
-      `Delete "${songName}" by ${artistName} from ${collectionType}?`,
-    );
-    if (!confirmed) return;
+      const collectionType = isOwner
+        ? "backend collection"
+        : "your local collection";
+      const confirmed = confirm(
+        `Delete "${songName}" by ${artistName} from ${collectionType}?`,
+      );
+      if (!confirmed) return;
+    }
 
     // Save scroll position before deletion
     const scrollPosBefore = this.scrollContainer?.scrollTop || 0;
@@ -1305,5 +1453,27 @@ export class VinylLibraryViewer {
       "'": "&#039;",
     };
     return text.replace(/[&<>"']/g, (m) => map[m]);
+  }
+
+  /**
+   * Toggle edit mode - shows/hides delete buttons
+   */
+  private toggleEditMode(): void {
+    this.isEditMode = !this.isEditMode;
+    const widget = document.querySelector(".vinyl-viewer-widget");
+    console.log(
+      "Toggle edit mode:",
+      this.isEditMode,
+      "Widget found:",
+      !!widget,
+    );
+    if (widget) {
+      widget.classList.toggle("edit-mode", this.isEditMode);
+      console.log("Widget classes:", widget.className);
+      console.log(
+        "Delete buttons found:",
+        document.querySelectorAll(".delete-btn").length,
+      );
+    }
   }
 }

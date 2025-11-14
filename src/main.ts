@@ -96,7 +96,37 @@ vinylViewerContainer.style.cssText = `
   overflow-y: auto;
   scrollbar-width: none;
   -ms-overflow-style: none;
+  transition: opacity 0.3s ease;
+  opacity: 1;
 `;
+
+// Create hide/show library button (positioned outside the viewer container)
+const hideLibraryBtn = document.createElement("button");
+hideLibraryBtn.id = "vinyl-hide-library-btn";
+hideLibraryBtn.className = "vinyl-hyperlink";
+hideLibraryBtn.textContent = "hide library";
+hideLibraryBtn.style.cssText = `
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 101;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  opacity: 1;
+`;
+hideLibraryBtn.addEventListener("click", () => {
+  const isHidden = vinylViewerContainer.style.opacity === "0";
+  if (isHidden) {
+    vinylViewerContainer.style.opacity = "1";
+    vinylViewerContainer.style.pointerEvents = "auto";
+    hideLibraryBtn.textContent = "hide library";
+  } else {
+    vinylViewerContainer.style.opacity = "0";
+    vinylViewerContainer.style.pointerEvents = "none";
+    hideLibraryBtn.textContent = "show library";
+  }
+});
+root.appendChild(hideLibraryBtn);
+
 // Hide scrollbar for webkit browsers and add global hyperlink button styles
 const style = document.createElement("style");
 style.textContent = `
@@ -408,11 +438,9 @@ window.addEventListener("load-vinyl-song", async (event: any) => {
   // Update the timeline display with new duration
   videoControls.setProgress(0, duration);
 
-  // Show the video controls if tonearm is in play area OR if player is not collapsed
+  // Don't show player controls immediately when clicking an album
+  // Controls will only show when tonearm enters play area
   const isPlayerCollapsed = yt.isPlayerCollapsed();
-  if (turntableController?.isTonearmInPlayArea() || !isPlayerCollapsed) {
-    yt.setControlsVisible(true);
-  }
 
   // Auto-play briefly to show first frame instead of thumbnail (muted)
   yt.setVolume(0);
@@ -431,6 +459,21 @@ yt.setControlsVisible(false);
 
 // Register callback to query tonearm state when exiting fullscreen
 yt.setIsTonearmInPlayAreaQuery(() => isTonearmInPlayArea);
+
+// Auto-hide library and button in fullscreen player mode
+yt.onFullscreenChange((isFullscreen: boolean) => {
+  if (isFullscreen) {
+    vinylViewerContainer.style.opacity = "0";
+    vinylViewerContainer.style.pointerEvents = "none";
+    hideLibraryBtn.style.opacity = "0";
+    hideLibraryBtn.style.pointerEvents = "none";
+  } else {
+    vinylViewerContainer.style.opacity = "1";
+    vinylViewerContainer.style.pointerEvents = "auto";
+    hideLibraryBtn.style.opacity = "1";
+    hideLibraryBtn.style.pointerEvents = "auto";
+  }
+});
 
 // Track when video reaches the last 2 seconds to animate out
 let hasStartedFadeOut = false;

@@ -367,60 +367,68 @@ export async function getCacheStats(): Promise<{
  * This is used when loading library entries that have blob URLs stored
  * @param imageUrl The stored image URL (might be a blob URL or regular URL)
  * @param releaseId The MusicBrainz release ID
+ * @param fallbackUrl Optional fallback URL to use if blob URL is stale
  * @returns Fresh blob URL or original URL if not cached/not applicable
  */
 export async function recreateBlobUrlIfNeeded(
   imageUrl: string,
   releaseId?: string,
+  fallbackUrl?: string,
 ): Promise<string> {
   console.log(
-    `[recreateBlobUrlIfNeeded] imageUrl: ${imageUrl}, releaseId: ${releaseId}`,
+    `[recreateBlobUrlIfNeeded] imageUrl: ${imageUrl}, releaseId: ${releaseId}, fallbackUrl: ${fallbackUrl}`,
   );
-
-  // If no release ID, can't recreate from cache
-  if (!releaseId) {
-    console.log(`No releaseId provided, returning original URL`);
-    return imageUrl;
-  }
 
   // Check if the URL is a blob URL (starts with "blob:")
   const isBlobUrl = imageUrl.startsWith("blob:");
 
   if (isBlobUrl) {
-    console.log(
-      `✓ Detected stale blob URL for ${releaseId}, recreating from cache...`,
-    );
+    console.log(`✓ Detected stale blob URL, attempting to recover...`);
 
-    // Try to get fresh blob URL from cache
-    const freshBlobUrl = await getCachedCover(releaseId);
-
-    if (freshBlobUrl) {
-      console.log(
-        `✓ Recreated blob URL from cache for ${releaseId}: ${freshBlobUrl}`,
-      );
-      return freshBlobUrl;
-    } else {
-      console.warn(
-        `✗ Could not recreate blob URL for ${releaseId}, blob not in cache`,
-      );
-      // Blob URL is stale and we don't have it in cache
-      // Return a placeholder or the stale URL (will fail to load)
-      return imageUrl;
+    // Blob URLs are session-specific and cannot be reused across page loads
+    // Always prefer fallback URL if available
+    if (fallbackUrl) {
+      console.log(`✓ Using fallback URL for stale blob: ${fallbackUrl}`);
+      return fallbackUrl;
     }
+
+    // If we have a releaseId, try to get fresh blob URL from cache as second resort
+    if (releaseId) {
+      const freshBlobUrl = await getCachedCover(releaseId);
+
+      if (freshBlobUrl) {
+        console.log(
+          `✓ Recreated blob URL from cache for ${releaseId}: ${freshBlobUrl}`,
+        );
+        return freshBlobUrl;
+      } else {
+        console.warn(
+          `✗ Could not recreate blob URL for ${releaseId}, blob not in cache`,
+        );
+      }
+    }
+
+    // Last resort: return the stale blob URL (will fail to load, but better than nothing)
+    console.warn(
+      `✗ No recovery method available for stale blob URL, image may not load`,
+    );
+    return imageUrl;
   }
 
   // Not a blob URL but we have a releaseId, check if it's in cache anyway
-  console.log(
-    `Not a blob URL, but has releaseId - checking cache for ${releaseId}`,
-  );
-  const cachedUrl = await getCachedCover(releaseId);
+  if (releaseId) {
+    console.log(
+      `Not a blob URL, but has releaseId - checking cache for ${releaseId}`,
+    );
+    const cachedUrl = await getCachedCover(releaseId);
 
-  if (cachedUrl) {
-    console.log(`✓ Found cached cover for ${releaseId}: ${cachedUrl}`);
-    return cachedUrl;
+    if (cachedUrl) {
+      console.log(`✓ Found cached cover for ${releaseId}: ${cachedUrl}`);
+      return cachedUrl;
+    }
   }
 
   // Not a blob URL and not in cache, return as-is
-  console.log(`Not in cache, returning original URL: ${imageUrl}`);
+  console.log(`Returning original URL: ${imageUrl}`);
   return imageUrl;
 }

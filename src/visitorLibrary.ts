@@ -15,6 +15,7 @@ export interface VisitorEntry {
   aspectRatio?: number; // Video aspect ratio (16/9, 4/3, 1, etc.)
   genre?: string; // Genre metadata
   releaseYear?: string; // Release year metadata
+  originalImageUrl?: string; // Original image URL stored as fallback for stale blob URLs
 }
 
 const STORAGE_KEY = "visitorLibrary";
@@ -114,6 +115,7 @@ export function addVisitorLink(
     addedAt: new Date().toISOString(),
     releaseId,
     aspectRatio,
+    originalImageUrl: imageUrl, // Store the original URL as fallback for blob URLs
   };
 
   const library = loadVisitorLibrary();

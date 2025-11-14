@@ -13,6 +13,7 @@ export interface LibraryEntry {
   genre?: string; // Music genre from MusicBrainz
   releaseYear?: string; // Release year from MusicBrainz (YYYY format)
   releaseId?: string; // MusicBrainz release ID for caching
+  originalImageUrl?: string; // Original image URL stored as fallback for stale blob URLs
   addedAt: string;
 }
 
@@ -234,6 +235,7 @@ async function handlePostLibrary(
     genre: genre || undefined,
     releaseYear: releaseYear || undefined,
     releaseId: releaseId || undefined,
+    originalImageUrl: imageUrl, // Store the original URL as fallback for blob URLs
     addedAt: new Date().toISOString(),
   };
 
