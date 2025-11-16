@@ -167,10 +167,19 @@ hideLibraryBtn.addEventListener("click", () => {
 root.appendChild(hideLibraryBtn);
 
 // Create focus card container (outside vinyl-library-viewer to avoid overflow clipping in Safari)
-const focusCardContainer = document.createElement("div");
-focusCardContainer.id = "vinyl-focus-card-container-root";
-focusCardContainer.className = "focus-card-container";
-root.appendChild(focusCardContainer);
+const focusCardCoverContainer = document.createElement("div");
+focusCardCoverContainer.id = "vinyl-focus-card-cover-root";
+focusCardCoverContainer.className =
+  "focus-card-container focus-card-cover-container";
+root.appendChild(focusCardCoverContainer);
+
+const focusCardInfoContainer = document.createElement("div");
+focusCardInfoContainer.id = "vinyl-focus-card-info-root";
+focusCardInfoContainer.className =
+  "focus-card-container focus-card-info-container";
+root.appendChild(focusCardInfoContainer);
+
+const focusCardContainers = [focusCardCoverContainer, focusCardInfoContainer];
 
 // Create show focus button (positioned next to hide library button)
 const showFocusBtn = document.createElement("button");
@@ -570,12 +579,23 @@ const { camera } = cameraRig;
 
 const { vinylNormalTexture } = loadTextures(renderer);
 
+const FOCUS_VINYL_BASE_SCALE = 0.88;
+
 let labelVisuals: LabelVisualOptions = createDefaultLabelVisuals();
 
 const applyLabelTextureQuality = (textures: LabelTextures) => {
   const anisotropy = renderer.capabilities.getMaxAnisotropy();
   textures.sideA.anisotropy = anisotropy;
   textures.sideB.anisotropy = anisotropy;
+};
+
+const getFocusVinylScale = () =>
+  FOCUS_VINYL_BASE_SCALE / cameraRig.getZoomFactor();
+
+const applyFocusVinylScale = () => {
+  if (focusVinylState) {
+    focusVinylState.model.scale.setScalar(getFocusVinylScale());
+  }
 };
 
 let focusLabelTextures: LabelTextures = createLabelTextures(labelVisuals);
@@ -644,6 +664,7 @@ canvas.addEventListener(
     const delta = event.deltaY > 0 ? 0.08 : -0.08;
     zoomFactor = clampValue(zoomFactor + delta, MIN_ZOOM, MAX_ZOOM);
     cameraRig.setZoomFactor(zoomFactor);
+    applyFocusVinylScale();
   },
   { passive: false },
 );
@@ -693,6 +714,7 @@ const setActiveVinylSource = (
     if (vinylModel && syncState) {
       syncAnimationStateToModel(vinylModel);
     }
+    applyFocusVinylScale();
   } else if (source === "turntable") {
     vinylModel = turntableVinylState?.model ?? null;
     if (vinylModel && syncState) {
@@ -703,9 +725,8 @@ const setActiveVinylSource = (
   }
 };
 
-const cloneLabelVisuals = (
-  visuals: LabelVisualOptions,
-): LabelVisualOptions => JSON.parse(JSON.stringify(visuals));
+const cloneLabelVisuals = (visuals: LabelVisualOptions): LabelVisualOptions =>
+  JSON.parse(JSON.stringify(visuals));
 
 const disposeFocusVinyl = () => {
   if (!focusVinylState) {
@@ -750,7 +771,12 @@ const updateTurntableVinylVisuals = (visuals: LabelVisualOptions) => {
   applyLabelTextureQuality(textures);
   turntableVinylState.labelTextures = textures;
   turntableVinylState.labelVisuals = snapshot;
-  applyLabelTextures(turntableVinylState.model, textures, labelOptions, snapshot);
+  applyLabelTextures(
+    turntableVinylState.model,
+    textures,
+    labelOptions,
+    snapshot,
+  );
 };
 let shouldTrackFocusCard = false; // Flag to enable focus card tracking
 let focusCardAnchorPosition = new Vector3(); // Saved position for focus card anchor
@@ -1008,7 +1034,15 @@ async function handleFocusSelection(selection: VinylSelectionDetail) {
 
   await applySelectionVisualsToVinyl(selection);
 
+  // Always dispose old focus vinyl
   disposeFocusVinyl();
+
+  // Only dispose turntable vinyl if it's not currently playing
+  if (turntableVinylState && !turntableController?.isPlaying()) {
+    setVinylOnTurntable(false);
+  }
+
+  // Duration will be shown when the vinyl is placed on the turntable
 
   try {
     const model = await loadVinylModel(vinylNormalTexture);
@@ -1020,57 +1054,23 @@ async function handleFocusSelection(selection: VinylSelectionDetail) {
     model.visible = false;
     heroGroup.add(model);
     applyLabelTextures(model, focusLabelTextures, labelOptions, labelVisuals);
-    const shouldAdoptFocus = !turntableVinylState || !ON_TURNTABLE;
-    shouldTrackFocusCard = true;
-    if (shouldAdoptFocus) {
-      setActiveVinylSource("focus");
-    } else {
-      // keep turntable active but ensure focus tracking resumes
-      shouldTrackFocusCard = true;
-    }
-    prepareFocusVinylPresentation(model, loadToken, shouldAdoptFocus);
+    applyFocusVinylScale();
+    setActiveVinylSource("focus");
+    prepareFocusVinylPresentation(model, loadToken);
   } catch (error) {
     console.error("Failed to load focus vinyl", error);
   }
 }
 
-function prepareFocusVinylPresentation(
-  model: Object3D,
-  token: number,
-  keepFocusActive: boolean,
-) {
-  const previousSource = activeVinylSource;
-  const savedState = {
-    anchor: vinylAnchorPosition.clone(),
-    target: vinylTargetPosition.clone(),
-    last: lastTargetPosition.clone(),
-    pointer: currentPointerWorld.clone(),
-    offset: pointerAttachmentOffset.clone(),
-    desired: vinylAnimationState.desiredPosition.clone(),
-    relative: vinylAnimationState.relativeOffset.clone(),
-  };
-  if (!keepFocusActive) {
-    setActiveVinylSource("focus");
-  }
-  vinylCameraTrackingEnabled = false;
-  vinylScaleFactor = 0.55;
+function prepareFocusVinylPresentation(model: Object3D, token: number) {
+  setActiveVinylSource("focus");
+  vinylScaleFactor = getFocusVinylScale();
   vinylAnimationState.cameraRelativeOffsetValid = false;
   updateFocusCardPosition();
   resetVinylAnimationState(focusCardAnchorPosition);
-  if (!keepFocusActive) {
-    if (previousSource === "turntable" && turntableVinylState) {
-      vinylAnchorPosition.copy(savedState.anchor);
-      vinylTargetPosition.copy(savedState.target);
-      lastTargetPosition.copy(savedState.last);
-      currentPointerWorld.copy(savedState.pointer);
-      pointerAttachmentOffset.copy(savedState.offset);
-      vinylAnimationState.desiredPosition.copy(savedState.desired);
-      vinylAnimationState.relativeOffset.copy(savedState.relative);
-    }
-    setActiveVinylSource(previousSource ?? (turntableVinylState ? "turntable" : null), {
-      syncState: false,
-    });
-  }
+
+  // Enable billboard effect immediately
+  vinylCameraTrackingEnabled = true;
 
   // Fade in once positioned
   setTimeout(() => {
@@ -1078,12 +1078,6 @@ function prepareFocusVinylPresentation(
       model.visible = true;
     }
   }, 300);
-
-  setTimeout(() => {
-    if (token === focusVinylLoadToken && focusVinylState?.model === model) {
-      vinylCameraTrackingEnabled = true;
-    }
-  }, 700);
 
   setTimeout(() => {
     if (token === focusVinylLoadToken && focusVinylState?.model === model) {
@@ -1100,6 +1094,19 @@ window.addEventListener("update-aspect-ratio", (event: any) => {
   const { aspectRatio } = event.detail;
   console.log(`[main] Updating aspect ratio live to: ${aspectRatio}`);
   yt.setAspectRatio(aspectRatio);
+});
+
+// Listen for focus card album cover hover to shift vinyl (with animation)
+const FOCUS_VINYL_HOVER_DISTANCE = 5;
+const FOCUS_VINYL_HOVER_ANIMATION_SPEED = 0.25;
+let focusVinylHoverOffset = 0;
+let focusVinylHoverOffsetTarget = 0;
+window.addEventListener("focus-cover-hover", (event: any) => {
+  const { hovered } = event.detail;
+  focusVinylHoverOffsetTarget = hovered ? FOCUS_VINYL_HOVER_DISTANCE : 0;
+  console.log(
+    `[main] Focus cover hover: ${hovered}, target offset: ${focusVinylHoverOffsetTarget}`,
+  );
 });
 
 // Listen for focus card show events to change camera position and angle
@@ -1137,8 +1144,10 @@ yt.onFullscreenChange((isFullscreen: boolean) => {
     vinylViewerContainer.style.pointerEvents = "none";
     hideLibraryBtn.style.opacity = "0";
     hideLibraryBtn.style.pointerEvents = "none";
-    focusCardContainer.style.opacity = "0";
-    focusCardContainer.style.pointerEvents = "none";
+    focusCardContainers.forEach((container) => {
+      container.style.opacity = "0";
+      container.style.pointerEvents = "none";
+    });
     showFocusBtn.style.opacity = "0";
     showFocusBtn.style.pointerEvents = "none";
 
@@ -1151,10 +1160,12 @@ yt.onFullscreenChange((isFullscreen: boolean) => {
     vinylViewerContainer.style.pointerEvents = "auto";
     hideLibraryBtn.style.opacity = "1";
     hideLibraryBtn.style.pointerEvents = "auto";
-    if (focusCardContainer.childElementCount > 0) {
-      focusCardContainer.style.opacity = "1";
-    }
-    focusCardContainer.style.pointerEvents = "auto";
+    focusCardContainers.forEach((container) => {
+      if (container.childElementCount > 0) {
+        container.style.opacity = "1";
+      }
+      container.style.pointerEvents = "auto";
+    });
     showFocusBtn.style.opacity = "1";
     showFocusBtn.style.pointerEvents = "auto";
 
@@ -1226,8 +1237,9 @@ function setVinylOnTurntable(onTurntable: boolean) {
     }
     ON_TURNTABLE = true;
     turntableController?.setVinylPresence(true);
-    turntableController?.returnTonearmHome();
+    // Only return tonearm home and load video if promoting from focus
     if (promotingFocus) {
+      turntableController?.returnTonearmHome();
       pendingVinylSelection = turntableVinylState.selection;
       void loadVideoForCurrentSelection();
     }
@@ -1313,7 +1325,11 @@ const pickVinylUnderPointer = () => {
   if (focusVinylState?.model.visible) {
     const focusHit = raycaster.intersectObject(focusVinylState.model, true);
     if (focusHit.length) {
-      hits.push({ source: "focus", model: focusVinylState.model, hit: focusHit[0] });
+      hits.push({
+        source: "focus",
+        model: focusVinylState.model,
+        hit: focusHit[0],
+      });
     }
   }
   if (turntableVinylState) {
@@ -1365,7 +1381,11 @@ canvas.addEventListener("pointerdown", (event) => {
   if (!vinylModel) {
     return;
   }
-  if (vinylSelection.source === "focus" && focusVinylState && previousSource !== "focus") {
+  if (
+    vinylSelection.source === "focus" &&
+    focusVinylState &&
+    previousSource !== "focus"
+  ) {
     resetVinylAnimationState(focusCardAnchorPosition);
   } else if (
     vinylSelection.source === "turntable" &&
@@ -1482,7 +1502,8 @@ const endDrag = (event: PointerEvent) => {
       isReturningVinyl = true;
       isReturningToFocusCard = false;
       hasClearedNub = false;
-      pendingPromotionSource = dragSource;
+      // Only set pendingPromotionSource if dragging from focus (not if already on turntable)
+      pendingPromotionSource = dragSource === "turntable" ? null : dragSource;
       // Switch anchor to turntable when starting return (but keep shouldTrackFocusCard - only disable when actually on turntable)
       vinylAnchorPosition.copy(turntableAnchorPosition);
     }
@@ -1519,7 +1540,13 @@ const endDrag = (event: PointerEvent) => {
 
   swingState.targetX = 0;
   swingState.targetZ = 0;
-  if (focusVinylState && activeVinylSource !== "focus") {
+  // Only switch back to focus if we're not returning to turntable and not returning to focus card
+  if (
+    focusVinylState &&
+    activeVinylSource !== "focus" &&
+    !isReturningVinyl &&
+    !isReturningToFocusCard
+  ) {
     setActiveVinylSource("focus");
   }
 };
@@ -1630,7 +1657,7 @@ const updateFocusCardPosition = () => {
   }
 
   const focusCardElement = document.querySelector(
-    ".focus-card-container .album-cover",
+    ".focus-card-cover-container .album-cover",
   ) as HTMLElement;
   if (!focusCardElement) {
     return;
@@ -1668,6 +1695,7 @@ const updateFocusCardPosition = () => {
     lastTargetPosition.copy(vinylPosition);
     vinylAnchorPosition.copy(focusCardAnchorPosition);
     updateDragPlaneDepth(vinylPosition.z);
+    applyFocusVinylScale();
   }
 };
 
@@ -1807,6 +1835,7 @@ const animate = (time: number) => {
         cameraUp: cameraUpVector,
         vinylDragThreshold: VINYL_DRAG_THRESHOLD,
         cameraTrackingEnabled: vinylCameraTrackingEnabled,
+        turntableAnchorY: turntableAnchorPosition.y,
       });
       isReturningVinyl = vinylAnimationResult.isReturningVinyl;
       hasClearedNub = vinylAnimationResult.hasClearedNub;
@@ -1823,6 +1852,19 @@ const animate = (time: number) => {
 
     // Apply position offset and scale from controls
     vinylModel.position.add(vinylPositionOffset);
+
+    // Smoothly animate hover offset for focus vinyl
+    if (Math.abs(focusVinylHoverOffsetTarget - focusVinylHoverOffset) > 0.001) {
+      focusVinylHoverOffset +=
+        (focusVinylHoverOffsetTarget - focusVinylHoverOffset) *
+        FOCUS_VINYL_HOVER_ANIMATION_SPEED;
+    } else {
+      focusVinylHoverOffset = focusVinylHoverOffsetTarget;
+    }
+
+    if (activeVinylSource === "focus" && focusVinylHoverOffset !== 0) {
+      vinylModel.position.x += focusVinylHoverOffset;
+    }
 
     // Scale based on distance to TURNTABLE (not current anchor) - reaches 1.0 before threshold
     const distanceToTurntable =

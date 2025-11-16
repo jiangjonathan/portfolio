@@ -182,10 +182,17 @@ export class VinylLibraryViewer {
    * If insertAtTop is provided, insert new entry at the top of the list
    */
   private mergeLibraries(insertAtTop?: string): void {
-    const ownerEntries: ExtendedEntry[] = this.ownerLibrary.map((entry) => ({
-      ...entry,
-      isOwnerEntry: true,
-    }));
+    // Apply cached durations to owner entries
+    const ownerEntries: ExtendedEntry[] = this.ownerLibrary.map((entry) => {
+      const cachedDuration = this.getCachedDuration(entry.youtubeId);
+      return {
+        ...entry,
+        isOwnerEntry: true,
+        duration:
+          entry.duration ||
+          (cachedDuration ? String(cachedDuration) : undefined),
+      };
+    });
 
     const visitorEntries: ExtendedEntry[] = this.visitorLibrary.map(
       (entry) => ({
@@ -344,35 +351,49 @@ export class VinylLibraryViewer {
           .focus-card-container {
             position: fixed;
             top: 24px;
-            left: 52.5%;
-            transform: translateX(-50%);
-            width: 700px;
             pointer-events: none;
+            z-index: 10000;
           }
 
-          .focus-card-container .album-card {
+          .focus-card-cover-container {
+            left: calc(52.5% - 350px);
+            width: 250px;
+          }
+
+          .focus-card-info-container {
+            left: calc(52.5% - 350px + 250px + 1rem);
+            width: calc(700px - 250px - 1rem);
+          }
+
+          .focus-card-cover,
+          .focus-card-info {
             pointer-events: auto;
             animation: fade-in-focus 0.4s ease-out forwards;
-            flex-direction: row;
-            gap: 1rem;
-            width: 100%;
             position: relative;
           }
 
-          .focus-card-container .hide-focus-btn {
+          .focus-card-info {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            min-height: 250px;
+            padding-bottom: 2.5rem;
+          }
+
+          .focus-card-info-container .hide-focus-btn {
             position: absolute;
             top: 0.5rem;
             right: 0.5rem;
             opacity: 0;
             transition: opacity 0.2s;
-            z-index: 10;
+            z-index: 10001;
           }
 
-          .focus-card-container .album-card:hover .hide-focus-btn {
+          .focus-card-info-container:hover .hide-focus-btn {
             opacity: 1;
           }
 
-          .focus-card-container .album-cover-wrapper {
+          .focus-card-cover-container .album-cover-wrapper {
             position: relative;
             width: 250px;
             height: 250px;
@@ -382,7 +403,31 @@ export class VinylLibraryViewer {
             z-index: 20000;
           }
 
-          .focus-card-container .album-cover {
+          .focus-card-cover-container .album-cover-wrapper::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: -50px;
+            bottom: 0;
+            z-index: -1;
+          }
+
+          .focus-card-info-container.cover-hovered .album-info-container {
+            transform: translateX(50px);
+          }
+
+          .focus-card-info-container .album-info-container {
+            transition: transform 0.3s ease;
+            position: relative;
+            flex: 1;
+            display: flex;
+            flex-direction: row;
+            gap: 1rem;
+            z-index: 10000;
+          }
+
+          .focus-card-cover-container .album-cover {
             width: 100%;
             height: 100%;
             object-fit: cover;
@@ -393,7 +438,7 @@ export class VinylLibraryViewer {
             z-index: 20001;
           }
 
-          .focus-card-container .plastic-overlay {
+          .focus-card-cover-container .plastic-overlay {
             position: absolute;
             top: 0;
             left: 0;
@@ -406,9 +451,10 @@ export class VinylLibraryViewer {
             mix-blend-mode: ${PLASTIC_OVERLAY_BLEND_MODE};
             border-radius: 2px;
             z-index: 20002;
+            transition: transform 0.3s ease;
           }
 
-          .focus-card-container .album-info {
+          .focus-card-info-container .album-info {
             padding: 0;
             display: flex;
             flex-direction: column;
@@ -421,15 +467,15 @@ export class VinylLibraryViewer {
             position: relative;
           }
 
-          .focus-card-container .album-artist,
-          .focus-card-container .album-song {
+          .focus-card-info-container .album-artist,
+          .focus-card-info-container .album-song {
             white-space: nowrap;
             overflow: hidden;
             width: 100%;
             position: relative;
           }
 
-          .focus-card-container .album-artist {
+          .focus-card-info-container .album-artist {
             font-size: 0.7rem;
             color: #000;
             margin-bottom: 0.15rem;
@@ -437,33 +483,32 @@ export class VinylLibraryViewer {
             font-weight: normal;
           }
 
-          .focus-card-container .album-song {
+          .focus-card-info-container .album-song {
             font-weight: 500;
             font-size: 0.8rem;
             color: #000;
             line-height: 1.1;
           }
 
-          .focus-card-container .album-year {
+          .focus-card-info-container .album-year {
             font-size: 0.65rem;
             color: #888;
             margin-top: 0.15rem;
             line-height: 1.1;
           }
 
-          .focus-card-container .album-aspect-ratio {
+          .focus-card-info-container .album-aspect-ratio {
             font-size: 0.65rem;
-            color: #888;
-            margin-top: 0.15rem;
+            color: #666;
+            margin-top: 0.35rem;
             line-height: 1.1;
-            display: none;
           }
 
-          .focus-card-container .album-aspect-ratio.editing-enabled {
-            display: block;
+          .focus-card-info-container .album-aspect-ratio.editing-enabled {
+            padding: 2px 4px;
           }
 
-          .focus-card-container .owner-badge {
+          .focus-card-cover-container .owner-badge {
             position: absolute;
             top: 0.5rem;
             left: 0.5rem;
@@ -479,11 +524,11 @@ export class VinylLibraryViewer {
             transition: opacity 0.2s;
           }
 
-          .focus-card-container .album-card:hover .owner-badge {
+          .focus-card-cover-container:hover .owner-badge {
             opacity: 1;
           }
 
-          .focus-card-container .delete-btn {
+          .focus-card-cover-container .delete-btn {
             position: absolute;
             top: 0.5rem;
             right: 0.5rem;
@@ -500,35 +545,32 @@ export class VinylLibraryViewer {
             z-index: 10;
           }
 
-          .vinyl-viewer-widget.edit-mode .focus-card-container .delete-btn {
+          .vinyl-viewer-widget.edit-mode
+            .focus-card-cover-container
+            .delete-btn {
             opacity: 1 !important;
             pointer-events: auto !important;
           }
 
-          .focus-card-container .delete-btn:hover {
+          .focus-card-cover-container .delete-btn:hover {
             background: rgba(153, 27, 27, 0.9);
           }
 
-          .vinyl-viewer-widget .album-card.focused {
-            position: fixed;
-            top: 24px;
-            left: 52.5%;
-            transform: translateX(-50%);
-            z-index: 1000;
-            width: 700px;
-            animation: fade-in-focus 0.4s ease-out forwards;
-            flex-direction: row;
-            gap: 1rem;
+          .vinyl-viewer-widget .album-card.focused .album-main,
+          .focus-card-cover-container .album-cover-container {
+            position: relative;
+            flex-shrink: 0;
+            z-index: 1;
           }
 
-          .vinyl-viewer-widget .album-card.focused .album-main,
-          .focus-card-container .album-main {
-            position: relative;
-            display: flex;
-            flex-direction: row;
-            gap: 1rem;
-            align-items: center;
-            flex: 1;
+          .focus-card-cover-container .album-cover-container {
+            width: 100%;
+          }
+
+          .focus-card-info-container .album-note-right {
+            flex-shrink: 0;
+            max-width: 200px;
+            margin-left: auto;
           }
 
           .vinyl-viewer-widget .album-metadata {
@@ -536,7 +578,7 @@ export class VinylLibraryViewer {
           }
 
           .vinyl-viewer-widget .album-card.focused .album-metadata,
-          .focus-card-container .album-metadata {
+          .focus-card-info-container .album-metadata {
             display: block;
             padding: 0;
             font-size: 0.75rem;
@@ -547,11 +589,11 @@ export class VinylLibraryViewer {
           }
 
           .vinyl-viewer-widget .album-card.focused .album-metadata div,
-          .focus-card-container .album-metadata div {
+          .focus-card-info-container .album-metadata div {
             margin-bottom: 0.3rem;
           }
 
-          .focus-card-container .apply-changes-btn {
+          .focus-card-info-container .apply-changes-btn {
             position: absolute;
             bottom: 0.5rem;
             right: 0.5rem;
@@ -563,15 +605,16 @@ export class VinylLibraryViewer {
             opacity: 0;
             pointer-events: none;
             transition: opacity 0.2s ease;
+            z-index: 10001;
           }
 
-          .focus-card-container .apply-changes-btn.visible {
+          .focus-card-info-container .apply-changes-btn.visible {
             opacity: 1;
             pointer-events: auto;
           }
 
           .vinyl-viewer-widget .album-card.focused .album-metadata strong,
-          .focus-card-container .album-metadata strong {
+          .focus-card-info-container .album-metadata strong {
             color: #000;
             font-weight: 600;
           }
@@ -595,7 +638,7 @@ export class VinylLibraryViewer {
             border-radius: 2px;
           }
 
-          .focus-card-container .album-genre {
+          .focus-card-info-container .album-genre {
             display: block;
             font-size: 0.65rem;
             color: #888;
@@ -604,12 +647,12 @@ export class VinylLibraryViewer {
             font-style: italic;
           }
 
-          .focus-card-container .editable-field {
+          .focus-card-info-container .editable-field {
             outline: none;
             transition: background-color 0.2s, border 0.2s;
           }
 
-          .focus-card-container .editable-field.editing-enabled {
+          .focus-card-info-container .editable-field.editing-enabled {
             background-color: rgba(255, 255, 200, 0.3);
             border: 1px dashed #ccc;
             padding: 2px 4px;
@@ -617,24 +660,36 @@ export class VinylLibraryViewer {
             cursor: text;
           }
 
-          .focus-card-container .editable-field.editing-enabled:hover {
+          .focus-card-info-container .editable-field.editing-enabled:hover {
             background-color: rgba(255, 255, 200, 0.5);
           }
 
-          .focus-card-container .editable-field.editing-enabled:focus {
+          .focus-card-info-container .editable-field.editing-enabled:focus {
             background-color: rgba(255, 255, 200, 0.6);
             border-color: #999;
           }
 
-          .focus-card-container .empty-field {
+          .focus-card-info-container .empty-field {
             color: #999;
             font-style: italic;
             display: none;
           }
 
-          .focus-card-container .empty-field.editing-enabled {
+          .focus-card-info-container .empty-field.editing-enabled {
             display: block;
           }
+
+          .focus-card-info-container .album-duration {
+            position: absolute;
+            bottom: 0.5rem;
+            left: 0.5rem;
+            color: #888;
+            font-size: 0.7rem;
+            opacity: 0;
+            animation: fade-in-duration 0.5s ease-out 0.2s forwards;
+          }
+
+
 
           @keyframes fade-in-focus {
             from {
@@ -1241,19 +1296,7 @@ export class VinylLibraryViewer {
 
     const entry = this.library.find((e) => e.id === this.focusedEntryId);
     if (entry) {
-      const focusContainer = document.getElementById(
-        "vinyl-focus-card-container-root",
-      );
-      if (focusContainer) {
-        // Fade in animation
-        focusContainer.style.opacity = "0";
-        this.renderFocusCard(entry);
-
-        requestAnimationFrame(() => {
-          focusContainer.style.transition = "opacity 0.3s ease";
-          focusContainer.style.opacity = "1";
-        });
-      }
+      this.renderFocusCard(entry);
     }
   }
 
@@ -1261,10 +1304,13 @@ export class VinylLibraryViewer {
    * Render the focus card in the dedicated container
    */
   public renderFocusCard(entry: ExtendedEntry): void {
-    const focusContainer = document.getElementById(
-      "vinyl-focus-card-container-root",
+    const focusCoverContainer = document.getElementById(
+      "vinyl-focus-card-cover-root",
     );
-    if (!focusContainer) return;
+    const focusInfoContainer = document.getElementById(
+      "vinyl-focus-card-info-root",
+    );
+    if (!focusCoverContainer || !focusInfoContainer) return;
 
     // Dispatch event to change camera position to "bottom-center" and polar angle to 22 degrees
     window.dispatchEvent(
@@ -1292,18 +1338,25 @@ export class VinylLibraryViewer {
     const aspectRatio =
       entry.aspectRatio !== undefined ? String(entry.aspectRatio) : "";
 
-    console.log(
-      `[renderFocusCard] Entry ${entry.id} duration:`,
-      entry.duration,
-    );
+    console.log(`[renderFocusCard] Entry ${entry.id}:`, {
+      duration: entry.duration,
+      formatted: entry.duration
+        ? this.formatDuration(entry.duration)
+        : "NO DURATION",
+      isOwnerEntry: entry.isOwnerEntry,
+      youtubeId: entry.youtubeId,
+    });
+    console.log(`[renderFocusCard] Full entry object:`, entry);
 
-    focusContainer.style.transition = "opacity 0.3s ease";
-    focusContainer.style.opacity = "0";
+    const containers = [focusCoverContainer, focusInfoContainer];
+    containers.forEach((container) => {
+      container.style.transition = "opacity 0.3s ease";
+      container.style.opacity = "0";
+    });
 
-    focusContainer.innerHTML = `
-      <div class="album-card" data-entry-id="${entry.id}">
-        <button class="hide-focus-btn vinyl-hyperlink">hide focus</button>
-        <div class="album-main">
+    const coverHtml = `
+      <div class="focus-card-cover" data-entry-id="${entry.id}">
+        <div class="album-cover-container">
           <div class="album-cover-wrapper">
             <img
               src="${this.getImageWithFallback(entry.imageUrl, entry)}"
@@ -1313,7 +1366,33 @@ export class VinylLibraryViewer {
             ${plasticOverlay}
           </div>
           ${isOwner ? '<div class="owner-badge">Owner</div>' : ""}
-          ${canDelete ? `<button class="delete-btn" data-entry-id="${entry.id}" data-is-owner="${isOwner}" title="Delete from collection">×</button>` : ""}
+          ${
+            canDelete
+              ? `<button class="delete-btn" data-entry-id="${entry.id}" data-is-owner="${isOwner}" title="Delete from collection">×</button>`
+              : ""
+          }
+        </div>
+      </div>
+    `;
+
+    const noteMarkup = note
+      ? `<div class="album-metadata album-note-right">
+            <div class="${canEdit ? "editable-field" : ""}" ${canEdit ? 'contenteditable="false"' : ""} data-field="note">${this.escapeHtml(note)}</div>
+          </div>`
+      : canEdit
+        ? `<div class="album-metadata album-note-right">
+            <div class="editable-field empty-field" contenteditable="false" data-field="note">Add note</div>
+          </div>`
+        : "";
+
+    const durationMarkup = entry.duration
+      ? `<div class="album-duration">${this.formatDuration(entry.duration)}</div>`
+      : "";
+
+    const infoHtml = `
+      <div class="focus-card-info" data-entry-id="${entry.id}">
+        <button class="hide-focus-btn vinyl-hyperlink">hide focus</button>
+        <div class="album-info-container">
           <div class="album-info">
             <div class="album-artist">
               <span class="album-artist-text ${canEdit ? "editable-field" : ""}" ${canEdit ? 'contenteditable="false"' : ""} data-field="artistName">${this.escapeHtml(artistName)}</span>
@@ -1321,33 +1400,66 @@ export class VinylLibraryViewer {
             <div class="album-song">
               <span class="album-song-text ${canEdit ? "editable-field" : ""}" ${canEdit ? 'contenteditable="false"' : ""} data-field="songName">${this.escapeHtml(songName)}</span>
             </div>
-            ${releaseYear ? `<div class="album-year ${canEdit ? "editable-field" : ""}" ${canEdit ? 'contenteditable="false"' : ""} data-field="releaseYear" style="margin-left:0.5px;">${this.escapeHtml(releaseYear)}</div>` : canEdit ? `<div class="album-year editable-field empty-field" contenteditable="false" data-field="releaseYear" style="margin-left:0.5px;">Add year</div>` : ""}
-            ${genre ? `<div class="album-genre ${canEdit ? "editable-field" : ""}" ${canEdit ? 'contenteditable="false"' : ""} data-field="genre">${this.escapeHtml(genre)}</div>` : canEdit ? `<div class="album-genre editable-field empty-field" contenteditable="false" data-field="genre">Add genre</div>` : ""}
-            ${canEdit ? (aspectRatio ? `<div class="album-aspect-ratio editable-field" contenteditable="false" data-field="aspectRatio" style="margin-left:0.5px;">aspect ratio: ${this.escapeHtml(aspectRatio)}</div>` : `<div class="album-aspect-ratio editable-field empty-field" contenteditable="false" data-field="aspectRatio" style="margin-left:0.5px;">Add aspect ratio</div>`) : ""}
-          </div>
-          ${entry.duration ? `<div class="album-duration" style="position: absolute; bottom: 0.5rem; left: 266px; color: #888; font-size: 0.7rem; opacity: 0; animation: fade-in-duration 0.5s ease-out 0.2s forwards;">${this.formatDuration(entry.duration)}</div>` : ""}
-          ${
-            note
-              ? `<div class="album-metadata">
-            <div class="${canEdit ? "editable-field" : ""}" ${canEdit ? 'contenteditable="false"' : ""} data-field="note">${this.escapeHtml(note)}</div>
-          </div>`
-              : canEdit
-                ? `<div class="album-metadata">
-            <div class="editable-field empty-field" contenteditable="false" data-field="note">Add note</div>
-          </div>`
+            ${
+              releaseYear
+                ? `<div class="album-year ${canEdit ? "editable-field" : ""}" ${canEdit ? 'contenteditable="false"' : ""} data-field="releaseYear" style="margin-left:0.5px;">${this.escapeHtml(releaseYear)}</div>`
+                : canEdit
+                  ? `<div class="album-year editable-field empty-field" contenteditable="false" data-field="releaseYear" style="margin-left:0.5px;">Add year</div>`
+                  : ""
+            }
+            ${
+              genre
+                ? `<div class="album-genre ${canEdit ? "editable-field" : ""}" ${canEdit ? 'contenteditable="false"' : ""} data-field="genre">${this.escapeHtml(genre)}</div>`
+                : canEdit
+                  ? `<div class="album-genre editable-field empty-field" contenteditable="false" data-field="genre">Add genre</div>`
+                  : ""
+            }
+            ${
+              canEdit
+                ? aspectRatio
+                  ? `<div class="album-aspect-ratio editable-field" contenteditable="false" data-field="aspectRatio" style="margin-left:0.5px;">aspect ratio: ${this.escapeHtml(aspectRatio)}</div>`
+                  : `<div class="album-aspect-ratio editable-field empty-field" contenteditable="false" data-field="aspectRatio" style="margin-left:0.5px;">Add aspect ratio</div>`
                 : ""
-          }
+            }
+          </div>
+          ${noteMarkup}
         </div>
-        ${canEdit ? `<button class="apply-changes-btn vinyl-hyperlink">apply changes</button>` : ""}
+        ${durationMarkup}
+        ${
+          canEdit
+            ? `<button class="apply-changes-btn vinyl-hyperlink">apply changes</button>`
+            : ""
+        }
       </div>
     `;
 
+    focusCoverContainer.innerHTML = coverHtml;
+    focusInfoContainer.innerHTML = infoHtml;
+
+    const plasticOverlayElement = focusCoverContainer.querySelector(
+      ".plastic-overlay",
+    ) as HTMLElement | null;
+    const plasticOverlayBaseTransform =
+      plasticOverlayElement?.style.transform || "";
+    const setPlasticOverlayShift = (shift: number) => {
+      if (!plasticOverlayElement) return;
+      if (!plasticOverlayElement.style.transition) {
+        plasticOverlayElement.style.transition = "transform 0.3s ease";
+      }
+      const base = plasticOverlayBaseTransform.trim();
+      const shiftTransform = shift !== 0 ? `translateX(${shift}px)` : "";
+      const separator = shiftTransform && base ? " " : "";
+      plasticOverlayElement.style.transform = `${shiftTransform}${separator}${base}`;
+    };
+
     requestAnimationFrame(() => {
-      focusContainer.style.opacity = "1";
+      containers.forEach((container) => {
+        container.style.opacity = "1";
+      });
     });
 
     // Attach delete button listener if present
-    const deleteBtn = focusContainer.querySelector(".delete-btn");
+    const deleteBtn = focusCoverContainer.querySelector(".delete-btn");
     if (deleteBtn) {
       deleteBtn.addEventListener("click", (e) => {
         e.preventDefault();
@@ -1363,20 +1475,52 @@ export class VinylLibraryViewer {
       });
     }
 
+    // Attach album cover hover listener to shift vinyl (using wrapper for extended hitbox)
+    const albumCoverWrapper = focusCoverContainer.querySelector(
+      ".album-cover-wrapper",
+    );
+    if (albumCoverWrapper) {
+      const toggleCoverHover = (isHovered: boolean) => {
+        focusInfoContainer.classList.toggle("cover-hovered", isHovered);
+        focusCoverContainer.classList.toggle("cover-hovered", isHovered);
+        setPlasticOverlayShift(isHovered ? -50 : 0);
+        window.dispatchEvent(
+          new CustomEvent("focus-cover-hover", {
+            detail: { hovered: isHovered },
+          }),
+        );
+      };
+
+      albumCoverWrapper.addEventListener("mouseenter", () => {
+        toggleCoverHover(true);
+      });
+      albumCoverWrapper.addEventListener("mouseleave", () => {
+        toggleCoverHover(false);
+      });
+    }
+
     // Attach hide focus button listener
-    const hideFocusBtn = focusContainer.querySelector(".hide-focus-btn");
+    const hideFocusBtn = focusInfoContainer.querySelector(".hide-focus-btn");
     if (hideFocusBtn) {
       hideFocusBtn.addEventListener("click", (e) => {
         e.preventDefault();
         e.stopPropagation();
 
         // Fade out animation
-        focusContainer.style.transition = "opacity 0.3s ease";
-        focusContainer.style.opacity = "0";
+        containers.forEach((container) => {
+          container.style.transition = "opacity 0.3s ease";
+          container.style.opacity = "0";
+        });
 
         setTimeout(() => {
-          focusContainer.innerHTML = "";
-          focusContainer.style.opacity = "1";
+          focusCoverContainer.innerHTML = "";
+          focusInfoContainer.innerHTML = "";
+          setPlasticOverlayShift(0);
+          focusInfoContainer.classList.remove("cover-hovered");
+          focusCoverContainer.classList.remove("cover-hovered");
+          containers.forEach((container) => {
+            container.style.opacity = "1";
+          });
           // DON'T clear focusedEntryId - we need it to show the card again
 
           // Show the "show focus" button
@@ -1390,7 +1534,7 @@ export class VinylLibraryViewer {
 
     // Setup editable fields
     if (canEdit) {
-      this.setupEditableFields(focusContainer, entry);
+      this.setupEditableFields(focusInfoContainer, entry);
     }
   }
 
@@ -1987,6 +2131,48 @@ export class VinylLibraryViewer {
   }
 
   /**
+   * Cache duration in localStorage by videoId
+   */
+  private cacheDuration(videoId: string, duration: number): void {
+    try {
+      const cache = this.getDurationCache();
+      cache[videoId] = duration;
+      localStorage.setItem("videoDurationCache", JSON.stringify(cache));
+      console.log(
+        `[cacheDuration] Cached duration for ${videoId}: ${duration}s`,
+      );
+    } catch (error) {
+      console.warn("[cacheDuration] Failed to cache duration:", error);
+    }
+  }
+
+  /**
+   * Get cached duration for a videoId
+   */
+  private getCachedDuration(videoId: string): number | null {
+    try {
+      const cache = this.getDurationCache();
+      return cache[videoId] || null;
+    } catch (error) {
+      console.warn("[getCachedDuration] Failed to get cached duration:", error);
+      return null;
+    }
+  }
+
+  /**
+   * Get the entire duration cache from localStorage
+   */
+  private getDurationCache(): Record<string, number> {
+    try {
+      const cached = localStorage.getItem("videoDurationCache");
+      return cached ? JSON.parse(cached) : {};
+    } catch (error) {
+      console.warn("[getDurationCache] Failed to parse duration cache:", error);
+      return {};
+    }
+  }
+
+  /**
    * Watch for video duration updates from the player
    */
   private watchVideoDurationUpdates(): void {
@@ -1995,6 +2181,9 @@ export class VinylLibraryViewer {
       console.log(
         `[vinylLibraryViewer] Received duration for video ${videoId}: ${duration}s`,
       );
+
+      // Save duration to a separate localStorage cache indexed by videoId
+      this.cacheDuration(videoId, duration);
 
       // Update the entry in both libraries
       const visitorEntry = this.visitorLibrary.find(
@@ -2010,7 +2199,7 @@ export class VinylLibraryViewer {
       if (ownerEntry) {
         ownerEntry.duration = String(duration);
         console.log(
-          `[vinylLibraryViewer] Updated owner entry with duration (not persisted to backend)`,
+          `[vinylLibraryViewer] Updated owner entry with duration (cached locally)`,
         );
       }
 
@@ -2023,26 +2212,34 @@ export class VinylLibraryViewer {
           focusedEntry.duration = String(duration);
 
           // Just update the duration text in the existing DOM instead of re-rendering
-          const focusContainer = document.getElementById(
-            "vinyl-focus-card-container-root",
+          const focusInfoContainer = document.getElementById(
+            "vinyl-focus-card-info-root",
           );
-          if (focusContainer) {
-            const albumCard = focusContainer.querySelector(".album-card");
-            if (albumCard) {
+          if (focusInfoContainer) {
+            const infoCard =
+              focusInfoContainer.querySelector(".focus-card-info");
+            if (infoCard) {
               // Remove any existing duration elements first to prevent duplicates
               const existingDurations =
-                albumCard.querySelectorAll(".album-duration");
+                infoCard.querySelectorAll(".album-duration");
               existingDurations.forEach((el) => el.remove());
 
-              // Create and append duration element at the bottom of the card, next to cover
+              // Create and insert duration element at the bottom of the card
               const durationDiv = document.createElement("div");
               durationDiv.className = "album-duration";
-              durationDiv.style.cssText =
-                "position: absolute; bottom: 0.5rem; left: 266px; color: #888; font-size: 0.7rem; opacity: 0; animation: fade-in-duration 0.5s ease-out forwards;";
               durationDiv.textContent = `${this.formatDuration(duration)}`;
-              albumCard.appendChild(durationDiv);
+
+              // Insert before the apply button if it exists, otherwise append to card
+              const applyButton = infoCard.querySelector(".apply-changes-btn");
+              if (applyButton) {
+                infoCard.insertBefore(durationDiv, applyButton);
+              } else {
+                infoCard.appendChild(durationDiv);
+              }
+
               console.log(
-                `[vinylLibraryViewer] Updated focus card duration without re-render`,
+                `[vinylLibraryViewer] Inserted duration: ${this.formatDuration(duration)} at bottom of card`,
+                durationDiv,
               );
             }
           }
