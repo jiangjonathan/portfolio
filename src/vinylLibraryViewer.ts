@@ -48,6 +48,7 @@ export class VinylLibraryViewer {
   private customOrder: Map<string, number> = new Map(); // Session-based custom ordering
   private isEditMode: boolean = false; // Toggle for showing delete buttons
   private focusedEntryId: string | null = null; // Track currently focused entry
+  private focusCardCleanup: (() => void) | null = null;
 
   constructor(config: ViewerConfig) {
     this.config = config;
@@ -1304,6 +1305,11 @@ export class VinylLibraryViewer {
    * Render the focus card in the dedicated container
    */
   public renderFocusCard(entry: ExtendedEntry): void {
+    if (this.focusCardCleanup) {
+      this.focusCardCleanup();
+      this.focusCardCleanup = null;
+    }
+
     const focusCoverContainer = document.getElementById(
       "vinyl-focus-card-cover-root",
     );
@@ -1463,9 +1469,11 @@ export class VinylLibraryViewer {
 
     let isCoverHoverActive = false;
     let isCoverClickActive = false;
+    let coverClickTimeoutId: number | null = null;
     let plasticOverlayFadeTimeout: number | null = null;
+    let isPlasticLocked = false;
     const updatePlasticOverlayState = () => {
-      const shift = isCoverClickActive ? -250 : isCoverHoverActive ? -50 : 0;
+      const shift = isPlasticLocked ? -250 : isCoverHoverActive ? -50 : 0;
       setPlasticOverlayShift(shift);
       if (plasticOverlayFadeTimeout !== null) {
         window.clearTimeout(plasticOverlayFadeTimeout);
@@ -1473,8 +1481,10 @@ export class VinylLibraryViewer {
       }
       if (plasticOverlayElement) {
         const targetOpacity =
-          isCoverClickActive === true ? "0" : plasticOverlayBaseOpacity || "1";
-        if (isCoverClickActive) {
+          isPlasticLocked || isCoverClickActive
+            ? "0"
+            : plasticOverlayBaseOpacity || "1";
+        if (isCoverClickActive || isPlasticLocked) {
           plasticOverlayFadeTimeout = window.setTimeout(() => {
             if (plasticOverlayElement) {
               plasticOverlayElement.style.opacity = targetOpacity;
@@ -1498,6 +1508,7 @@ export class VinylLibraryViewer {
         new CustomEvent("focus-cover-click", { detail: { active } }),
       );
     };
+
     updatePlasticOverlayState();
     dispatchCoverHoverEvent(false);
     dispatchCoverClickEvent(false);
@@ -1541,30 +1552,73 @@ export class VinylLibraryViewer {
         dispatchCoverHoverEvent(isHovered);
       };
 
-      const handleCoverClickToggle = () => {
-        const nextState = !isCoverClickActive;
-        if (nextState) {
-          if (isCoverHoverActive) {
-            isCoverHoverActive = false;
-            focusInfoContainer.classList.remove("cover-hovered");
-            focusCoverContainer.classList.remove("cover-hovered");
-            dispatchCoverHoverEvent(false);
-          }
+      const setCoverClickState = (active: boolean, emitEvent = true) => {
+        if (isCoverClickActive === active) {
+          return;
         }
-        isCoverClickActive = nextState;
-        focusInfoContainer.classList.toggle("cover-clicked", nextState);
-        focusCoverContainer.classList.toggle("cover-clicked", nextState);
+        if (active && isCoverHoverActive) {
+          isCoverHoverActive = false;
+          focusInfoContainer.classList.remove("cover-hovered");
+          focusCoverContainer.classList.remove("cover-hovered");
+          dispatchCoverHoverEvent(false);
+        }
+        if (active) {
+          isPlasticLocked = true;
+        }
+        isCoverClickActive = active;
+        focusInfoContainer.classList.toggle("cover-clicked", active);
+        focusCoverContainer.classList.toggle("cover-clicked", active);
         updatePlasticOverlayState();
-        dispatchCoverClickEvent(nextState);
+        if (emitEvent) {
+          dispatchCoverClickEvent(active);
+        }
 
-        if (!nextState) {
-          const isCurrentlyHovered = albumCoverWrapper.matches(":hover");
-          if (isCurrentlyHovered) {
+        if (coverClickTimeoutId !== null) {
+          window.clearTimeout(coverClickTimeoutId);
+          coverClickTimeoutId = null;
+        }
+        if (active) {
+          coverClickTimeoutId = window.setTimeout(() => {
+            coverClickTimeoutId = null;
+            setCoverClickState(false);
+          }, 5000);
+        }
+
+        if (!active) {
+          if (albumCoverWrapper.matches(":hover")) {
             toggleCoverHover(true);
           } else {
             toggleCoverHover(false);
           }
         }
+      };
+
+      const handleCoverClickToggle = () => {
+        setCoverClickState(!isCoverClickActive);
+      };
+
+      const handleExternalClickReset = () => {
+        setCoverClickState(false, false);
+      };
+      window.addEventListener(
+        "focus-cover-click-reset",
+        handleExternalClickReset,
+      );
+      const cleanupHandlers: (() => void)[] = [];
+      cleanupHandlers.push(() => {
+        window.removeEventListener(
+          "focus-cover-click-reset",
+          handleExternalClickReset,
+        );
+      });
+      this.focusCardCleanup = () => {
+        if (coverClickTimeoutId !== null) {
+          window.clearTimeout(coverClickTimeoutId);
+          coverClickTimeoutId = null;
+        }
+        cleanupHandlers.forEach((fn) => fn());
+        cleanupHandlers.length = 0;
+        this.focusCardCleanup = null;
       };
 
       albumCoverWrapper.addEventListener("mouseenter", () => {
@@ -1589,6 +1643,9 @@ export class VinylLibraryViewer {
         updatePlasticOverlayState();
         dispatchCoverHoverEvent(false);
         dispatchCoverClickEvent(false);
+        if (this.focusCardCleanup) {
+          this.focusCardCleanup();
+        }
 
         // Fade out animation
         containers.forEach((container) => {
@@ -1597,12 +1654,20 @@ export class VinylLibraryViewer {
         });
 
         setTimeout(() => {
+          if (this.focusCardCleanup) {
+            this.focusCardCleanup();
+          }
           focusCoverContainer.innerHTML = "";
           focusInfoContainer.innerHTML = "";
           focusInfoContainer.classList.remove("cover-hovered");
           focusCoverContainer.classList.remove("cover-hovered");
           focusInfoContainer.classList.remove("cover-clicked");
           focusCoverContainer.classList.remove("cover-clicked");
+          isPlasticLocked = false;
+          if (coverClickTimeoutId !== null) {
+            window.clearTimeout(coverClickTimeoutId);
+            coverClickTimeoutId = null;
+          }
           containers.forEach((container) => {
             container.style.opacity = "1";
           });

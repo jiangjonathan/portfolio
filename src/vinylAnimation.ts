@@ -120,6 +120,7 @@ export interface VinylAnimationInput {
   vinylDragThreshold: number;
   cameraTrackingEnabled: boolean;
   turntableAnchorY: number;
+  anchorType: "turntable" | "focus";
 }
 
 export interface VinylAnimationOutput {
@@ -152,6 +153,7 @@ export function updateVinylAnimation(
     vinylDragThreshold,
     cameraTrackingEnabled,
     turntableAnchorY,
+    anchorType,
   }: VinylAnimationInput,
 ): VinylAnimationOutput {
   if (!vinylModel) {
@@ -194,11 +196,13 @@ export function updateVinylAnimation(
 
     state.vinylTargetPosition.z = state.vinylAnchorPosition.z;
 
-    // Prevent dragging below turntable anchor Y + 8 (only for turntable anchor, not focus anchor)
-    const MIN_Y_OFFSET = 8;
-    const minY = turntableAnchorY + MIN_Y_OFFSET;
-    if (state.vinylTargetPosition.y < minY) {
-      state.vinylTargetPosition.y = minY;
+    // Prevent dragging below turntable anchor Y + 8 (only for turntable anchor)
+    if (anchorType === "turntable") {
+      const MIN_Y_OFFSET = 8;
+      const minY = turntableAnchorY + MIN_Y_OFFSET;
+      if (state.vinylTargetPosition.y < minY) {
+        state.vinylTargetPosition.y = minY;
+      }
     }
 
     if (

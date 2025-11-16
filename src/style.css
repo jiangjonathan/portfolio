@@ -51,6 +51,13 @@ body.focus-cover-click-active #vinyl-focus-card-info-root {
     z-index: 20003 !important;
 }
 
+body.vinyl-drag-active .vinyl-viewer-widget,
+body.vinyl-drag-active .vinyl-viewer-widget * {
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+}
+
 /* YouTube player cropping shell */
 .yt-player-viewport {
     position: relative;
