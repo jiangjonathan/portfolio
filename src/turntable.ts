@@ -246,7 +246,11 @@ export class TurntableController {
         !this.isDraggingTonearm &&
         this.vinylPresent;
       const advanceMedia =
-        this.startOn && this.playingSound && inPlayWindow && this.vinylPresent;
+        this.startOn &&
+        this.playingSound &&
+        inPlayWindow &&
+        this.vinylPresent &&
+        this.mediaDuration > 0;
 
       if (advanceMedia) {
         this.setMediaCurrentTime(
@@ -363,12 +367,26 @@ export class TurntableController {
     this.onPause?.();
   }
 
+  pausePlayback() {
+    if (!this.playingSound) {
+      return;
+    }
+    this.playingSound = false;
+    this.onPause?.();
+  }
+
   setVinylPresence(present: boolean) {
     this.vinylPresent = present;
     if (!present && this.playingSound) {
       this.playingSound = false;
       this.onPause?.();
     }
+  }
+
+  returnTonearmHome() {
+    this.autoReturn = false;
+    this.tonearmBaseRotation = this.tonearmHomeRotation;
+    this.setMediaCurrentTime(0, false);
   }
 
   resetState() {

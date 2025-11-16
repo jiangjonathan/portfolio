@@ -1,5 +1,5 @@
 import type { Object3D } from "three";
-import { Vector3 } from "three";
+import { Matrix4, Quaternion, Vector3 } from "three";
 import { clampValue } from "./utils";
 
 export const MAX_DRAG_RADIUS = 100;
@@ -8,7 +8,7 @@ const SWING_MAX_TILT = 0.35;
 const SWING_VELOCITY_FACTOR = 16;
 const STRING_RELAX_RATE = 0.08;
 const POSITION_LERP = 0.22;
-export const RETURN_CLEARANCE = 0.05;
+export const RETURN_CLEARANCE = 2;
 const RETURN_HORIZONTAL_EPS = 0.01;
 const RETURN_VERTICAL_EPS = 0.0005;
 const RETURN_DROP_RATE = 0.05;
@@ -17,6 +17,50 @@ const VINYL_WOBBLE_AMPLITUDE = 0.005;
 const VINYL_WOBBLE_PHASE_MULT = 1;
 export const VINYL_RETURN_FINAL_TWIST = (75 * Math.PI) / 180;
 const VINYL_RETURN_TWIST_LERP = 0.14;
+const WORLD_UP = new Vector3(0, 1, 0);
+const TO_CAMERA = new Vector3();
+const BILLBOARD_X_AXIS = new Vector3();
+const BILLBOARD_Z_AXIS = new Vector3();
+const BILLBOARD_MATRIX = new Matrix4();
+const BILLBOARD_QUATERNION = new Quaternion();
+const CAMERA_OFFSET = new Vector3();
+const CAMERA_WORLD_OFFSET = new Vector3();
+const CAMERA_RIGHT_VECTOR = new Vector3();
+const CAMERA_UP_VECTOR = new Vector3();
+const CAMERA_FORWARD_VECTOR = new Vector3();
+
+function captureCameraRelativeOffset(
+  out: Vector3,
+  cameraPosition: Vector3,
+  cameraRight: Vector3,
+  cameraUp: Vector3,
+  cameraForward: Vector3,
+  worldPosition: Vector3,
+) {
+  CAMERA_OFFSET.copy(worldPosition).sub(cameraPosition);
+  out.set(
+    CAMERA_OFFSET.dot(cameraRight),
+    CAMERA_OFFSET.dot(cameraUp),
+    CAMERA_OFFSET.dot(cameraForward),
+  );
+}
+
+function applyCameraRelativeOffset(
+  out: Vector3,
+  cameraPosition: Vector3,
+  cameraRight: Vector3,
+  cameraUp: Vector3,
+  cameraForward: Vector3,
+  relative: Vector3,
+) {
+  CAMERA_RIGHT_VECTOR.copy(cameraRight).multiplyScalar(relative.x);
+  CAMERA_UP_VECTOR.copy(cameraUp).multiplyScalar(relative.y);
+  CAMERA_FORWARD_VECTOR.copy(cameraForward).multiplyScalar(relative.z);
+  CAMERA_WORLD_OFFSET.copy(CAMERA_RIGHT_VECTOR);
+  CAMERA_WORLD_OFFSET.add(CAMERA_UP_VECTOR);
+  CAMERA_WORLD_OFFSET.add(CAMERA_FORWARD_VECTOR);
+  out.copy(cameraPosition).add(CAMERA_WORLD_OFFSET);
+}
 
 export type SwingState = {
   targetX: number;
@@ -36,6 +80,8 @@ export interface VinylAnimationState {
   desiredPosition: Vector3;
   swingState: SwingState;
   tempVelocity: Vector3;
+  cameraRelativeOffset: Vector3;
+  cameraRelativeOffsetValid: boolean;
 }
 
 export function createVinylAnimationState(): VinylAnimationState {
@@ -50,6 +96,8 @@ export function createVinylAnimationState(): VinylAnimationState {
     desiredPosition: new Vector3(),
     swingState: { targetX: 0, targetZ: 0, currentX: 0, currentZ: 0 },
     tempVelocity: new Vector3(),
+    cameraRelativeOffset: new Vector3(),
+    cameraRelativeOffsetValid: false,
   };
 }
 
@@ -65,6 +113,12 @@ export interface VinylAnimationInput {
   vinylSpinAngle: number;
   vinylUserRotation: number;
   onTurntable: boolean;
+  cameraPosition: Vector3;
+  cameraForward: Vector3;
+  cameraRight: Vector3;
+  cameraUp: Vector3;
+  vinylDragThreshold: number;
+  cameraTrackingEnabled: boolean;
 }
 
 export interface VinylAnimationOutput {
@@ -90,6 +144,12 @@ export function updateVinylAnimation(
     vinylSpinAngle,
     vinylUserRotation,
     onTurntable,
+    cameraPosition,
+    cameraForward,
+    cameraRight,
+    cameraUp,
+    vinylDragThreshold,
+    cameraTrackingEnabled,
   }: VinylAnimationInput,
 ): VinylAnimationOutput {
   if (!vinylModel) {
@@ -104,6 +164,9 @@ export function updateVinylAnimation(
   }
 
   let returnedToPlatter = false;
+  if (!cameraTrackingEnabled) {
+    state.cameraRelativeOffsetValid = false;
+  }
   if (dragActive) {
     state.pointerAttachmentOffset.lerp(state.hangOffset, STRING_RELAX_RATE);
     state.desiredPosition
@@ -126,12 +189,25 @@ export function updateVinylAnimation(
     state.vinylTargetPosition
       .copy(state.vinylAnchorPosition)
       .add(state.relativeOffset);
-    // Clamp Y position to not go below the vinyl anchor position
-    state.vinylTargetPosition.y = Math.max(
-      state.vinylTargetPosition.y,
-      state.vinylAnchorPosition.y + 8,
-    );
+
     state.vinylTargetPosition.z = state.vinylAnchorPosition.z;
+
+    if (
+      cameraTrackingEnabled &&
+      state.vinylTargetPosition.y >= vinylDragThreshold
+    ) {
+      captureCameraRelativeOffset(
+        state.cameraRelativeOffset,
+        cameraPosition,
+        cameraRight,
+        cameraUp,
+        cameraForward,
+        state.vinylTargetPosition,
+      );
+      state.cameraRelativeOffsetValid = true;
+    } else {
+      state.cameraRelativeOffsetValid = false;
+    }
 
     state.tempVelocity
       .copy(state.vinylTargetPosition)
@@ -149,12 +225,15 @@ export function updateVinylAnimation(
       SWING_MAX_TILT,
     );
   } else {
-    const horizontalDelta =
-      state.vinylAnchorPosition.x - state.vinylTargetPosition.x;
-    state.vinylTargetPosition.x += horizontalDelta * RETURN_APPROACH_RATE;
-    state.vinylTargetPosition.z = state.vinylAnchorPosition.z;
-
     if (isReturningVinyl) {
+      const horizontalDelta =
+        state.vinylAnchorPosition.x - state.vinylTargetPosition.x;
+      state.vinylTargetPosition.x += horizontalDelta * RETURN_APPROACH_RATE;
+
+      state.vinylTargetPosition.z = state.vinylAnchorPosition.z;
+
+      state.cameraRelativeOffsetValid = false;
+
       if (!hasClearedNub) {
         const targetLift =
           nubClearanceY || state.vinylAnchorPosition.y + RETURN_CLEARANCE;
@@ -183,39 +262,98 @@ export function updateVinylAnimation(
           returnedToPlatter = true;
         }
       }
-    } else {
-      state.vinylTargetPosition.y +=
-        (state.vinylAnchorPosition.y - state.vinylTargetPosition.y) *
-        RETURN_DROP_RATE;
-      vinylReturnTwistTarget = 0;
     }
+    // When not returning and not dragging, vinyl stays at its current position
+    // (no movement applied to vinylTargetPosition)
 
     state.lastTargetPosition.copy(state.vinylTargetPosition);
     state.swingState.targetX = 0;
     state.swingState.targetZ = 0;
   }
 
-  vinylModel.position.lerp(state.vinylTargetPosition, POSITION_LERP);
-  state.swingState.currentX +=
-    (state.swingState.targetX - state.swingState.currentX) * SWING_DAMPING;
-  state.swingState.currentZ +=
-    (state.swingState.targetZ - state.swingState.currentZ) * SWING_DAMPING;
-  const wobblePhase = vinylSpinAngle * VINYL_WOBBLE_PHASE_MULT;
-  const wobbleX = onTurntable
-    ? Math.sin(wobblePhase) * VINYL_WOBBLE_AMPLITUDE
-    : 0;
-  const wobbleZ = onTurntable
-    ? Math.cos(wobblePhase) * VINYL_WOBBLE_AMPLITUDE
-    : 0;
-  vinylModel.rotation.x = state.swingState.currentX + wobbleX;
-  vinylModel.rotation.z = state.swingState.currentZ + wobbleZ;
-  vinylReturnTwist +=
-    (vinylReturnTwistTarget - vinylReturnTwist) * VINYL_RETURN_TWIST_LERP;
-  vinylModel.rotation.y =
-    vinylUserRotation +
-    vinylSpinAngle +
-    vinylReturnBaseTwist +
-    vinylReturnTwist;
+  if (
+    cameraTrackingEnabled &&
+    !state.cameraRelativeOffsetValid &&
+    !isReturningVinyl &&
+    state.vinylTargetPosition.y >= vinylDragThreshold
+  ) {
+    captureCameraRelativeOffset(
+      state.cameraRelativeOffset,
+      cameraPosition,
+      cameraRight,
+      cameraUp,
+      cameraForward,
+      state.vinylTargetPosition,
+    );
+    state.cameraRelativeOffsetValid = true;
+  }
+
+  const followCamera =
+    cameraTrackingEnabled &&
+    state.cameraRelativeOffsetValid &&
+    !isReturningVinyl;
+
+  if (followCamera) {
+    applyCameraRelativeOffset(
+      state.vinylTargetPosition,
+      cameraPosition,
+      cameraRight,
+      cameraUp,
+      cameraForward,
+      state.cameraRelativeOffset,
+    );
+    state.lastTargetPosition.copy(state.vinylTargetPosition);
+    vinylModel.position.copy(state.vinylTargetPosition);
+  } else {
+    vinylModel.position.lerp(state.vinylTargetPosition, POSITION_LERP);
+  }
+
+  const orientToCamera =
+    cameraTrackingEnabled &&
+    (followCamera || vinylModel.position.y >= vinylDragThreshold) &&
+    !isReturningVinyl;
+
+  if (orientToCamera) {
+    // Make vinyl face the camera (appear flat from camera perspective)
+    TO_CAMERA.copy(cameraPosition).sub(vinylModel.position);
+    if (TO_CAMERA.lengthSq() > 1e-8) {
+      TO_CAMERA.normalize();
+
+      BILLBOARD_X_AXIS.copy(WORLD_UP).cross(TO_CAMERA);
+      if (BILLBOARD_X_AXIS.lengthSq() < 1e-8) {
+        BILLBOARD_X_AXIS.set(1, 0, 0);
+      } else {
+        BILLBOARD_X_AXIS.normalize();
+      }
+
+      BILLBOARD_Z_AXIS.copy(BILLBOARD_X_AXIS).cross(TO_CAMERA).normalize();
+      BILLBOARD_MATRIX.makeBasis(BILLBOARD_X_AXIS, TO_CAMERA, BILLBOARD_Z_AXIS);
+      BILLBOARD_QUATERNION.setFromRotationMatrix(BILLBOARD_MATRIX);
+      vinylModel.quaternion.copy(BILLBOARD_QUATERNION);
+    }
+  } else {
+    // Normal rotation behavior
+    state.swingState.currentX +=
+      (state.swingState.targetX - state.swingState.currentX) * SWING_DAMPING;
+    state.swingState.currentZ +=
+      (state.swingState.targetZ - state.swingState.currentZ) * SWING_DAMPING;
+    const wobblePhase = vinylSpinAngle * VINYL_WOBBLE_PHASE_MULT;
+    const wobbleX = onTurntable
+      ? Math.sin(wobblePhase) * VINYL_WOBBLE_AMPLITUDE
+      : 0;
+    const wobbleZ = onTurntable
+      ? Math.cos(wobblePhase) * VINYL_WOBBLE_AMPLITUDE
+      : 0;
+    vinylModel.rotation.x = state.swingState.currentX + wobbleX;
+    vinylModel.rotation.z = state.swingState.currentZ + wobbleZ;
+    vinylReturnTwist +=
+      (vinylReturnTwistTarget - vinylReturnTwist) * VINYL_RETURN_TWIST_LERP;
+    vinylModel.rotation.y =
+      vinylUserRotation +
+      vinylSpinAngle +
+      vinylReturnBaseTwist +
+      vinylReturnTwist;
+  }
 
   return {
     isReturningVinyl,

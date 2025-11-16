@@ -252,11 +252,6 @@ export class VinylLibraryViewer {
     if (this.searchQuery.trim()) {
       const lowerQuery = this.searchQuery.toLowerCase();
       this.library = this.library.filter((entry) => {
-        // Always include the focused entry regardless of search query
-        if (this.focusedEntryId && entry.id === this.focusedEntryId) {
-          return true;
-        }
-
         const artist = (entry.artistName || "").toLowerCase();
         const song = (entry.songName || "").toLowerCase();
         const genre = (entry.genre || "").toLowerCase();
@@ -351,10 +346,8 @@ export class VinylLibraryViewer {
             top: 24px;
             left: 52.5%;
             transform: translateX(-50%);
-            z-index: 1000;
             width: 700px;
             pointer-events: none;
-            isolation: isolate;
           }
 
           .focus-card-container .album-card {
@@ -386,6 +379,7 @@ export class VinylLibraryViewer {
             flex-shrink: 0;
             border-radius: 2px;
             overflow: visible;
+            z-index: 20000;
           }
 
           .focus-card-container .album-cover {
@@ -395,6 +389,8 @@ export class VinylLibraryViewer {
             background: #222;
             border: none;
             display: block;
+            position: relative;
+            z-index: 20001;
           }
 
           .focus-card-container .plastic-overlay {
@@ -409,6 +405,7 @@ export class VinylLibraryViewer {
             pointer-events: none;
             mix-blend-mode: ${PLASTIC_OVERLAY_BLEND_MODE};
             border-radius: 2px;
+            z-index: 20002;
           }
 
           .focus-card-container .album-info {
@@ -1269,6 +1266,13 @@ export class VinylLibraryViewer {
     );
     if (!focusContainer) return;
 
+    // Dispatch event to change camera position to "bottom-center" and polar angle to 22 degrees
+    window.dispatchEvent(
+      new CustomEvent("focus-card-shown", {
+        detail: { position: "bottom-center", polarAngle: 22 },
+      }),
+    );
+
     // Hide the "show focus" button since we're showing the focus card
     const showFocusBtn = document.getElementById("vinyl-show-focus-btn");
     if (showFocusBtn) {
@@ -1292,6 +1296,9 @@ export class VinylLibraryViewer {
       `[renderFocusCard] Entry ${entry.id} duration:`,
       entry.duration,
     );
+
+    focusContainer.style.transition = "opacity 0.3s ease";
+    focusContainer.style.opacity = "0";
 
     focusContainer.innerHTML = `
       <div class="album-card" data-entry-id="${entry.id}">
@@ -1318,7 +1325,7 @@ export class VinylLibraryViewer {
             ${genre ? `<div class="album-genre ${canEdit ? "editable-field" : ""}" ${canEdit ? 'contenteditable="false"' : ""} data-field="genre">${this.escapeHtml(genre)}</div>` : canEdit ? `<div class="album-genre editable-field empty-field" contenteditable="false" data-field="genre">Add genre</div>` : ""}
             ${canEdit ? (aspectRatio ? `<div class="album-aspect-ratio editable-field" contenteditable="false" data-field="aspectRatio" style="margin-left:0.5px;">aspect ratio: ${this.escapeHtml(aspectRatio)}</div>` : `<div class="album-aspect-ratio editable-field empty-field" contenteditable="false" data-field="aspectRatio" style="margin-left:0.5px;">Add aspect ratio</div>`) : ""}
           </div>
-          ${entry.duration ? `<div class="album-duration" style="position: absolute; bottom: 0.5rem; left: 266px; color: #888; font-size: 0.7rem; opacity: 0; animation: fade-in-duration 0.5s ease-out 0.2s forwards;">Length: ${this.formatDuration(entry.duration)}</div>` : ""}
+          ${entry.duration ? `<div class="album-duration" style="position: absolute; bottom: 0.5rem; left: 266px; color: #888; font-size: 0.7rem; opacity: 0; animation: fade-in-duration 0.5s ease-out 0.2s forwards;">${this.formatDuration(entry.duration)}</div>` : ""}
           ${
             note
               ? `<div class="album-metadata">
@@ -1334,6 +1341,10 @@ export class VinylLibraryViewer {
         ${canEdit ? `<button class="apply-changes-btn vinyl-hyperlink">apply changes</button>` : ""}
       </div>
     `;
+
+    requestAnimationFrame(() => {
+      focusContainer.style.opacity = "1";
+    });
 
     // Attach delete button listener if present
     const deleteBtn = focusContainer.querySelector(".delete-btn");
@@ -1646,10 +1657,12 @@ export class VinylLibraryViewer {
           window.dispatchEvent(
             new CustomEvent("load-vinyl-song", {
               detail: {
+                entryId: entry.id,
                 videoId: entry.youtubeId,
                 artistName: entry.artistName,
                 songName: entry.songName,
                 aspectRatio: entry.aspectRatio,
+                imageUrl: entry.imageUrl,
               },
             }),
           );
@@ -2026,7 +2039,7 @@ export class VinylLibraryViewer {
               durationDiv.className = "album-duration";
               durationDiv.style.cssText =
                 "position: absolute; bottom: 0.5rem; left: 266px; color: #888; font-size: 0.7rem; opacity: 0; animation: fade-in-duration 0.5s ease-out forwards;";
-              durationDiv.textContent = `Length: ${this.formatDuration(duration)}`;
+              durationDiv.textContent = `${this.formatDuration(duration)}`;
               albumCard.appendChild(durationDiv);
               console.log(
                 `[vinylLibraryViewer] Updated focus card duration without re-render`,

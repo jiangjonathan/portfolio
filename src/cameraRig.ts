@@ -140,6 +140,27 @@ export class CameraRig {
   }
 
   /**
+   * Set polar angle with smooth animation
+   */
+  setPolarAngle(targetPolarDegrees: number, animate = true) {
+    const targetPolarRadians = (targetPolarDegrees * Math.PI) / 180;
+
+    if (animate) {
+      this.isAnimating = true;
+      this.isAnimatingViewDirection = true;
+      this.animationProgress = 0;
+      this.animationStartAzimuth = this.orbitAzimuth;
+      this.animationStartPolar = this.orbitPolar;
+      this.animationEndAzimuth = this.orbitAzimuth; // Keep azimuth the same
+      this.animationEndPolar = targetPolarRadians;
+    } else {
+      this.orbitPolar = targetPolarRadians;
+      this.updateDirectionFromOrbit();
+      this.updateCameraPosition();
+    }
+  }
+
+  /**
    * Save current rotation and target position before user starts rotating
    */
   saveRotationState() {
