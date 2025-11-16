@@ -341,150 +341,150 @@ document.head.appendChild(style);
 root.appendChild(vinylViewerContainer);
 
 // Create vinyl position controls (temporary)
-const vinylPositionControls = document.createElement("div");
-vinylPositionControls.id = "vinyl-position-controls";
-vinylPositionControls.innerHTML = `
-  <h3>Vinyl Position Controls</h3>
-  <div class="control-row">
-    <label>X Position</label>
-    <input type="number" id="vinyl-x" value="0" step="0.1">
-  </div>
-  <div class="control-row">
-    <label>Y Position</label>
-    <input type="number" id="vinyl-y" value="0" step="0.1">
-  </div>
-  <div class="control-row">
-    <label>Z Position</label>
-    <input type="number" id="vinyl-z" value="0" step="0.1">
-  </div>
-  <div class="control-row">
-    <label>Scale</label>
-    <input type="number" id="vinyl-scale" value="1" step="0.01" min="0.01">
-  </div>
-  <div class="control-row">
-    <label>Camera Azimuth (degrees)</label>
-    <input type="number" id="camera-azimuth" value="0" step="1">
-  </div>
-  <div class="control-row">
-    <label>Camera Polar (degrees)</label>
-    <input type="number" id="camera-polar" value="45" step="1" min="0" max="90">
-  </div>
-  <button id="vinyl-reset-position">Reset All</button>
-`;
-root.appendChild(vinylPositionControls);
+// const vinylPositionControls = document.createElement("div");
+// vinylPositionControls.id = "vinyl-position-controls";
+// vinylPositionControls.innerHTML = `
+//   <h3>Vinyl Position Controls</h3>
+//   <div class="control-row">
+//     <label>X Position</label>
+//     <input type="number" id="vinyl-x" value="0" step="0.1">
+//   </div>
+//   <div class="control-row">
+//     <label>Y Position</label>
+//     <input type="number" id="vinyl-y" value="0" step="0.1">
+//   </div>
+//   <div class="control-row">
+//     <label>Z Position</label>
+//     <input type="number" id="vinyl-z" value="0" step="0.1">
+//   </div>
+//   <div class="control-row">
+//     <label>Scale</label>
+//     <input type="number" id="vinyl-scale" value="1" step="0.01" min="0.01">
+//   </div>
+//   <div class="control-row">
+//     <label>Camera Azimuth (degrees)</label>
+//     <input type="number" id="camera-azimuth" value="0" step="1">
+//   </div>
+//   <div class="control-row">
+//     <label>Camera Polar (degrees)</label>
+//     <input type="number" id="camera-polar" value="45" step="1" min="0" max="90">
+//   </div>
+//   <button id="vinyl-reset-position">Reset All</button>
+// `;
+// root.appendChild(vinylPositionControls);
 
 // Vinyl position offset (added to the calculated position)
 const vinylPositionOffset = new Vector3(0, 0, 0);
 let vinylScaleFactor = 1.0;
 
 // Add event listeners for position controls
-const vinylXInput = document.getElementById("vinyl-x") as HTMLInputElement;
-const vinylYInput = document.getElementById("vinyl-y") as HTMLInputElement;
-const vinylZInput = document.getElementById("vinyl-z") as HTMLInputElement;
-const vinylScaleInput = document.getElementById(
-  "vinyl-scale",
-) as HTMLInputElement;
-const cameraAzimuthInput = document.getElementById(
-  "camera-azimuth",
-) as HTMLInputElement;
-const cameraPolarInput = document.getElementById(
-  "camera-polar",
-) as HTMLInputElement;
-const vinylResetBtn = document.getElementById("vinyl-reset-position");
+// const vinylXInput = document.getElementById("vinyl-x") as HTMLInputElement;
+// const vinylYInput = document.getElementById("vinyl-y") as HTMLInputElement;
+// const vinylZInput = document.getElementById("vinyl-z") as HTMLInputElement;
+// const vinylScaleInput = document.getElementById(
+//   "vinyl-scale",
+// ) as HTMLInputElement;
+// const cameraAzimuthInput = document.getElementById(
+//   "camera-azimuth",
+// ) as HTMLInputElement;
+// const cameraPolarInput = document.getElementById(
+//   "camera-polar",
+// ) as HTMLInputElement;
+// const vinylResetBtn = document.getElementById("vinyl-reset-position");
 
-vinylXInput.addEventListener("input", () => {
-  vinylPositionOffset.x = parseFloat(vinylXInput.value) || 0;
-});
+// vinylXInput.addEventListener("input", () => {
+//   vinylPositionOffset.x = parseFloat(vinylXInput.value) || 0;
+// });
 
-vinylYInput.addEventListener("input", () => {
-  vinylPositionOffset.y = parseFloat(vinylYInput.value) || 0;
-});
+// vinylYInput.addEventListener("input", () => {
+//   vinylPositionOffset.y = parseFloat(vinylYInput.value) || 0;
+// });
 
-vinylZInput.addEventListener("input", () => {
-  vinylPositionOffset.z = parseFloat(vinylZInput.value) || 0;
-});
+// vinylZInput.addEventListener("input", () => {
+//   vinylPositionOffset.z = parseFloat(vinylZInput.value) || 0;
+// });
 
-vinylScaleInput.addEventListener("input", () => {
-  vinylScaleFactor = parseFloat(vinylScaleInput.value) || 1;
-});
+// vinylScaleInput.addEventListener("input", () => {
+//   vinylScaleFactor = parseFloat(vinylScaleInput.value) || 1;
+// });
 
-cameraAzimuthInput.addEventListener("input", () => {
-  const azimuthDeg = parseFloat(cameraAzimuthInput.value) || 0;
-  const polarDeg = parseFloat(cameraPolarInput.value) || 45;
-  const azimuthRad = (azimuthDeg * Math.PI) / 180;
-  const polarRad = (polarDeg * Math.PI) / 180;
+// cameraAzimuthInput.addEventListener("input", () => {
+//   const azimuthDeg = parseFloat(cameraAzimuthInput.value) || 0;
+//   const polarDeg = parseFloat(cameraPolarInput.value) || 45;
+//   const azimuthRad = (azimuthDeg * Math.PI) / 180;
+//   const polarRad = (polarDeg * Math.PI) / 180;
 
-  const direction = new Vector3(
-    Math.sin(azimuthRad) * Math.cos(polarRad),
-    Math.sin(polarRad),
-    Math.cos(azimuthRad) * Math.cos(polarRad),
-  );
-  cameraRig.setViewDirection(direction);
-});
+//   const direction = new Vector3(
+//     Math.sin(azimuthRad) * Math.cos(polarRad),
+//     Math.sin(polarRad),
+//     Math.cos(azimuthRad) * Math.cos(polarRad),
+//   );
+//   cameraRig.setViewDirection(direction);
+// });
 
-cameraPolarInput.addEventListener("input", () => {
-  const azimuthDeg = parseFloat(cameraAzimuthInput.value) || 0;
-  const polarDeg = parseFloat(cameraPolarInput.value) || 45;
-  const azimuthRad = (azimuthDeg * Math.PI) / 180;
-  const polarRad = (polarDeg * Math.PI) / 180;
+// cameraPolarInput.addEventListener("input", () => {
+//   const azimuthDeg = parseFloat(cameraAzimuthInput.value) || 0;
+//   const polarDeg = parseFloat(cameraPolarInput.value) || 45;
+//   const azimuthRad = (azimuthDeg * Math.PI) / 180;
+//   const polarRad = (polarDeg * Math.PI) / 180;
 
-  const direction = new Vector3(
-    Math.sin(azimuthRad) * Math.cos(polarRad),
-    Math.sin(polarRad),
-    Math.cos(azimuthRad) * Math.cos(polarRad),
-  );
-  cameraRig.setViewDirection(direction);
-});
+//   const direction = new Vector3(
+//     Math.sin(azimuthRad) * Math.cos(polarRad),
+//     Math.sin(polarRad),
+//     Math.cos(azimuthRad) * Math.cos(polarRad),
+//   );
+//   cameraRig.setViewDirection(direction);
+// });
 
-vinylResetBtn?.addEventListener("click", () => {
-  vinylPositionOffset.set(0, 0, 0);
-  vinylScaleFactor = 1.0;
-  vinylXInput.value = "0";
-  vinylYInput.value = "0";
-  vinylZInput.value = "0";
-  vinylScaleInput.value = "1";
-  cameraAzimuthInput.value = "0";
-  cameraPolarInput.value = "45";
+// vinylResetBtn?.addEventListener("click", () => {
+//   vinylPositionOffset.set(0, 0, 0);
+//   vinylScaleFactor = 1.0;
+//   vinylXInput.value = "0";
+//   vinylYInput.value = "0";
+//   vinylZInput.value = "0";
+//   vinylScaleInput.value = "1";
+//   cameraAzimuthInput.value = "0";
+//   cameraPolarInput.value = "45";
 
-  // Reset camera to default view
-  const direction = new Vector3(
-    0,
-    Math.sin((45 * Math.PI) / 180),
-    Math.cos((45 * Math.PI) / 180),
-  );
-  cameraRig.setViewDirection(direction);
-});
+//   // Reset camera to default view
+//   const direction = new Vector3(
+//     0,
+//     Math.sin((45 * Math.PI) / 180),
+//     Math.cos((45 * Math.PI) / 180),
+//   );
+//   cameraRig.setViewDirection(direction);
+// });
 
 // Make vinyl position controls draggable
-const vinylControlsHeader = vinylPositionControls.querySelector("h3");
-let isDraggingControls = false;
-let controlsDragOffsetX = 0;
-let controlsDragOffsetY = 0;
+// const vinylControlsHeader = vinylPositionControls.querySelector("h3");
+// let isDraggingControls = false;
+// let controlsDragOffsetX = 0;
+// let controlsDragOffsetY = 0;
 
-vinylControlsHeader?.addEventListener("mousedown", (e) => {
-  isDraggingControls = true;
-  const rect = vinylPositionControls.getBoundingClientRect();
-  controlsDragOffsetX = e.clientX - rect.left;
-  controlsDragOffsetY = e.clientY - rect.top;
-  vinylPositionControls.style.transition = "none";
-});
+// vinylControlsHeader?.addEventListener("mousedown", (e) => {
+//   isDraggingControls = true;
+//   const rect = vinylPositionControls.getBoundingClientRect();
+//   controlsDragOffsetX = e.clientX - rect.left;
+//   controlsDragOffsetY = e.clientY - rect.top;
+//   vinylPositionControls.style.transition = "none";
+// });
 
-document.addEventListener("mousemove", (e) => {
-  if (!isDraggingControls) return;
+// document.addEventListener("mousemove", (e) => {
+//   if (!isDraggingControls) return;
 
-  const x = e.clientX - controlsDragOffsetX;
-  const y = e.clientY - controlsDragOffsetY;
+//   const x = e.clientX - controlsDragOffsetX;
+//   const y = e.clientY - controlsDragOffsetY;
 
-  vinylPositionControls.style.right = "auto";
-  vinylPositionControls.style.top = "auto";
-  vinylPositionControls.style.left = `${x}px`;
-  vinylPositionControls.style.top = `${y}px`;
-  vinylPositionControls.style.transform = "none";
-});
+//   vinylPositionControls.style.right = "auto";
+//   vinylPositionControls.style.top = "auto";
+//   vinylPositionControls.style.left = `${x}px`;
+//   vinylPositionControls.style.top = `${y}px`;
+//   vinylPositionControls.style.transform = "none";
+// });
 
-document.addEventListener("mouseup", () => {
-  isDraggingControls = false;
-});
+// document.addEventListener("mouseup", () => {
+//   isDraggingControls = false;
+// });
 
 // Turntable position cycling (camera view)
 type TurntablePosition =
@@ -598,42 +598,42 @@ cameraRig.setZoomFactor(zoomFactor);
 // root.appendChild(cameraInfoDisplay.container);
 
 // Create vinyl debug display
-const vinylDebugDisplay = document.createElement("div");
-vinylDebugDisplay.id = "vinyl-debug-display";
-vinylDebugDisplay.style.cssText = `
-  position: fixed;
-  top: 20px;
-  left: 20px;
-  background: rgba(0, 0, 0, 0.8);
-  color: #0f0;
-  padding: 10px;
-  font-family: monospace;
-  font-size: 12px;
-  line-height: 1.5;
-  z-index: 1000;
-  border: 1px solid #0f0;
-  pointer-events: none;
-`;
-root.appendChild(vinylDebugDisplay);
+// const vinylDebugDisplay = document.createElement("div");
+// vinylDebugDisplay.id = "vinyl-debug-display";
+// vinylDebugDisplay.style.cssText = `
+//   position: fixed;
+//   top: 20px;
+//   left: 20px;
+//   background: rgba(0, 0, 0, 0.8);
+//   color: #0f0;
+//   padding: 10px;
+//   font-family: monospace;
+//   font-size: 12px;
+//   line-height: 1.5;
+//   z-index: 1000;
+//   border: 1px solid #0f0;
+//   pointer-events: none;
+// `;
+// root.appendChild(vinylDebugDisplay);
 
 // Create camera debug display
-const cameraDebugDisplay = document.createElement("div");
-cameraDebugDisplay.id = "camera-debug-display";
-cameraDebugDisplay.style.cssText = `
-  position: fixed;
-  top: 340px;
-  left: 20px;
-  background: rgba(0, 0, 0, 0.8);
-  color: #0ff;
-  padding: 10px;
-  font-family: monospace;
-  font-size: 12px;
-  line-height: 1.5;
-  z-index: 1000;
-  border: 1px solid #0ff;
-  pointer-events: none;
-`;
-root.appendChild(cameraDebugDisplay);
+// const cameraDebugDisplay = document.createElement("div");
+// cameraDebugDisplay.id = "camera-debug-display";
+// cameraDebugDisplay.style.cssText = `
+//   position: fixed;
+//   top: 340px;
+//   left: 20px;
+//   background: rgba(0, 0, 0, 0.8);
+//   color: #0ff;
+//   padding: 10px;
+//   font-family: monospace;
+//   font-size: 12px;
+//   line-height: 1.5;
+//   z-index: 1000;
+//   border: 1px solid #0ff;
+//   pointer-events: none;
+// `;
+// root.appendChild(cameraDebugDisplay);
 
 canvas.addEventListener(
   "wheel",
@@ -914,8 +914,8 @@ window.addEventListener("load-vinyl-song", (event) => {
     // Fade out vinyl by making it invisible
     vinylModel.visible = false;
 
-    // Set scale to 0.5 using the vinylScaleFactor variable (which controls the final scale)
-    vinylScaleFactor = 0.5;
+    // Set scale to 0.55 using the vinylScaleFactor variable (which controls the final scale)
+    vinylScaleFactor = 0.55;
 
     // Enable screen-space tracking to follow HTML focus card position
     shouldTrackFocusCard = true;
@@ -1050,6 +1050,7 @@ let vinylDragExceededThreshold = false;
 // tonearm drag handled by controller
 let ON_TURNTABLE = true;
 const VINYL_DRAG_THRESHOLD = 30; // Y position threshold - vinyl only returns if below this value
+let isReturningToFocusCard = false; // Separate state for returning to focus card
 function setVinylOnTurntable(onTurntable: boolean) {
   if (ON_TURNTABLE === onTurntable) {
     return;
@@ -1249,20 +1250,32 @@ const endDrag = (event: PointerEvent) => {
     lastTargetPosition.copy(vinylAnchorPosition);
   }
 
-  // Only return to turntable if vinyl's Y position is below threshold
+  // Determine which anchor to return to based on Y position threshold
   if (vinylModel && vinylModel.position.y < VINYL_DRAG_THRESHOLD) {
-    isReturningVinyl = true;
-    hasClearedNub = false;
-    // Switch anchor to turntable when crossing below threshold
-    vinylAnchorPosition.copy(turntableAnchorPosition);
-    shouldTrackFocusCard = false;
+    // Below threshold: return to turntable with full animation (nub clearance, etc.)
+    if (!isReturningVinyl && !isReturningToFocusCard) {
+      isReturningVinyl = true;
+      isReturningToFocusCard = false;
+      hasClearedNub = false;
+      // Switch anchor to turntable when starting return (but keep shouldTrackFocusCard - only disable when actually on turntable)
+      vinylAnchorPosition.copy(turntableAnchorPosition);
+    }
   } else if (
     vinylModel &&
     vinylModel.position.y >= VINYL_DRAG_THRESHOLD &&
     shouldTrackFocusCard
   ) {
-    // Switch anchor to focus card when crossing above threshold (if focus card tracking enabled)
-    vinylAnchorPosition.copy(focusCardAnchorPosition);
+    // Above threshold with focus card tracking: return to focus card with simple animation
+    if (!isReturningVinyl && !isReturningToFocusCard) {
+      isReturningVinyl = false;
+      isReturningToFocusCard = true;
+      // Switch anchor to focus card when starting return
+      vinylAnchorPosition.copy(focusCardAnchorPosition);
+      // Ensure NOT on turntable
+      if (ON_TURNTABLE) {
+        setVinylOnTurntable(false);
+      }
+    }
   }
 
   if (
@@ -1434,7 +1447,7 @@ const updateFocusCardPosition = () => {
       setVinylOnTurntable(false);
     }
 
-    // Update drag plane to match the focus card Z position so vinyl can be dragged
+    // Update drag plane to match the focus card Z position
     updateDragPlaneDepth(vinylPosition.z);
   }
 };
@@ -1525,35 +1538,71 @@ const animate = (time: number) => {
       cameraUpVector.normalize();
     }
 
-    const vinylAnimationResult = updateVinylAnimation(vinylAnimationState, {
-      vinylModel,
-      dragActive: vinylDragPointerId !== null,
-      isReturningVinyl,
-      hasClearedNub,
-      nubClearanceY,
-      vinylReturnBaseTwist,
-      vinylReturnTwist,
-      vinylReturnTwistTarget,
-      vinylSpinAngle,
-      vinylUserRotation,
-      onTurntable: ON_TURNTABLE,
-      cameraPosition: camera.position,
-      cameraForward,
-      cameraRight,
-      cameraUp: cameraUpVector,
-      vinylDragThreshold: VINYL_DRAG_THRESHOLD,
-      cameraTrackingEnabled: vinylCameraTrackingEnabled,
-    });
-    isReturningVinyl = vinylAnimationResult.isReturningVinyl;
-    hasClearedNub = vinylAnimationResult.hasClearedNub;
-    vinylReturnBaseTwist = vinylAnimationResult.vinylReturnBaseTwist;
-    vinylReturnTwist = vinylAnimationResult.vinylReturnTwist;
-    vinylReturnTwistTarget = vinylAnimationResult.vinylReturnTwistTarget;
-    if (vinylAnimationResult.returnedToPlatter) {
-      setVinylOnTurntable(true);
-      shouldTrackFocusCard = false;
-      // Switch anchor back to turntable position
-      vinylAnchorPosition.copy(turntableAnchorPosition);
+    // Handle focus card return animation (simple smooth lerp) - skip vinyl animation system
+    if (isReturningToFocusCard) {
+      const FOCUS_RETURN_RATE = 0.15; // Smooth lerp rate
+      vinylModel.position.lerp(focusCardAnchorPosition, FOCUS_RETURN_RATE);
+      vinylTargetPosition.copy(vinylModel.position);
+      lastTargetPosition.copy(vinylModel.position);
+
+      // Check if close enough to stop animation
+      const distance = vinylModel.position.distanceTo(focusCardAnchorPosition);
+      if (distance < 0.1) {
+        isReturningToFocusCard = false;
+        vinylModel.position.copy(focusCardAnchorPosition);
+        vinylTargetPosition.copy(focusCardAnchorPosition);
+        lastTargetPosition.copy(focusCardAnchorPosition);
+        // Reset ALL vinyl animation state to prevent teleporting to cursor
+        vinylAnimationState.vinylTargetPosition.copy(focusCardAnchorPosition);
+        vinylAnimationState.lastTargetPosition.copy(focusCardAnchorPosition);
+        vinylAnimationState.currentPointerWorld.copy(focusCardAnchorPosition);
+        vinylAnimationState.pointerAttachmentOffset.copy(hangOffset);
+        vinylAnimationState.desiredPosition.copy(focusCardAnchorPosition);
+        vinylAnimationState.relativeOffset.set(0, 0, 0);
+        vinylAnimationState.cameraRelativeOffsetValid = false;
+        currentPointerWorld.copy(focusCardAnchorPosition);
+        pointerAttachmentOffset.copy(hangOffset);
+        swingState.targetX = 0;
+        swingState.targetZ = 0;
+        swingState.currentX = 0;
+        swingState.currentZ = 0;
+        // Ensure we stay off turntable
+        if (ON_TURNTABLE) {
+          setVinylOnTurntable(false);
+        }
+      }
+    } else {
+      // Only run vinyl animation system when NOT returning to focus card
+      const vinylAnimationResult = updateVinylAnimation(vinylAnimationState, {
+        vinylModel,
+        dragActive: vinylDragPointerId !== null,
+        isReturningVinyl,
+        hasClearedNub,
+        nubClearanceY,
+        vinylReturnBaseTwist,
+        vinylReturnTwist,
+        vinylReturnTwistTarget,
+        vinylSpinAngle,
+        vinylUserRotation,
+        onTurntable: ON_TURNTABLE,
+        cameraPosition: camera.position,
+        cameraForward,
+        cameraRight,
+        cameraUp: cameraUpVector,
+        vinylDragThreshold: VINYL_DRAG_THRESHOLD,
+        cameraTrackingEnabled: vinylCameraTrackingEnabled,
+      });
+      isReturningVinyl = vinylAnimationResult.isReturningVinyl;
+      hasClearedNub = vinylAnimationResult.hasClearedNub;
+      vinylReturnBaseTwist = vinylAnimationResult.vinylReturnBaseTwist;
+      vinylReturnTwist = vinylAnimationResult.vinylReturnTwist;
+      vinylReturnTwistTarget = vinylAnimationResult.vinylReturnTwistTarget;
+      if (vinylAnimationResult.returnedToPlatter) {
+        setVinylOnTurntable(true);
+        shouldTrackFocusCard = false;
+        // Switch anchor back to turntable position
+        vinylAnchorPosition.copy(turntableAnchorPosition);
+      }
     }
 
     if (
@@ -1570,8 +1619,9 @@ const animate = (time: number) => {
     // Apply position offset and scale from controls
     vinylModel.position.add(vinylPositionOffset);
 
-    // Scale based on distance to turntable - reaches 1.0 before threshold
-    const distanceToTurntable = vinylModel.position.y - vinylAnchorPosition.y;
+    // Scale based on distance to TURNTABLE (not current anchor) - reaches 1.0 before threshold
+    const distanceToTurntable =
+      vinylModel.position.y - turntableAnchorPosition.y;
     const scaleTransitionStart = VINYL_DRAG_THRESHOLD * 0.8; // Start transitioning at 80% of threshold
 
     let finalScale = vinylScaleFactor;
@@ -1645,71 +1695,71 @@ const animate = (time: number) => {
   updateVideoProgress();
 
   // Update vinyl debug display
-  if (vinylModel) {
-    const pos = vinylModel.position;
-    const rot = vinylModel.rotation;
-    const rotDeg = {
-      x: ((rot.x * 180) / Math.PI).toFixed(2),
-      y: ((rot.y * 180) / Math.PI).toFixed(2),
-      z: ((rot.z * 180) / Math.PI).toFixed(2),
-    };
-    vinylDebugDisplay.innerHTML = `
-      <strong>VINYL DEBUG</strong><br>
-      Position:<br>
-      &nbsp;&nbsp;X: ${pos.x.toFixed(3)}<br>
-      &nbsp;&nbsp;Y: ${pos.y.toFixed(3)}<br>
-      &nbsp;&nbsp;Z: ${pos.z.toFixed(3)}<br>
-      Anchors:<br>
-      &nbsp;&nbsp;Current: (${vinylAnchorPosition.x.toFixed(2)}, ${vinylAnchorPosition.y.toFixed(2)}, ${vinylAnchorPosition.z.toFixed(2)})<br>
-      &nbsp;&nbsp;Turntable: (${turntableAnchorPosition.x.toFixed(2)}, ${turntableAnchorPosition.y.toFixed(2)}, ${turntableAnchorPosition.z.toFixed(2)})<br>
-      &nbsp;&nbsp;Focus Card: (${focusCardAnchorPosition.x.toFixed(2)}, ${focusCardAnchorPosition.y.toFixed(2)}, ${focusCardAnchorPosition.z.toFixed(2)})<br>
-      State:<br>
-      &nbsp;&nbsp;Dragging: ${vinylDragPointerId !== null}<br>
-      &nbsp;&nbsp;Returning: ${isReturningVinyl}<br>
-      &nbsp;&nbsp;On Turntable: ${ON_TURNTABLE}<br>
-      &nbsp;&nbsp;Track Focus: ${shouldTrackFocusCard}
-    `;
-  } else {
-    vinylDebugDisplay.innerHTML = `
-      <strong>VINYL DEBUG</strong><br>
-      Model not loaded
-    `;
-  }
+  // if (vinylModel) {
+  //   const pos = vinylModel.position;
+  //   const rot = vinylModel.rotation;
+  //   const rotDeg = {
+  //     x: ((rot.x * 180) / Math.PI).toFixed(2),
+  //     y: ((rot.y * 180) / Math.PI).toFixed(2),
+  //     z: ((rot.z * 180) / Math.PI).toFixed(2),
+  //   };
+  //   vinylDebugDisplay.innerHTML = `
+  //     <strong>VINYL DEBUG</strong><br>
+  //     Position:<br>
+  //     &nbsp;&nbsp;X: ${pos.x.toFixed(3)}<br>
+  //     &nbsp;&nbsp;Y: ${pos.y.toFixed(3)}<br>
+  //     &nbsp;&nbsp;Z: ${pos.z.toFixed(3)}<br>
+  //     Anchors:<br>
+  //     &nbsp;&nbsp;Current: (${vinylAnchorPosition.x.toFixed(2)}, ${vinylAnchorPosition.y.toFixed(2)}, ${vinylAnchorPosition.z.toFixed(2)})<br>
+  //     &nbsp;&nbsp;Turntable: (${turntableAnchorPosition.x.toFixed(2)}, ${turntableAnchorPosition.y.toFixed(2)}, ${turntableAnchorPosition.z.toFixed(2)})<br>
+  //     &nbsp;&nbsp;Focus Card: (${focusCardAnchorPosition.x.toFixed(2)}, ${focusCardAnchorPosition.y.toFixed(2)}, ${focusCardAnchorPosition.z.toFixed(2)})<br>
+  //     State:<br>
+  //     &nbsp;&nbsp;Dragging: ${vinylDragPointerId !== null}<br>
+  //     &nbsp;&nbsp;Returning: ${isReturningVinyl}<br>
+  //     &nbsp;&nbsp;On Turntable: ${ON_TURNTABLE}<br>
+  //     &nbsp;&nbsp;Track Focus: ${shouldTrackFocusCard}
+  //   `;
+  // } else {
+  //   vinylDebugDisplay.innerHTML = `
+  //     <strong>VINYL DEBUG</strong><br>
+  //     Model not loaded
+  //   `;
+  // }
 
   // Update camera debug display
-  const camPos = camera.position;
-  const camRot = camera.rotation;
-  const camRotDeg = {
-    x: ((camRot.x * 180) / Math.PI).toFixed(2),
-    y: ((camRot.y * 180) / Math.PI).toFixed(2),
-    z: ((camRot.z * 180) / Math.PI).toFixed(2),
-  };
-  const target = cameraRig.getTarget();
-  const orbitAngles = cameraRig.getOrbitAngles();
-  const orbitDeg = {
-    azimuth: ((orbitAngles.azimuth * 180) / Math.PI).toFixed(2),
-    polar: ((orbitAngles.polar * 180) / Math.PI).toFixed(2),
-  };
+  // const camPos = camera.position;
+  // const camRot = camera.rotation;
+  // const camRotDeg = {
+  //   x: ((camRot.x * 180) / Math.PI).toFixed(2),
+  //   y: ((camRot.y * 180) / Math.PI).toFixed(2),
+  //   z: ((camRot.z * 180) / Math.PI).toFixed(2),
+  // };
+  // const target = cameraRig.getTarget();
+  // const orbitAngles = cameraRig.getOrbitAngles();
+  // const orbitDeg = {
+  //   azimuth: ((orbitAngles.azimuth * 180) / Math.PI).toFixed(2),
+  //   polar: ((orbitAngles.polar * 180) / Math.PI).toFixed(2),
+  // };
 
-  cameraDebugDisplay.innerHTML = `
-    <strong>CAMERA DEBUG</strong><br>
-    Position:<br>
-    &nbsp;&nbsp;X: ${camPos.x.toFixed(3)}<br>
-    &nbsp;&nbsp;Y: ${camPos.y.toFixed(3)}<br>
-    &nbsp;&nbsp;Z: ${camPos.z.toFixed(3)}<br>
-    Rotation (deg):<br>
-    &nbsp;&nbsp;X: ${camRotDeg.x}°<br>
-    &nbsp;&nbsp;Y: ${camRotDeg.y}°<br>
-    &nbsp;&nbsp;Z: ${camRotDeg.z}°<br>
-    Orbit (deg):<br>
-    &nbsp;&nbsp;Azimuth: ${orbitDeg.azimuth}°<br>
-    &nbsp;&nbsp;Polar: ${orbitDeg.polar}°<br>
-    Target:<br>
-    &nbsp;&nbsp;X: ${target.x.toFixed(3)}<br>
-    &nbsp;&nbsp;Y: ${target.y.toFixed(3)}<br>
-    &nbsp;&nbsp;Z: ${target.z.toFixed(3)}<br>
-    Zoom: ${zoomFactor.toFixed(3)}
-  `;
+  // cameraDebugDisplay.innerHTML = `
+  //   <strong>CAMERA DEBUG</strong><br>
+  //   Position:<br>
+  //   &nbsp;&nbsp;X: ${camPos.x.toFixed(3)}<br>
+  //   &nbsp;&nbsp;Y: ${camPos.y.toFixed(3)}<br>
+  //   &nbsp;&nbsp;Z: ${camPos.z.toFixed(3)}<br>
+  //   Rotation (deg):<br>
+  //   &nbsp;&nbsp;X: ${camRotDeg.x}°<br>
+  //   &nbsp;&nbsp;Y: ${camRotDeg.y}°<br>
+  //   &nbsp;&nbsp;Z: ${camRotDeg.z}°<br>
+  //   Orbit (deg):<br>
+  //   &nbsp;&nbsp;Azimuth: ${orbitDeg.azimuth}°<br>
+  //   &nbsp;&nbsp;Polar: ${orbitDeg.polar}°<br>
+  //   Target:<br>
+  //   &nbsp;&nbsp;X: ${target.x.toFixed(3)}<br>
+  //   &nbsp;&nbsp;Y: ${target.y.toFixed(3)}<br>
+  //   &nbsp;&nbsp;Z: ${target.z.toFixed(3)}<br>
+  //   Zoom: ${zoomFactor.toFixed(3)}
+  // `;
 };
 
 requestAnimationFrame(animate);
