@@ -32,6 +32,7 @@ export class CameraRig {
   private animationEndPolar = 0;
   private animationProgress = 0;
   private animationDuration = 0.6; // seconds
+  private animationCompleteCallbacks: Array<() => void> = [];
 
   // Rotation memory for animated return
   private savedAzimuth: number | null = null;
@@ -157,6 +158,7 @@ export class CameraRig {
       this.orbitPolar = targetPolarRadians;
       this.updateDirectionFromOrbit();
       this.updateCameraPosition();
+      this.notifyAnimationComplete();
     }
   }
 
@@ -265,6 +267,7 @@ export class CameraRig {
     // Clear view direction animation flag when done
     if (this.animationProgress >= 1) {
       this.isAnimatingViewDirection = false;
+      this.notifyAnimationComplete();
     }
   }
 
@@ -312,5 +315,13 @@ export class CameraRig {
         Math.cos(this.orbitAzimuth) * cosPolar,
       )
       .normalize();
+  }
+
+  private notifyAnimationComplete() {
+    this.animationCompleteCallbacks.forEach((cb) => cb());
+  }
+
+  onAnimationComplete(callback: () => void) {
+    this.animationCompleteCallbacks.push(callback);
   }
 }

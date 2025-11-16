@@ -418,6 +418,10 @@ export class VinylLibraryViewer {
             transform: translateX(50px);
           }
 
+          .focus-card-info-container.cover-clicked .album-info-container {
+            transform: none;
+          }
+
           .focus-card-info-container .album-info-container {
             transition: transform 0.3s ease;
             position: relative;

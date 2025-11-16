@@ -699,6 +699,8 @@ type FlyawayVinyl = {
   textures: LabelTextures;
 };
 const flyawayVinyls: FlyawayVinyl[] = [];
+let isFullscreenMode = false;
+let fullscreenVinylRestoreTimeout: number | null = null;
 
 const syncAnimationStateToModel = (model: Object3D) => {
   if (model === focusVinylState?.model) {
@@ -724,6 +726,7 @@ const setActiveVinylSource = (
   if (activeVinylSource === source) {
     return;
   }
+  const previousSource = activeVinylSource;
   activeVinylSource = source;
   if (source === "focus") {
     vinylModel = focusVinylState?.model ?? null;
@@ -738,6 +741,9 @@ const setActiveVinylSource = (
     }
   } else {
     vinylModel = null;
+  }
+  if (previousSource !== "focus" && source === "focus") {
+    resetFocusCoverClickState();
   }
 };
 
@@ -1087,6 +1093,9 @@ function prepareFocusVinylPresentation(model: Object3D, token: number) {
   vinylScaleFactor = getFocusVinylScale();
   vinylAnimationState.cameraRelativeOffsetValid = false;
   updateFocusCardPosition();
+  if (isFullscreenMode) {
+    model.visible = false;
+  }
   resetVinylAnimationState(focusCardAnchorPosition, "focus");
 
   // Enable billboard effect immediately
@@ -1094,7 +1103,11 @@ function prepareFocusVinylPresentation(model: Object3D, token: number) {
 
   // Fade in once positioned
   setTimeout(() => {
-    if (token === focusVinylLoadToken && focusVinylState?.model === model) {
+    if (
+      token === focusVinylLoadToken &&
+      focusVinylState?.model === model &&
+      !isFullscreenMode
+    ) {
       model.visible = true;
     }
   }, 300);
@@ -1152,6 +1165,34 @@ const resetFocusCoverClickState = () => {
   window.dispatchEvent(new CustomEvent("focus-cover-click-reset"));
 };
 
+const hideFocusVinylForFullscreen = () => {
+  if (fullscreenVinylRestoreTimeout !== null) {
+    window.clearTimeout(fullscreenVinylRestoreTimeout);
+    fullscreenVinylRestoreTimeout = null;
+  }
+  if (focusVinylState?.model) {
+    focusVinylState.model.visible = false;
+  }
+};
+
+const scheduleFocusVinylRestore = () => {
+  if (fullscreenVinylRestoreTimeout !== null) {
+    window.clearTimeout(fullscreenVinylRestoreTimeout);
+    fullscreenVinylRestoreTimeout = null;
+  }
+  if (!focusVinylState?.model) {
+    return;
+  }
+  const modelRef = focusVinylState.model;
+  modelRef.visible = false;
+  fullscreenVinylRestoreTimeout = window.setTimeout(() => {
+    fullscreenVinylRestoreTimeout = null;
+    if (!isFullscreenMode && focusVinylState?.model === modelRef) {
+      modelRef.visible = true;
+    }
+  }, 250);
+};
+
 // Listen for focus card show events to change camera position and angle
 window.addEventListener("focus-card-shown", (event: any) => {
   const { position, polarAngle } = event.detail;
@@ -1183,6 +1224,8 @@ yt.setIsTonearmInPlayAreaQuery(() => isTonearmInPlayArea);
 // Auto-hide library and button in fullscreen player mode
 yt.onFullscreenChange((isFullscreen: boolean) => {
   if (isFullscreen) {
+    isFullscreenMode = true;
+    hideFocusVinylForFullscreen();
     vinylViewerContainer.style.opacity = "0";
     vinylViewerContainer.style.pointerEvents = "none";
     hideLibraryBtn.style.opacity = "0";
@@ -1199,6 +1242,7 @@ yt.onFullscreenChange((isFullscreen: boolean) => {
     cameraRig.setLookTarget(CAMERA_TARGETS["fullscreen"], true);
     cameraRig.setPolarAngle(2, true);
   } else {
+    isFullscreenMode = false;
     vinylViewerContainer.style.opacity = "1";
     vinylViewerContainer.style.pointerEvents = "auto";
     hideLibraryBtn.style.opacity = "1";
@@ -1210,6 +1254,7 @@ yt.onFullscreenChange((isFullscreen: boolean) => {
       container.style.pointerEvents = "auto";
     });
     showFocusBtn.style.opacity = "1";
+    scheduleFocusVinylRestore();
     showFocusBtn.style.pointerEvents = "auto";
 
     // Return to bottom-center when exiting fullscreen
@@ -1319,9 +1364,9 @@ const startTurntableVinylFlyaway = () => {
   flyawayVinyls.push({
     model,
     velocity: new Vector3(
-      (Math.random() - 0.5) * 1.4,
-      1.5 + Math.random() * 0.7,
-      2.2 + Math.random() * 1.2,
+      (Math.random() - 0.5) * 2.1,
+      (1.5 + Math.random() * 0.7) * 1.5,
+      (2.2 + Math.random() * 1.2) * 1.5,
     ),
     spin: new Vector3(
       (Math.random() - 0.5) * 6,
@@ -1472,9 +1517,6 @@ canvas.addEventListener("pointerdown", (event) => {
   if (!vinylModel) {
     return;
   }
-  if (vinylSelection.source === "focus") {
-    resetFocusCoverClickState();
-  }
   if (
     vinylSelection.source === "focus" &&
     focusVinylState &&
@@ -1595,6 +1637,9 @@ const endDrag = (event: PointerEvent) => {
   currentDragSource = null;
   activeDragVisualOffset = 0;
   document.body.classList.remove("vinyl-drag-active");
+  if (dragSource === "focus") {
+    resetFocusCoverClickState();
+  }
   pointerAttachmentOffset.copy(hangOffset);
   currentPointerWorld.copy(vinylAnchorPosition);
   if (vinylModel) {
@@ -1866,6 +1911,9 @@ const updateCameraTargetsForWindowSize = () => {
   // Update focus card position on window resize
   updateFocusCardPosition();
 };
+cameraRig.onAnimationComplete(() => {
+  updateFocusCardPosition();
+});
 
 const setSize = () => {
   const width = root.clientWidth || window.innerWidth;
@@ -2079,17 +2127,17 @@ const animate = (time: number) => {
   for (let i = flyawayVinyls.length - 1; i >= 0; i--) {
     const entry = flyawayVinyls[i];
     entry.lifetime += delta;
-    entry.velocity.y += 0.4 * delta;
-    entry.model.position.addScaledVector(entry.velocity, delta);
+    entry.velocity.y += 0.4 * delta * 1.5;
+    entry.model.position.addScaledVector(entry.velocity, delta * 1.5);
     entry.model.rotation.x += entry.spin.x * delta;
     entry.model.rotation.y += entry.spin.y * delta;
     entry.model.rotation.z += entry.spin.z * delta;
     const scaleFactor = Math.max(
       0.001,
-      entry.initialScale * (1 - entry.lifetime / 2.5),
+      entry.initialScale * (1 - entry.lifetime / 1.5),
     );
     entry.model.scale.setScalar(scaleFactor);
-    if (entry.lifetime > 2.5 || scaleFactor <= 0.01) {
+    if (entry.lifetime > 1.5 || scaleFactor <= 0.01) {
       heroGroup.remove(entry.model);
       entry.textures.sideA.dispose();
       entry.textures.sideB.dispose();

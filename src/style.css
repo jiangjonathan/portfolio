@@ -64,6 +64,7 @@ body.vinyl-drag-active .vinyl-viewer-widget * {
     display: inline-block;
     overflow: hidden;
     background: #fff;
+    z-index: 20006;
 }
 
 #player-size {
