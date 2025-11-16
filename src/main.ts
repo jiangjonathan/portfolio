@@ -1109,6 +1109,16 @@ window.addEventListener("focus-cover-hover", (event: any) => {
   );
 });
 
+const FOCUS_VINYL_CLICK_DISTANCE = 20;
+const FOCUS_VINYL_CLICK_ANIMATION_SPEED = 0.25;
+let focusVinylClickOffset = 0;
+let focusVinylClickOffsetTarget = 0;
+window.addEventListener("focus-cover-click", (event: any) => {
+  const { active } = event.detail;
+  focusVinylClickOffsetTarget = active ? FOCUS_VINYL_CLICK_DISTANCE : 0;
+  document.body?.classList.toggle("focus-cover-click-active", active);
+});
+
 // Listen for focus card show events to change camera position and angle
 window.addEventListener("focus-card-shown", (event: any) => {
   const { position, polarAngle } = event.detail;
@@ -1862,8 +1872,20 @@ const animate = (time: number) => {
       focusVinylHoverOffset = focusVinylHoverOffsetTarget;
     }
 
-    if (activeVinylSource === "focus" && focusVinylHoverOffset !== 0) {
-      vinylModel.position.x += focusVinylHoverOffset;
+    // Smoothly animate click offset for focus vinyl
+    if (Math.abs(focusVinylClickOffsetTarget - focusVinylClickOffset) > 0.001) {
+      focusVinylClickOffset +=
+        (focusVinylClickOffsetTarget - focusVinylClickOffset) *
+        FOCUS_VINYL_CLICK_ANIMATION_SPEED;
+    } else {
+      focusVinylClickOffset = focusVinylClickOffsetTarget;
+    }
+
+    if (activeVinylSource === "focus") {
+      const totalFocusOffset = focusVinylHoverOffset + focusVinylClickOffset;
+      if (totalFocusOffset !== 0) {
+        vinylModel.position.x += totalFocusOffset;
+      }
     }
 
     // Scale based on distance to TURNTABLE (not current anchor) - reaches 1.0 before threshold

@@ -451,7 +451,7 @@ export class VinylLibraryViewer {
             mix-blend-mode: ${PLASTIC_OVERLAY_BLEND_MODE};
             border-radius: 2px;
             z-index: 20002;
-            transition: transform 0.3s ease;
+            transition: transform 0.3s ease, opacity 0.3s ease;
           }
 
           .focus-card-info-container .album-info {
@@ -1441,16 +1441,66 @@ export class VinylLibraryViewer {
     ) as HTMLElement | null;
     const plasticOverlayBaseTransform =
       plasticOverlayElement?.style.transform || "";
+    const plasticOverlayBaseOpacity = plasticOverlayElement
+      ? plasticOverlayElement.style.opacity ||
+        window.getComputedStyle(plasticOverlayElement).opacity ||
+        "1"
+      : "1";
     const setPlasticOverlayShift = (shift: number) => {
       if (!plasticOverlayElement) return;
-      if (!plasticOverlayElement.style.transition) {
-        plasticOverlayElement.style.transition = "transform 0.3s ease";
+      if (
+        !plasticOverlayElement.style.transition ||
+        !plasticOverlayElement.style.transition.includes("transform")
+      ) {
+        plasticOverlayElement.style.transition =
+          "transform 0.3s ease, opacity 0.3s ease";
       }
       const base = plasticOverlayBaseTransform.trim();
       const shiftTransform = shift !== 0 ? `translateX(${shift}px)` : "";
       const separator = shiftTransform && base ? " " : "";
       plasticOverlayElement.style.transform = `${shiftTransform}${separator}${base}`;
     };
+
+    let isCoverHoverActive = false;
+    let isCoverClickActive = false;
+    let plasticOverlayFadeTimeout: number | null = null;
+    const updatePlasticOverlayState = () => {
+      const shift = isCoverClickActive ? -250 : isCoverHoverActive ? -50 : 0;
+      setPlasticOverlayShift(shift);
+      if (plasticOverlayFadeTimeout !== null) {
+        window.clearTimeout(plasticOverlayFadeTimeout);
+        plasticOverlayFadeTimeout = null;
+      }
+      if (plasticOverlayElement) {
+        const targetOpacity =
+          isCoverClickActive === true ? "0" : plasticOverlayBaseOpacity || "1";
+        if (isCoverClickActive) {
+          plasticOverlayFadeTimeout = window.setTimeout(() => {
+            if (plasticOverlayElement) {
+              plasticOverlayElement.style.opacity = targetOpacity;
+            }
+            plasticOverlayFadeTimeout = null;
+          }, 350);
+        } else {
+          plasticOverlayElement.style.opacity = targetOpacity;
+        }
+      }
+    };
+
+    const dispatchCoverHoverEvent = (hovered: boolean) => {
+      window.dispatchEvent(
+        new CustomEvent("focus-cover-hover", { detail: { hovered } }),
+      );
+    };
+
+    const dispatchCoverClickEvent = (active: boolean) => {
+      window.dispatchEvent(
+        new CustomEvent("focus-cover-click", { detail: { active } }),
+      );
+    };
+    updatePlasticOverlayState();
+    dispatchCoverHoverEvent(false);
+    dispatchCoverClickEvent(false);
 
     requestAnimationFrame(() => {
       containers.forEach((container) => {
@@ -1481,14 +1531,40 @@ export class VinylLibraryViewer {
     );
     if (albumCoverWrapper) {
       const toggleCoverHover = (isHovered: boolean) => {
+        if (isCoverClickActive || isCoverHoverActive === isHovered) {
+          return;
+        }
+        isCoverHoverActive = isHovered;
         focusInfoContainer.classList.toggle("cover-hovered", isHovered);
         focusCoverContainer.classList.toggle("cover-hovered", isHovered);
-        setPlasticOverlayShift(isHovered ? -50 : 0);
-        window.dispatchEvent(
-          new CustomEvent("focus-cover-hover", {
-            detail: { hovered: isHovered },
-          }),
-        );
+        updatePlasticOverlayState();
+        dispatchCoverHoverEvent(isHovered);
+      };
+
+      const handleCoverClickToggle = () => {
+        const nextState = !isCoverClickActive;
+        if (nextState) {
+          if (isCoverHoverActive) {
+            isCoverHoverActive = false;
+            focusInfoContainer.classList.remove("cover-hovered");
+            focusCoverContainer.classList.remove("cover-hovered");
+            dispatchCoverHoverEvent(false);
+          }
+        }
+        isCoverClickActive = nextState;
+        focusInfoContainer.classList.toggle("cover-clicked", nextState);
+        focusCoverContainer.classList.toggle("cover-clicked", nextState);
+        updatePlasticOverlayState();
+        dispatchCoverClickEvent(nextState);
+
+        if (!nextState) {
+          const isCurrentlyHovered = albumCoverWrapper.matches(":hover");
+          if (isCurrentlyHovered) {
+            toggleCoverHover(true);
+          } else {
+            toggleCoverHover(false);
+          }
+        }
       };
 
       albumCoverWrapper.addEventListener("mouseenter", () => {
@@ -1496,6 +1572,9 @@ export class VinylLibraryViewer {
       });
       albumCoverWrapper.addEventListener("mouseleave", () => {
         toggleCoverHover(false);
+      });
+      albumCoverWrapper.addEventListener("click", () => {
+        handleCoverClickToggle();
       });
     }
 
@@ -1505,6 +1584,11 @@ export class VinylLibraryViewer {
       hideFocusBtn.addEventListener("click", (e) => {
         e.preventDefault();
         e.stopPropagation();
+        isCoverHoverActive = false;
+        isCoverClickActive = false;
+        updatePlasticOverlayState();
+        dispatchCoverHoverEvent(false);
+        dispatchCoverClickEvent(false);
 
         // Fade out animation
         containers.forEach((container) => {
@@ -1515,9 +1599,10 @@ export class VinylLibraryViewer {
         setTimeout(() => {
           focusCoverContainer.innerHTML = "";
           focusInfoContainer.innerHTML = "";
-          setPlasticOverlayShift(0);
           focusInfoContainer.classList.remove("cover-hovered");
           focusCoverContainer.classList.remove("cover-hovered");
+          focusInfoContainer.classList.remove("cover-clicked");
+          focusCoverContainer.classList.remove("cover-clicked");
           containers.forEach((container) => {
             container.style.opacity = "1";
           });

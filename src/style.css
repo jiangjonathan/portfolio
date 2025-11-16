@@ -39,6 +39,18 @@ canvas#vinyl-viewer {
     z-index: 1;
 }
 
+body.focus-cover-click-active canvas#vinyl-viewer {
+    z-index: 20005 !important;
+}
+
+body.focus-cover-click-active #vinyl-focus-card-cover-root {
+    z-index: 20004 !important;
+}
+
+body.focus-cover-click-active #vinyl-focus-card-info-root {
+    z-index: 20003 !important;
+}
+
 /* YouTube player cropping shell */
 .yt-player-viewport {
     position: relative;
