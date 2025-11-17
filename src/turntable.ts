@@ -161,6 +161,10 @@ export class TurntableController {
       this.autoReturn = false;
       this.tonearmDragLastX = e.clientX;
       this.canvas.setPointerCapture(e.pointerId);
+
+      // Dispatch event for tutorial tracking
+      window.dispatchEvent(new CustomEvent("tonearm-drag-start"));
+
       return true;
     }
     return false;
@@ -484,6 +488,20 @@ export class TurntableController {
     this.mediaCurrentTime = clamped;
     if (emit) {
       this.onScrub?.(clamped);
+    }
+  }
+
+  /**
+   * Sync turntable time with external source (e.g., YouTube player)
+   * Call this periodically to keep tonearm in sync when tab is inactive
+   */
+  syncTime(externalTime: number) {
+    // Only sync if we're playing and the difference is significant (> 0.5s)
+    if (
+      this.playingSound &&
+      Math.abs(this.mediaCurrentTime - externalTime) > 0.5
+    ) {
+      this.mediaCurrentTime = clampValue(externalTime, 0, this.mediaDuration);
     }
   }
 }

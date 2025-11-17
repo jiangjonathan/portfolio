@@ -114,7 +114,7 @@ export class VinylLibraryManager {
    */
   private renderCompact(container: HTMLElement): void {
     container.innerHTML = `
-      <div class="vinyl-widget-enhanced-compact">
+      <div class="vinyl-widget-enhanced-compact collapsed">
         <style>
           .vinyl-widget-enhanced-compact {
             padding: 0;
@@ -122,6 +122,46 @@ export class VinylLibraryManager {
             border-radius: 0;
             border: none;
             max-width: 400px;
+            position: relative;
+          }
+
+          .vinyl-widget-enhanced-compact.collapsed .vinyl-widget-content {
+            display: none;
+          }
+
+          .vinyl-widget-enhanced-compact .vinyl-toggle-btn {
+            font-size: 1.5rem;
+            background: transparent;
+            border: none;
+            color: #000;
+            cursor: pointer;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.2s ease;
+            flex-shrink: 0;
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            z-index: 1000;
+          }
+
+          .vinyl-widget-enhanced-compact .vinyl-toggle-btn:hover {
+            transform: scale(1.1);
+          }
+
+          .vinyl-widget-enhanced-compact .vinyl-widget-content {
+            position: fixed;
+            bottom: 60px;
+            left: 20px;
+            max-width: 400px;
+            background: transparent;
+            padding: 0;
+            border: none;
+            z-index: 999;
           }
 
           .vinyl-widget-enhanced-compact h3 {
@@ -183,12 +223,12 @@ export class VinylLibraryManager {
           }
 
           .vinyl-widget-enhanced-compact .status-message {
-            padding: 0.75rem;
+            padding: 0;
             border-radius: 0;
             margin-top: 1rem;
             font-size: 0.85rem;
             display: none;
-            border: 1px solid #000;
+            border: none;
             background: transparent;
             color: #000;
           }
@@ -200,46 +240,50 @@ export class VinylLibraryManager {
           .vinyl-widget-enhanced-compact .status-message.success {
             background: transparent;
             color: #000;
-            border-color: #000;
+            border: none;
           }
 
           .vinyl-widget-enhanced-compact .status-message.error {
             background: transparent;
             color: #000;
-            border-color: #000;
+            border: none;
           }
 
           .vinyl-widget-enhanced-compact .status-message.loading {
             background: transparent;
             color: #000;
-            border-color: #000;
+            border: none;
           }
         </style>
 
-        <h3>add to collection${this.config.isOwner ? " (admin)" : ""}</h3>
+        <button class="vinyl-toggle-btn" id="vinyl-toggle-btn">+</button>
 
-        <div class="form-group">
-          <label for="vinyl-youtube-input">youtube link</label>
-          <input
-            type="text"
-            id="vinyl-youtube-input"
-            placeholder="Paste YouTube link here..."
-          >
+        <div class="vinyl-widget-content">
+          <h3>${this.config.isOwner ? " (admin)" : ""}</h3>
+
+          <div class="form-group">
+            <label for="vinyl-youtube-input">add to collection</label>
+            <input
+              type="text"
+              id="vinyl-youtube-input"
+              placeholder="paste youtube link here"
+            >
+          </div>
+
+          ${
+            this.config.isOwner
+              ? `
+          <div class="form-group">
+            <label for="vinyl-note-input">personal note (optional)</label>
+            <textarea id="vinyl-note-input" placeholder="note"></textarea>
+          </div>
+          `
+              : ""
+          }
+
+          <button id="vinyl-add-btn" class="vinyl-hyperlink">add</button>
+          <div id="vinyl-status" class="status-message"></div>
         </div>
-
-        ${
-          this.config.isOwner
-            ? `
-        <div class="form-group">
-          <label for="vinyl-note-input">personal note (optional)</label>
-          <textarea id="vinyl-note-input" placeholder="Your thoughts..."></textarea>
-        </div>
-        `
-            : ""
-        }
-
-        <button id="vinyl-add-btn" class="vinyl-hyperlink">add to collection</button>
-        <div id="vinyl-status" class="status-message"></div>
       </div>
     `;
   }
@@ -543,6 +587,24 @@ export class VinylLibraryManager {
     const noteInput = this.config.isOwner
       ? (document.getElementById("vinyl-note-input") as HTMLTextAreaElement)
       : null;
+    const toggleBtn = document.getElementById("vinyl-toggle-btn");
+    const widgetContainer = document.querySelector(
+      ".vinyl-widget-enhanced-compact",
+    );
+
+    // Handle toggle button for collapsed/expanded state
+    if (toggleBtn && widgetContainer) {
+      toggleBtn.addEventListener("click", () => {
+        widgetContainer.classList.toggle("collapsed");
+
+        // Notify tutorial that the + button was pressed
+        window.dispatchEvent(
+          new CustomEvent("tutorial-action", {
+            detail: { action: "press-add-button" },
+          }),
+        );
+      });
+    }
 
     if (addBtn) {
       addBtn.addEventListener("click", () =>
@@ -573,14 +635,14 @@ export class VinylLibraryManager {
     const note = noteInput?.value?.trim() || "";
 
     if (!youtubeLink) {
-      this.showStatus("Please enter a YouTube link", "error");
+      this.showStatus("please enter a youtube link", "error");
       return;
     }
 
     // Extract video ID first
     const youtubeId = extractYouTubeId(youtubeLink);
     if (!youtubeId) {
-      this.showStatus("Invalid YouTube URL or ID", "error");
+      this.showStatus("invalid youTube url or id", "error");
       return;
     }
 
@@ -591,15 +653,15 @@ export class VinylLibraryManager {
     if (addBtn) addBtn.disabled = true;
 
     try {
-      this.showStatus("📥 Fetching video information...", "loading");
+      this.showStatus("fetching video information...", "loading");
 
       // Step 1: Fetch YouTube metadata
       const ytMetadata = await fetchYouTubeMetadata(youtubeId);
       if (!ytMetadata) {
-        throw new Error("Could not fetch YouTube metadata");
+        throw new Error("could not fetch youtube metadata");
       }
 
-      this.showStatus("🔎 Extracting metadata...", "loading");
+      this.showStatus("extracting metadata...", "loading");
 
       // Step 2: Extract and enrich metadata (with user prompts if needed)
       const enrichedMetadata = await extractAndEnrichMetadata(
@@ -608,11 +670,11 @@ export class VinylLibraryManager {
       );
 
       if (!enrichedMetadata) {
-        this.showStatus("Cancelled", "error");
+        this.showStatus("cancelled", "error");
         return;
       }
 
-      this.showStatus("💾 Saving to your collection...", "loading");
+      this.showStatus("saving to your collection...", "loading");
 
       // Step 3: Add to backend (admin) or localStorage (visitor)
       let entry = null;
@@ -663,7 +725,7 @@ export class VinylLibraryManager {
         const location = this.config.isOwner
           ? "backend collection"
           : "your local collection";
-        this.showStatus(`✅ Added to ${location}!`, "success");
+        this.showStatus(`added to ${location}!`, "success");
         youtubeInput.value = "";
         if (noteInput) noteInput.value = "";
 
@@ -683,12 +745,12 @@ export class VinylLibraryManager {
           if (statusEl) statusEl.classList.remove("show");
         }, 2000);
       } else {
-        this.showStatus("Failed to save song", "error");
+        this.showStatus("failed to save song", "error");
       }
     } catch (error) {
-      console.error("Error adding song:", error);
+      console.error("error adding song:", error);
       this.showStatus(
-        `Error: ${error instanceof Error ? error.message : "Unknown error"}`,
+        `Error: ${error instanceof Error ? error.message : "unknown error"}`,
         "error",
       );
     } finally {
@@ -701,7 +763,7 @@ export class VinylLibraryManager {
    * Handle deleting an entry from the owner's library
    */
   private async handleDeleteEntry(entryId: string): Promise<void> {
-    if (!confirm("Are you sure you want to delete this entry?")) {
+    if (!confirm("are you sure you want to delete this entry?")) {
       return;
     }
 

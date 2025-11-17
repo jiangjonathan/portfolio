@@ -48,10 +48,24 @@ export class VinylLibraryViewer {
   private customOrder: Map<string, number> = new Map(); // Session-based custom ordering
   private isEditMode: boolean = false; // Toggle for showing delete buttons
   private focusedEntryId: string | null = null; // Track currently focused entry
+  private focusedEntryVideoId: string | null = null;
   private focusCardCleanup: (() => void) | null = null;
+  private isVinylOnTurntable: boolean = false;
+  private turntableVideoId: string | null = null;
 
   constructor(config: ViewerConfig) {
     this.config = config;
+    if (typeof window !== "undefined") {
+      this.isVinylOnTurntable = Boolean(
+        (window as any).__FOCUS_VINYL_ON_TURNTABLE__,
+      );
+      const initialTurntableVideoId = (window as any)
+        .__FOCUS_VINYL_TURNTABLE_VIDEO_ID__;
+      this.turntableVideoId =
+        typeof initialTurntableVideoId === "string"
+          ? initialTurntableVideoId
+          : null;
+    }
   }
 
   /**
@@ -78,7 +92,7 @@ export class VinylLibraryViewer {
     // Load owner library from API if configured
     if (this.config.apiUrl) {
       try {
-        console.log("📚 Fetching owner library from:", this.config.apiUrl);
+        console.log("Fetching owner library from:", this.config.apiUrl);
         this.ownerLibrary = await fetchOwnerLibrary(this.config.apiUrl);
         console.log(
           "✓ Owner library loaded:",
@@ -90,7 +104,7 @@ export class VinylLibraryViewer {
         this.ownerLibrary = [];
       }
     } else {
-      console.warn("⚠️ No apiUrl configured for viewer");
+      console.warn("No apiUrl configured for viewer");
       this.ownerLibrary = [];
     }
 
@@ -111,6 +125,7 @@ export class VinylLibraryViewer {
 
     // Listen for video duration updates from the player
     this.watchVideoDurationUpdates();
+    this.watchTurntableStateUpdates();
   }
 
   /**
@@ -119,61 +134,65 @@ export class VinylLibraryViewer {
   private async recreateBlobUrls(): Promise<void> {
     console.log("[recreateBlobUrls] Processing owner library...");
 
-    await Promise.all(
-      this.ownerLibrary.map(async (entry) => {
-        console.log(
-          `[Owner Entry] id: ${entry.id}, releaseId: ${entry.releaseId}, imageUrl: ${entry.imageUrl}, originalImageUrl: ${entry.originalImageUrl}`,
-        );
+    // Process entries sequentially with delay to avoid overwhelming Cover Art Archive
+    for (const entry of this.ownerLibrary) {
+      console.log(
+        `[Owner Entry] id: ${entry.id}, releaseId: ${entry.releaseId}, imageUrl: ${entry.imageUrl}, originalImageUrl: ${entry.originalImageUrl}`,
+      );
 
-        // For entries without originalImageUrl, construct it from releaseId
-        let fallbackUrl = entry.originalImageUrl;
-        if (!fallbackUrl && entry.releaseId) {
-          fallbackUrl = `https://coverartarchive.org/release/${entry.releaseId}/front`;
-          console.log(
-            `[Owner Entry] Constructed fallback URL from releaseId: ${fallbackUrl}`,
-          );
-        }
-
-        const newUrl = await recreateBlobUrlIfNeeded(
-          entry.imageUrl,
-          entry.releaseId,
-          fallbackUrl, // Pass original URL or constructed URL as fallback
-        );
+      // For entries without originalImageUrl, construct it from releaseId
+      let fallbackUrl = entry.originalImageUrl;
+      if (!fallbackUrl && entry.releaseId) {
+        fallbackUrl = `https://coverartarchive.org/release/${entry.releaseId}/front`;
         console.log(
-          `[Owner Entry] Updated imageUrl from ${entry.imageUrl} to ${newUrl}`,
+          `[Owner Entry] Constructed fallback URL from releaseId: ${fallbackUrl}`,
         );
-        entry.imageUrl = newUrl;
-      }),
-    );
+      }
+
+      const newUrl = await recreateBlobUrlIfNeeded(
+        entry.imageUrl,
+        entry.releaseId,
+        fallbackUrl, // Pass original URL or constructed URL as fallback
+      );
+      console.log(
+        `[Owner Entry] Updated imageUrl from ${entry.imageUrl} to ${newUrl}`,
+      );
+      entry.imageUrl = newUrl;
+
+      // Small delay to avoid rate limiting (50ms between requests)
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
 
     console.log("[recreateBlobUrls] Processing visitor library...");
 
-    await Promise.all(
-      this.visitorLibrary.map(async (entry) => {
-        console.log(
-          `[Visitor Entry] id: ${entry.id}, releaseId: ${entry.releaseId}, imageUrl: ${entry.imageUrl}, originalImageUrl: ${entry.originalImageUrl}`,
-        );
+    // Process entries sequentially with delay to avoid overwhelming Cover Art Archive
+    for (const entry of this.visitorLibrary) {
+      console.log(
+        `[Visitor Entry] id: ${entry.id}, releaseId: ${entry.releaseId}, imageUrl: ${entry.imageUrl}, originalImageUrl: ${entry.originalImageUrl}`,
+      );
 
-        // For entries without originalImageUrl, construct it from releaseId
-        let fallbackUrl = entry.originalImageUrl;
-        if (!fallbackUrl && entry.releaseId) {
-          fallbackUrl = `https://coverartarchive.org/release/${entry.releaseId}/front`;
-          console.log(
-            `[Visitor Entry] Constructed fallback URL from releaseId: ${fallbackUrl}`,
-          );
-        }
-
-        const newUrl = await recreateBlobUrlIfNeeded(
-          entry.imageUrl,
-          entry.releaseId,
-          fallbackUrl, // Pass original URL or constructed URL as fallback
-        );
+      // For entries without originalImageUrl, construct it from releaseId
+      let fallbackUrl = entry.originalImageUrl;
+      if (!fallbackUrl && entry.releaseId) {
+        fallbackUrl = `https://coverartarchive.org/release/${entry.releaseId}/front`;
         console.log(
-          `[Visitor Entry] Updated imageUrl from ${entry.imageUrl} to ${newUrl}`,
+          `[Visitor Entry] Constructed fallback URL from releaseId: ${fallbackUrl}`,
         );
-        entry.imageUrl = newUrl;
-      }),
-    );
+      }
+
+      const newUrl = await recreateBlobUrlIfNeeded(
+        entry.imageUrl,
+        entry.releaseId,
+        fallbackUrl, // Pass original URL or constructed URL as fallback
+      );
+      console.log(
+        `[Visitor Entry] Updated imageUrl from ${entry.imageUrl} to ${newUrl}`,
+      );
+      entry.imageUrl = newUrl;
+
+      // Small delay to avoid rate limiting (50ms between requests)
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
 
     console.log("[recreateBlobUrls] Done!");
   }
@@ -378,7 +397,7 @@ export class VinylLibraryViewer {
             flex-direction: column;
             gap: 1rem;
             min-height: 250px;
-            padding-bottom: 2.5rem;
+            padding-bottom: 1.5rem;
           }
 
           .focus-card-info-container .hide-focus-btn {
@@ -429,7 +448,13 @@ export class VinylLibraryViewer {
             display: flex;
             flex-direction: row;
             gap: 1rem;
+            align-items: center;
+            min-height: 250px;
             z-index: 10000;
+          }
+
+          .focus-card-info-container .album-info-container.shift-disabled {
+            transform: none !important;
           }
 
           .focus-card-cover-container .album-cover {
@@ -470,6 +495,9 @@ export class VinylLibraryViewer {
             flex-shrink: 0;
             overflow: visible;
             position: relative;
+            height: 100%;
+            padding-bottom: 1.25rem;
+            min-height: 250px;
           }
 
           .focus-card-info-container .album-artist,
@@ -507,10 +535,15 @@ export class VinylLibraryViewer {
             color: #666;
             margin-top: 0.35rem;
             line-height: 1.1;
+            display: none;
           }
 
           .focus-card-info-container .album-aspect-ratio.editing-enabled {
             padding: 2px 4px;
+          }
+
+          .vinyl-edit-mode .focus-card-info-container .album-aspect-ratio {
+            display: block;
           }
 
           .focus-card-cover-container .owner-badge {
@@ -686,12 +719,17 @@ export class VinylLibraryViewer {
 
           .focus-card-info-container .album-duration {
             position: absolute;
-            bottom: 0.5rem;
-            left: 0.5rem;
+            bottom: 28px;
+            left: 0;
             color: #888;
             font-size: 0.7rem;
+            line-height: 1.1;
             opacity: 0;
             animation: fade-in-duration 0.5s ease-out 0.2s forwards;
+          }
+
+          .focus-card-info-container .album-note-right {
+            margin-left: -5px;
           }
 
 
@@ -1000,6 +1038,7 @@ export class VinylLibraryViewer {
             position: relative;
             display: inline-block;
             vertical-align: baseline;
+            top: -2px;
           }
 
           .vinyl-viewer-widget .sort-container .filter-btn {
@@ -1227,7 +1266,7 @@ export class VinylLibraryViewer {
                   ${plasticOverlay}
                   ${genre ? `<div class="album-genre">${this.escapeHtml(genre)}</div>` : ""}
                 </div>
-                ${isOwner ? '<div class="owner-badge">Owner</div>' : ""}
+                ${isOwner ? '<div class="owner-badge"> jonnys pick</div>' : ""}
                 ${canDelete ? `<button class="delete-btn" data-entry-id="${entry.id}" data-is-owner="${isOwner}" title="Delete from collection">×</button>` : ""}
                 <div class="album-info">
                   <div class="album-artist">
@@ -1445,6 +1484,11 @@ export class VinylLibraryViewer {
 
     focusCoverContainer.innerHTML = coverHtml;
     focusInfoContainer.innerHTML = infoHtml;
+    this.focusedEntryVideoId = entry.youtubeId || null;
+    this.applyFocusCardTurntableState();
+    window.dispatchEvent(
+      new CustomEvent("focus-visibility-change", { detail: { visible: true } }),
+    );
 
     const plasticOverlayElement = focusCoverContainer.querySelector(
       ".plastic-overlay",
@@ -1584,8 +1628,11 @@ export class VinylLibraryViewer {
         if (active) {
           coverClickTimeoutId = window.setTimeout(() => {
             coverClickTimeoutId = null;
-            setCoverClickState(false);
-          }, 5000);
+            // Only reset if vinyl is not currently being dragged
+            if (!(window as any).VINYL_DRAG_ACTIVE) {
+              setCoverClickState(false);
+            }
+          }, 3000);
         }
 
         if (!active) {
@@ -1647,6 +1694,11 @@ export class VinylLibraryViewer {
         updatePlasticOverlayState();
         dispatchCoverHoverEvent(false);
         dispatchCoverClickEvent(false);
+        window.dispatchEvent(
+          new CustomEvent("focus-visibility-change", {
+            detail: { visible: false },
+          }),
+        );
         if (this.focusCardCleanup) {
           this.focusCardCleanup();
         }
@@ -2326,6 +2378,48 @@ export class VinylLibraryViewer {
     }
   }
 
+  private applyFocusCardTurntableState(): void {
+    const infoContainer = document.getElementById("vinyl-focus-card-info-root");
+    if (!infoContainer) {
+      return;
+    }
+    const isFocusVinylOnTurntable =
+      this.isVinylOnTurntable &&
+      !!this.focusedEntryVideoId &&
+      !!this.turntableVideoId &&
+      this.focusedEntryVideoId === this.turntableVideoId;
+    infoContainer.classList.toggle(
+      "vinyl-on-turntable",
+      isFocusVinylOnTurntable,
+    );
+    const albumInfoContainer = infoContainer.querySelector(
+      ".album-info-container",
+    );
+    if (albumInfoContainer) {
+      albumInfoContainer.classList.toggle(
+        "shift-disabled",
+        isFocusVinylOnTurntable,
+      );
+    }
+  }
+
+  private watchTurntableStateUpdates(): void {
+    window.addEventListener("focus-vinyl-turntable-state", (event) => {
+      const detail = (
+        event as CustomEvent<{
+          onTurntable: boolean;
+          turntableVideoId?: string;
+        }>
+      ).detail;
+      this.isVinylOnTurntable = Boolean(detail?.onTurntable);
+      this.turntableVideoId =
+        detail?.turntableVideoId && detail.turntableVideoId !== ""
+          ? detail.turntableVideoId
+          : null;
+      this.applyFocusCardTurntableState();
+    });
+  }
+
   /**
    * Watch for video duration updates from the player
    */
@@ -2383,13 +2477,7 @@ export class VinylLibraryViewer {
               durationDiv.className = "album-duration";
               durationDiv.textContent = `${this.formatDuration(duration)}`;
 
-              // Insert before the apply button if it exists, otherwise append to card
-              const applyButton = infoCard.querySelector(".apply-changes-btn");
-              if (applyButton) {
-                infoCard.insertBefore(durationDiv, applyButton);
-              } else {
-                infoCard.appendChild(durationDiv);
-              }
+              infoCard.appendChild(durationDiv);
 
               console.log(
                 `[vinylLibraryViewer] Inserted duration: ${this.formatDuration(duration)} at bottom of card`,
@@ -2619,5 +2707,6 @@ export class VinylLibraryViewer {
         document.querySelectorAll(".delete-btn").length,
       );
     }
+    document.body?.classList.toggle("vinyl-edit-mode", this.isEditMode);
   }
 }
