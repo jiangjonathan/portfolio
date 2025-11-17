@@ -34,10 +34,8 @@ import {} from // createTonearmRotationDisplay,
 "./ui";
 import { initializeYouTubePlayer } from "./youtube";
 import { createMetadataController } from "./metadata";
-import { clampValue, updatePointer } from "./utils";
+import { updatePointer } from "./utils";
 import {
-  MIN_ZOOM,
-  MAX_ZOOM,
   CAMERA_ORBIT_SENSITIVITY,
   PAN_SENSITIVITY,
   UI_MAX_WIDTH,
@@ -682,7 +680,6 @@ const setActiveVinylSource = (
   if (activeVinylSource === source) {
     return;
   }
-  const previousSource = activeVinylSource;
   activeVinylSource = source;
   if (source === "focus") {
     vinylModel = focusVinylState?.model ?? null;
@@ -1750,7 +1747,6 @@ const endDrag = (event: PointerEvent) => {
   }
 
   const dragSource = currentDragSource;
-  const dragVisualOffsetAtRelease = activeDragVisualOffset; // Save offset before resetting
   vinylDragPointerId = null;
   currentDragSource = null;
   activeDragVisualOffset = 0;
