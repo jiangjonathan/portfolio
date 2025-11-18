@@ -1,13 +1,13 @@
 import "./style.css";
 import {
+  Box3,
   Color,
   Group,
   Material,
   Mesh,
   Object3D,
-  Quaternion,
-  Box3,
   Plane,
+  Quaternion,
   Raycaster,
   Vector2,
   Vector3,
@@ -215,11 +215,8 @@ const triggerVinylUIFadeIn = () => {
   vinylUIFadeTriggered = true;
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
-      vinylViewerContainer.style.opacity = "1";
       vinylViewerContainer.style.transform = "translateY(0)";
-      vinylViewerContainer.style.pointerEvents = "auto";
-      tutorialContainer.style.opacity = "1";
-      tutorialContainer.style.pointerEvents = "auto";
+      setTurntableUIVisible(activePage === "turntable");
     });
   });
 };
@@ -778,12 +775,20 @@ type PageCameraSettings = {
   pitch: number;
   zoom: number;
 };
+const HOME_CAMERA_OFFSET = new Vector3(-35, -12, -65);
+const HOME_CAMERA_YAW = -28;
+const HOME_CAMERA_PITCH = -32;
+const HOME_CAMERA_ZOOM = 1.08;
+const PORTFOLIO_CAMERA_YAW = -58;
+const PORTFOLIO_CAMERA_PITCH = -30;
+const PORTFOLIO_CAMERA_ZOOM = 1.2;
+
 const pageCameraSettings: Record<ScenePage, PageCameraSettings> = {
   home: {
     target: new Vector3(0, 0, 0),
-    yaw: 35,
-    pitch: -20,
-    zoom: 0.8,
+    yaw: HOME_CAMERA_YAW,
+    pitch: HOME_CAMERA_PITCH,
+    zoom: HOME_CAMERA_ZOOM,
   },
   turntable: {
     target: defaultCameraTarget.clone(),
@@ -866,8 +871,25 @@ const pageTransitionState = {
 };
 
 const homePageTargets: Array<{ model: Object3D; page: ScenePage }> = [];
+
 const registerHomePageTarget = (model: Object3D, page: ScenePage) => {
   homePageTargets.push({ model, page });
+};
+
+const applyHomeCameraPreset = () => {
+  pageCameraSettings.home.target
+    .copy(defaultCameraTarget)
+    .add(HOME_CAMERA_OFFSET);
+  pageCameraSettings.home.yaw = HOME_CAMERA_YAW;
+  pageCameraSettings.home.pitch = HOME_CAMERA_PITCH;
+  pageCameraSettings.home.zoom = HOME_CAMERA_ZOOM;
+};
+
+const applyPortfolioCameraPreset = (focusPoint: Vector3) => {
+  pageCameraSettings.portfolio.target.copy(focusPoint);
+  pageCameraSettings.portfolio.yaw = PORTFOLIO_CAMERA_YAW;
+  pageCameraSettings.portfolio.pitch = PORTFOLIO_CAMERA_PITCH;
+  pageCameraSettings.portfolio.zoom = PORTFOLIO_CAMERA_ZOOM;
 };
 
 const homeOverlay = document.createElement("div");
@@ -898,7 +920,11 @@ const updateHomeOverlayVisibility = () => {
   homeOverlay.style.pointerEvents = isHome ? "auto" : "none";
 };
 const setTurntableUIVisible = (visible: boolean) => {
-  const effective = visible && !isFullscreenMode && activePage === "turntable";
+  const effective =
+    visible &&
+    vinylUIFadeTriggered &&
+    !isFullscreenMode &&
+    activePage === "turntable";
   vinylViewerContainer.style.opacity = effective ? "1" : "0";
   vinylViewerContainer.style.pointerEvents = effective ? "auto" : "none";
   hideLibraryBtn.style.opacity = effective ? "1" : "0";
@@ -913,6 +939,13 @@ const setTurntableUIVisible = (visible: boolean) => {
   vinylLibraryContainer.style.transition = "opacity 0.3s ease";
   vinylLibraryContainer.style.opacity = effective ? "1" : "0";
   vinylLibraryContainer.style.pointerEvents = effective ? "auto" : "none";
+  if (vinylUIFadeTriggered) {
+    tutorialContainer.style.display = effective ? "block" : "none";
+    tutorialContainer.style.opacity = effective ? "1" : "0";
+    tutorialContainer.style.pointerEvents = effective ? "auto" : "none";
+  } else {
+    tutorialContainer.style.display = "none";
+  }
 };
 updateHomeOverlayVisibility();
 setTurntableUIVisible(false);
@@ -939,6 +972,13 @@ homeNavButton.addEventListener("click", () => {
   setActiveScenePage("home");
 });
 globalControls.appendChild(homeNavButton);
+
+const portfolioNavButton = document.createElement("button");
+portfolioNavButton.textContent = "portfolio view";
+portfolioNavButton.addEventListener("click", () => {
+  setActiveScenePage("portfolio");
+});
+globalControls.appendChild(portfolioNavButton);
 
 const resetTutorialButton = document.createElement("button");
 resetTutorialButton.id = "reset-tutorial-button";
@@ -1134,6 +1174,9 @@ let turntableVinylState: TurntableVinylState | null = null;
 let focusVinylLoadToken = 0;
 let turntableSceneRoot: Object3D | null = null;
 let portfolioSceneRoot: Object3D | null = null;
+const turntableBounds = new Box3();
+const turntableBoundsSize = new Vector3();
+let turntableReferenceSize = 1;
 type VinylSource = "focus" | "turntable";
 let activeVinylSource: VinylSource | null = null;
 let currentDragSource: VinylSource | null = null;
@@ -2421,6 +2464,16 @@ loadTurntableModel()
 
     cameraRig.frameObject(heroGroup, 2.6);
     baseTurntableCameraPosition.copy(camera.position);
+    turntableBounds.setFromObject(turntable);
+    turntableBounds.getSize(turntableBoundsSize);
+    turntableReferenceSize = Math.max(
+      1,
+      Math.max(
+        turntableBoundsSize.x,
+        turntableBoundsSize.y,
+        turntableBoundsSize.z,
+      ),
+    );
 
     // Store the actual default camera target (bounding box center)
     defaultCameraTarget.copy(cameraRig.getTarget());
@@ -2434,18 +2487,7 @@ loadTurntableModel()
       pitch: initialOrbit.polar * RAD2DEG,
       zoom: cameraRig.getZoomFactor(),
     };
-    pageCameraSettings.home.target.copy(defaultCameraTarget);
-    pageCameraSettings.home.yaw = normalizeDegrees(
-      pageCameraSettings.turntable.yaw + 30,
-    );
-    pageCameraSettings.home.pitch = Math.max(
-      -80,
-      pageCameraSettings.turntable.pitch + 25,
-    );
-    pageCameraSettings.home.zoom = Math.max(
-      0.5,
-      pageCameraSettings.turntable.zoom * 0.65,
-    );
+    applyHomeCameraPreset();
     applyPageCameraSettings(pageCameraSettings.home);
     pageTransitionState.fromSettings = cloneCameraSettings(
       pageCameraSettings.home,
@@ -2479,37 +2521,21 @@ loadTurntableModel()
 loadPortfolioModel()
   .then((portfolioModel) => {
     portfolioSceneRoot = portfolioModel;
-    const originalBox = new Box3().setFromObject(portfolioModel);
-    const size = new Vector3();
-    originalBox.getSize(size);
-    const maxDim = Math.max(size.x, size.y, size.z) || 1;
-    const desiredSize = 120;
-    const scaleFactor = desiredSize / maxDim;
-    portfolioModel.scale.setScalar(scaleFactor);
-    portfolioModel.position.set(-140, -10, -80);
+    portfolioModel.visible = true;
+    const referenceScale = turntableSceneRoot ? turntableSceneRoot.scale.x : 1;
+    portfolioModel.scale.setScalar(referenceScale);
+    portfolioModel.position.set(-145, -5, -90);
     heroGroup.add(portfolioModel);
     registerHomePageTarget(portfolioModel, "portfolio");
-    const adjustedBox = new Box3().setFromObject(portfolioModel);
-    const target = new Vector3();
-    adjustedBox.getCenter(target);
-    const homeBounds = new Box3().setFromObject(heroGroup);
-    const homeCenter = new Vector3();
-    homeBounds.getCenter(homeCenter);
-    pageCameraSettings.home.target.copy(homeCenter);
-    pageCameraSettings.home.zoom = Math.min(
-      pageCameraSettings.home.zoom,
-      pageCameraSettings.turntable.zoom * 0.7,
-    );
-    pageCameraSettings.portfolio = {
-      target,
-      yaw: normalizeDegrees(pageCameraSettings.turntable.yaw - 55),
-      pitch: Math.max(-75, pageCameraSettings.turntable.pitch + 5),
-      zoom: Math.max(0.6, pageCameraSettings.turntable.zoom * 0.9),
-    };
+    const portfolioFocusPoint = portfolioModel.position.clone();
+    portfolioFocusPoint.y += 12;
+    applyPortfolioCameraPreset(portfolioFocusPoint);
+    applyHomeCameraPreset();
     if (activePage === "home" && !pageTransitionState.active) {
       applyPageCameraSettings(pageCameraSettings.home);
       updateCameraDebugPanel();
-    } else if (activePage === "portfolio" && !pageTransitionState.active) {
+    }
+    if (activePage === "portfolio" && !pageTransitionState.active) {
       applyPageCameraSettings(pageCameraSettings.portfolio);
       updateCameraDebugPanel();
     }
@@ -2604,7 +2630,11 @@ const updateCameraTargetsForWindowSize = () => {
     defaultCameraTarget.z + 40,
   );
   pageCameraSettings.turntable.target.copy(defaultCameraTarget);
-  pageCameraSettings.home.target.copy(defaultCameraTarget);
+  applyHomeCameraPreset();
+  if (activePage === "home" && !pageTransitionState.active) {
+    applyPageCameraSettings(pageCameraSettings.home);
+    updateCameraDebugPanel();
+  }
 
   // Update focus card position on window resize
   updateFocusCardPosition();
