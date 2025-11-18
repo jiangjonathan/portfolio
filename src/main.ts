@@ -6,12 +6,14 @@ import {
   Mesh,
   Object3D,
   Quaternion,
+  Box3,
   Plane,
   Raycaster,
   Vector2,
   Vector3,
 } from "three";
 import type { Intersection } from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { loadVinylModel } from "./vinyl";
 import {
   applyLabelTextures,
@@ -300,17 +302,7 @@ style.textContent = `
     cursor: not-allowed;
   }
 
-  #bottom-center-controls {
-    position: fixed;
-    bottom: 20px;
-    left: 50%;
-    transform: translateX(-50%);
-    display: flex;
-    gap: 12px;
-    z-index: 100;
-  }
-
-  #bottom-center-controls button {
+  #global-controls button {
     padding: 8px 16px;
     background: rgba(0, 0, 0, 0.7);
     color: #fff;
@@ -324,7 +316,7 @@ style.textContent = `
     -moz-osx-font-smoothing: grayscale;
   }
 
-  #bottom-center-controls button:hover {
+  #global-controls button:hover {
     background: rgba(0, 0, 0, 0.9);
   }
 
@@ -556,7 +548,7 @@ type TurntablePosition =
   | "bottom-left"
   | "fullscreen";
 let turntablePositionState: TurntablePosition = "default";
-let vinylCameraTrackingEnabled = true;
+let vinylCameraTrackingEnabled = false;
 
 // Camera target positions (pan/translation only, no angle change)
 // Will be initialized after heroGroup is loaded based on bounding box center
@@ -567,24 +559,6 @@ const CAMERA_TARGETS: Record<TurntablePosition, Vector3> = {
   "bottom-left": new Vector3(), // Will be set after heroGroup loads
   fullscreen: new Vector3(), // Will be set after heroGroup loads
 };
-
-const bottomCenterControls = document.createElement("div");
-bottomCenterControls.id = "bottom-center-controls";
-root.appendChild(bottomCenterControls);
-
-// Create reset tutorial button
-const resetTutorialButton = document.createElement("button");
-resetTutorialButton.id = "reset-tutorial-button";
-resetTutorialButton.textContent = "Reset Tutorial";
-resetTutorialButton.className = "vinyl-hyperlink";
-resetTutorialButton.addEventListener("click", () => {
-  const tutorialManager = (window as any).tutorialManager;
-  if (tutorialManager) {
-    tutorialManager.reset();
-    console.log("Tutorial reset");
-  }
-});
-bottomCenterControls.appendChild(resetTutorialButton);
 
 const canvas = document.createElement("canvas");
 canvas.id = "vinyl-viewer";
@@ -597,6 +571,17 @@ scene.add(ambientLight, keyLight, fillLight, rimLight);
 
 const cameraRig = createCameraRig();
 const { camera } = cameraRig;
+const gltfLoader = new GLTFLoader();
+const loadPortfolioModel = (): Promise<Object3D> =>
+  new Promise((resolve, reject) => {
+    gltfLoader.load(
+      "/portfolio.glb",
+      (gltf) => resolve(gltf.scene),
+      undefined,
+      (error) => reject(error),
+    );
+  });
+const baseTurntableCameraPosition = new Vector3();
 const RAD2DEG = 180 / Math.PI;
 const DEG2RAD = Math.PI / 180;
 
@@ -734,6 +719,7 @@ const applyCameraStyleInputs = () => {
   if (Number.isFinite(zoomVal)) {
     cameraRig.setZoomFactor(zoomVal);
   }
+  pageCameraSettings[activePage] = captureCameraState();
 };
 
 const applyCameraPositionInputs = () => {
@@ -752,6 +738,7 @@ const applyCameraPositionInputs = () => {
   const distance = offset.length();
   cameraRig.setViewDirection(offset.normalize());
   cameraRig.setCameraDistance(distance);
+  pageCameraSettings[activePage] = captureCameraState();
 };
 
 const cameraStyleInputs = [
@@ -760,7 +747,7 @@ const cameraStyleInputs = [
   zoomControl.input,
 ];
 cameraStyleInputs.forEach((input) => {
-  input.addEventListener("change", () => {
+  input.addEventListener("input", () => {
     applyCameraStyleInputs();
   });
 });
@@ -770,7 +757,7 @@ const cameraPositionInputs = [
   cameraZControl.input,
 ];
 cameraPositionInputs.forEach((input) => {
-  input.addEventListener("change", applyCameraPositionInputs);
+  input.addEventListener("input", applyCameraPositionInputs);
 });
 
 cameraDebugPanel.append(
@@ -783,6 +770,260 @@ cameraDebugPanel.append(
   cameraZControl.control,
 );
 root.appendChild(cameraDebugPanel);
+
+type ScenePage = "home" | "turntable" | "portfolio";
+type PageCameraSettings = {
+  target: Vector3;
+  yaw: number;
+  pitch: number;
+  zoom: number;
+};
+const pageCameraSettings: Record<ScenePage, PageCameraSettings> = {
+  home: {
+    target: new Vector3(0, 0, 0),
+    yaw: 35,
+    pitch: -20,
+    zoom: 0.8,
+  },
+  turntable: {
+    target: defaultCameraTarget.clone(),
+    yaw: 0,
+    pitch: -45,
+    zoom: 1.6,
+  },
+  portfolio: {
+    target: new Vector3(-60, 0, -40),
+    yaw: -40,
+    pitch: -25,
+    zoom: 1.1,
+  },
+};
+let activePage: ScenePage = "home";
+const directionFromAngles = (
+  yawDeg: number,
+  pitchDeg: number,
+  out: Vector3 = new Vector3(),
+) => {
+  const yawRad = yawDeg * DEG2RAD;
+  const pitchRad = pitchDeg * DEG2RAD;
+  const cosPitch = Math.cos(pitchRad);
+  return out
+    .set(
+      Math.sin(yawRad) * cosPitch,
+      Math.sin(pitchRad),
+      Math.cos(yawRad) * cosPitch,
+    )
+    .normalize();
+};
+
+const normalizeDegrees = (value: number) => {
+  let result = value % 360;
+  if (result > 180) result -= 360;
+  if (result < -180) result += 360;
+  return result;
+};
+
+const lerpAngleDegrees = (start: number, end: number, t: number) => {
+  let diff = ((end - start + 180) % 360) - 180;
+  if (diff < -180) diff += 360;
+  return start + diff * t;
+};
+
+const cloneCameraSettings = (
+  settings: PageCameraSettings,
+): PageCameraSettings => ({
+  target: settings.target.clone(),
+  yaw: settings.yaw,
+  pitch: settings.pitch,
+  zoom: settings.zoom,
+});
+
+const applyPageCameraSettings = (settings: PageCameraSettings) => {
+  cameraRig.setLookTarget(settings.target, false);
+  cameraRig.setViewDirection(
+    directionFromAngles(settings.yaw, settings.pitch),
+    false,
+  );
+  cameraRig.setZoomFactor(settings.zoom);
+};
+
+const captureCameraState = (): PageCameraSettings => {
+  const orbitAngles = cameraRig.getOrbitAngles();
+  return {
+    target: cameraRig.getTarget().clone(),
+    yaw: orbitAngles.azimuth * RAD2DEG,
+    pitch: orbitAngles.polar * RAD2DEG,
+    zoom: cameraRig.getZoomFactor(),
+  };
+};
+
+const pageTransitionDuration = 0.9;
+const pageTransitionState = {
+  startTime: 0,
+  fromSettings: cloneCameraSettings(pageCameraSettings.home),
+  toSettings: cloneCameraSettings(pageCameraSettings.home),
+  active: false,
+};
+
+const homePageTargets: Array<{ model: Object3D; page: ScenePage }> = [];
+const registerHomePageTarget = (model: Object3D, page: ScenePage) => {
+  homePageTargets.push({ model, page });
+};
+
+const homeOverlay = document.createElement("div");
+homeOverlay.id = "home-overlay";
+homeOverlay.textContent = "home view — click a model to explore";
+Object.assign(homeOverlay.style, {
+  position: "fixed",
+  top: "1.5rem",
+  left: "50%",
+  transform: "translateX(-50%)",
+  padding: "0.75rem 1.5rem",
+  borderRadius: "999px",
+  background: "rgba(0, 0, 0, 0.75)",
+  color: "#fff",
+  fontSize: "0.85rem",
+  letterSpacing: "0.05em",
+  textTransform: "uppercase",
+  pointerEvents: "auto",
+  opacity: "1",
+  transition: "opacity 0.4s ease",
+  zIndex: "1200",
+});
+root.appendChild(homeOverlay);
+
+const updateHomeOverlayVisibility = () => {
+  const isHome = activePage === "home";
+  homeOverlay.style.opacity = isHome ? "1" : "0";
+  homeOverlay.style.pointerEvents = isHome ? "auto" : "none";
+};
+const setTurntableUIVisible = (visible: boolean) => {
+  const effective = visible && !isFullscreenMode && activePage === "turntable";
+  vinylViewerContainer.style.opacity = effective ? "1" : "0";
+  vinylViewerContainer.style.pointerEvents = effective ? "auto" : "none";
+  hideLibraryBtn.style.opacity = effective ? "1" : "0";
+  hideLibraryBtn.style.pointerEvents = effective ? "auto" : "none";
+  focusCardContainers.forEach((container) => {
+    const shouldShow = effective && container.childElementCount > 0;
+    container.style.opacity = shouldShow ? "1" : "0";
+    container.style.pointerEvents = shouldShow ? "auto" : "none";
+  });
+  showFocusBtn.style.opacity = effective ? "1" : "0";
+  showFocusBtn.style.pointerEvents = effective ? "auto" : "none";
+  vinylLibraryContainer.style.transition = "opacity 0.3s ease";
+  vinylLibraryContainer.style.opacity = effective ? "1" : "0";
+  vinylLibraryContainer.style.pointerEvents = effective ? "auto" : "none";
+};
+updateHomeOverlayVisibility();
+setTurntableUIVisible(false);
+homeOverlay.addEventListener("click", () => {
+  setActiveScenePage("turntable");
+});
+
+const globalControls = document.createElement("div");
+globalControls.id = "global-controls";
+Object.assign(globalControls.style, {
+  position: "fixed",
+  bottom: "20px",
+  left: "50%",
+  transform: "translateX(-50%)",
+  display: "flex",
+  gap: "0.75rem",
+  zIndex: HIDE_BUTTON_Z_INDEX,
+});
+root.appendChild(globalControls);
+
+const homeNavButton = document.createElement("button");
+homeNavButton.textContent = "home view";
+homeNavButton.addEventListener("click", () => {
+  setActiveScenePage("home");
+});
+globalControls.appendChild(homeNavButton);
+
+const resetTutorialButton = document.createElement("button");
+resetTutorialButton.id = "reset-tutorial-button";
+resetTutorialButton.textContent = "reset tutorial";
+resetTutorialButton.addEventListener("click", () => {
+  const tutorialManager = (window as any).tutorialManager;
+  if (tutorialManager) {
+    tutorialManager.reset();
+    console.log("Tutorial reset");
+  }
+});
+globalControls.appendChild(resetTutorialButton);
+
+const setActiveScenePage = (page: ScenePage) => {
+  if (page === activePage) {
+    return;
+  }
+  const toSettings = pageCameraSettings[page];
+  const fromSettings = captureCameraState();
+  pageTransitionState.startTime = performance.now();
+  pageTransitionState.fromSettings = cloneCameraSettings(fromSettings);
+  pageTransitionState.toSettings = cloneCameraSettings(toSettings);
+  pageTransitionState.active = true;
+  activePage = page;
+  vinylCameraTrackingEnabled = page === "turntable";
+  updateHomeOverlayVisibility();
+  setTurntableUIVisible(activePage === "turntable");
+};
+
+const findPageForObject = (object: Object3D | null): ScenePage | null => {
+  let current: Object3D | null = object;
+  while (current) {
+    const entry = homePageTargets.find((target) => target.model === current);
+    if (entry) {
+      return entry.page;
+    }
+    current = current.parent as Object3D | null;
+  }
+  return null;
+};
+
+const pendingTurntableCallbacks: Array<() => void> = [];
+const runWhenTurntableReady = (callback: () => void, autoNavigate = true) => {
+  if (activePage === "turntable" && !pageTransitionState.active) {
+    callback();
+    return;
+  }
+  pendingTurntableCallbacks.push(callback);
+  if (autoNavigate && activePage !== "turntable") {
+    setActiveScenePage("turntable");
+  }
+};
+
+const transitionTarget = new Vector3();
+const updateScenePageTransition = () => {
+  if (!pageTransitionState.active) {
+    return;
+  }
+  const elapsed =
+    (performance.now() - pageTransitionState.startTime) /
+    (pageTransitionDuration * 1000);
+  const progress = Math.min(Math.max(elapsed, 0), 1);
+  const ease = 1 - Math.pow(1 - progress, 3);
+  const from = pageTransitionState.fromSettings;
+  const to = pageTransitionState.toSettings;
+  const yaw = lerpAngleDegrees(from.yaw, to.yaw, ease);
+  const pitch = lerpAngleDegrees(from.pitch, to.pitch, ease);
+  const zoom = from.zoom + (to.zoom - from.zoom) * ease;
+  transitionTarget.copy(from.target).lerp(to.target, ease);
+  cameraRig.setLookTarget(transitionTarget, false);
+  cameraRig.setViewDirection(directionFromAngles(yaw, pitch), false);
+  cameraRig.setZoomFactor(zoom);
+  if (progress >= 1) {
+    pageTransitionState.active = false;
+    pageCameraSettings[activePage] = cloneCameraSettings(to);
+    updateCameraDebugPanel();
+    if (activePage === "turntable" && pendingTurntableCallbacks.length) {
+      const callbacks = pendingTurntableCallbacks.splice(
+        0,
+        pendingTurntableCallbacks.length,
+      );
+      callbacks.forEach((fn) => fn());
+    }
+  }
+};
 
 const updateCameraDebugPanel = () => {
   const orbitAngles = cameraRig.getOrbitAngles();
@@ -891,6 +1132,8 @@ type TurntableVinylState = {
 let focusVinylState: FocusVinylState | null = null;
 let turntableVinylState: TurntableVinylState | null = null;
 let focusVinylLoadToken = 0;
+let turntableSceneRoot: Object3D | null = null;
+let portfolioSceneRoot: Object3D | null = null;
 type VinylSource = "focus" | "turntable";
 let activeVinylSource: VinylSource | null = null;
 let currentDragSource: VinylSource | null = null;
@@ -1532,23 +1775,19 @@ const scheduleFocusVinylRestore = () => {
 // Listen for focus card show events to change camera position and angle
 window.addEventListener("focus-card-shown", (event: any) => {
   const { position, polarAngle } = event.detail;
-  console.log(
-    `[main] Focus card shown, changing camera position to: ${position}, polar angle to: ${polarAngle}°`,
-  );
-
-  // Change camera position to bottom-center
-  if (position === "bottom-center") {
-    turntablePositionState = "bottom-center";
-    cameraRig.setLookTarget(CAMERA_TARGETS[turntablePositionState], true);
-
-    // Invalidate camera relative offset when camera moves so vinyl stays at set position
-    vinylAnimationState.cameraRelativeOffsetValid = false;
-  }
-
-  // Change polar angle with smooth animation
-  if (polarAngle !== undefined) {
-    cameraRig.setPolarAngle(polarAngle, true);
-  }
+  runWhenTurntableReady(() => {
+    console.log(
+      `[main] Focus card shown, changing camera position to: ${position}, polar angle to: ${polarAngle}°`,
+    );
+    if (position === "bottom-center") {
+      turntablePositionState = "bottom-center";
+      cameraRig.setLookTarget(CAMERA_TARGETS[turntablePositionState], true);
+      vinylAnimationState.cameraRelativeOffsetValid = false;
+    }
+    if (polarAngle !== undefined) {
+      cameraRig.setPolarAngle(polarAngle, true);
+    }
+  });
 });
 
 // Initially hide the player controls (only show when tonearm is in play area)
@@ -1559,52 +1798,28 @@ yt.setIsTonearmInPlayAreaQuery(() => isTonearmInPlayArea);
 
 // Auto-hide library and button in fullscreen player mode
 yt.onFullscreenChange((isFullscreen: boolean) => {
-  if (isFullscreen) {
-    isFullscreenMode = true;
-    hideFocusVinylForFullscreen();
-    vinylViewerContainer.style.opacity = "0";
-    vinylViewerContainer.style.pointerEvents = "none";
-    hideLibraryBtn.style.opacity = "0";
-    hideLibraryBtn.style.pointerEvents = "none";
-    focusCardContainers.forEach((container) => {
-      container.style.opacity = "0";
-      container.style.pointerEvents = "none";
-    });
-    showFocusBtn.style.opacity = "0";
-    showFocusBtn.style.pointerEvents = "none";
-    vinylLibraryContainer.style.transition = "opacity 0.3s ease";
-    vinylLibraryContainer.style.opacity = "0";
-    vinylLibraryContainer.style.pointerEvents = "none";
+  runWhenTurntableReady(() => {
+    if (isFullscreen) {
+      isFullscreenMode = true;
+      hideFocusVinylForFullscreen();
+      setTurntableUIVisible(false);
 
-    // Switch to fullscreen camera position
-    turntablePositionState = "fullscreen";
-    cameraRig.setLookTarget(CAMERA_TARGETS["fullscreen"], true);
-    cameraRig.setPolarAngle(2, true);
-  } else {
-    isFullscreenMode = false;
-    vinylViewerContainer.style.opacity = "1";
-    vinylViewerContainer.style.pointerEvents = "auto";
-    hideLibraryBtn.style.opacity = "1";
-    hideLibraryBtn.style.pointerEvents = "auto";
-    focusCardContainers.forEach((container) => {
-      if (container.childElementCount > 0) {
-        container.style.opacity = "1";
-      }
-      container.style.pointerEvents = "auto";
-    });
-    showFocusBtn.style.opacity = "1";
-    scheduleFocusVinylRestore();
-    showFocusBtn.style.pointerEvents = "auto";
-    vinylLibraryContainer.style.transition = "opacity 0.3s ease";
-    vinylLibraryContainer.style.opacity = "1";
-    vinylLibraryContainer.style.pointerEvents = "auto";
+      // Switch to fullscreen camera position
+      turntablePositionState = "fullscreen";
+      cameraRig.setLookTarget(CAMERA_TARGETS["fullscreen"], true);
+      cameraRig.setPolarAngle(2, true);
+    } else {
+      isFullscreenMode = false;
+      scheduleFocusVinylRestore();
+      setTurntableUIVisible(true);
 
-    // Return to bottom-center when exiting fullscreen
-    turntablePositionState = "bottom-center";
-    cameraRig.setLookTarget(CAMERA_TARGETS["bottom-center"], true);
-    // Restore bottom-center polar angle (22 degrees)
-    cameraRig.setPolarAngle(22, true);
-  }
+      // Return to bottom-center when exiting fullscreen
+      turntablePositionState = "bottom-center";
+      cameraRig.setLookTarget(CAMERA_TARGETS["bottom-center"], true);
+      // Restore bottom-center polar angle (22 degrees)
+      cameraRig.setPolarAngle(22, true);
+    }
+  });
 });
 
 // Track when video reaches the last 2 seconds to animate out
@@ -1860,14 +2075,45 @@ const pickVinylUnderPointer = () => {
 
 canvas.addEventListener("pointerdown", (event) => {
   if (event.button === 1) {
+    if (activePage !== "turntable" || pageTransitionState.active) {
+      return;
+    }
     startCameraPan(event);
     return;
   }
   if (event.button === 2) {
+    if (activePage !== "turntable" || pageTransitionState.active) {
+      return;
+    }
     startCameraOrbit(event);
     return;
   }
   if (event.button !== 0) {
+    return;
+  }
+  if (!updatePointer(event, pointerNDC, canvas)) {
+    return;
+  }
+  raycaster.setFromCamera(pointerNDC, camera);
+  if (activePage !== "turntable") {
+    if (pageTransitionState.active || yt.isFullscreen()) {
+      return;
+    }
+    if (activePage !== "home") {
+      return;
+    }
+    if (heroGroup.children.length) {
+      const heroHits = raycaster.intersectObject(heroGroup, true);
+      if (heroHits.length) {
+        for (const hit of heroHits) {
+          const page = findPageForObject(hit.object as Object3D);
+          if (page && page !== "home") {
+            setActiveScenePage(page);
+            break;
+          }
+        }
+      }
+    }
     return;
   }
   if (turntableController && turntableController.handlePointerDown(event)) {
@@ -1877,10 +2123,6 @@ canvas.addEventListener("pointerdown", (event) => {
   if (yt.isFullscreen()) {
     return;
   }
-  if (!updatePointer(event, pointerNDC, canvas)) {
-    return;
-  }
-  raycaster.setFromCamera(pointerNDC, camera);
   const vinylSelection = pickVinylUnderPointer();
   if (!vinylSelection) {
     return;
@@ -2174,14 +2416,47 @@ loadTurntableModel()
     logMaterialNames(turntable);
 
     heroGroup.add(turntable);
+    turntableSceneRoot = turntable;
+    registerHomePageTarget(turntable, "turntable");
 
     cameraRig.frameObject(heroGroup, 2.6);
+    baseTurntableCameraPosition.copy(camera.position);
 
     // Store the actual default camera target (bounding box center)
     defaultCameraTarget.copy(cameraRig.getTarget());
 
     // Initialize camera positions (will be set by updateCameraTargetsForWindowSize)
     updateCameraTargetsForWindowSize();
+    const initialOrbit = cameraRig.getOrbitAngles();
+    pageCameraSettings.turntable = {
+      target: defaultCameraTarget.clone(),
+      yaw: initialOrbit.azimuth * RAD2DEG,
+      pitch: initialOrbit.polar * RAD2DEG,
+      zoom: cameraRig.getZoomFactor(),
+    };
+    pageCameraSettings.home.target.copy(defaultCameraTarget);
+    pageCameraSettings.home.yaw = normalizeDegrees(
+      pageCameraSettings.turntable.yaw + 30,
+    );
+    pageCameraSettings.home.pitch = Math.max(
+      -80,
+      pageCameraSettings.turntable.pitch + 25,
+    );
+    pageCameraSettings.home.zoom = Math.max(
+      0.5,
+      pageCameraSettings.turntable.zoom * 0.65,
+    );
+    applyPageCameraSettings(pageCameraSettings.home);
+    pageTransitionState.fromSettings = cloneCameraSettings(
+      pageCameraSettings.home,
+    );
+    pageTransitionState.toSettings = cloneCameraSettings(
+      pageCameraSettings.home,
+    );
+    pageTransitionState.active = false;
+    updateCameraDebugPanel();
+    updateHomeOverlayVisibility();
+    vinylCameraTrackingEnabled = activePage === "turntable";
 
     setVinylAnchorPosition(turntableAnchorPosition, "turntable");
     vinylTargetPosition.copy(turntableAnchorPosition);
@@ -2199,6 +2474,48 @@ loadTurntableModel()
   })
   .catch((error) => {
     console.error("Failed to load hero models", error);
+  });
+
+loadPortfolioModel()
+  .then((portfolioModel) => {
+    portfolioSceneRoot = portfolioModel;
+    const originalBox = new Box3().setFromObject(portfolioModel);
+    const size = new Vector3();
+    originalBox.getSize(size);
+    const maxDim = Math.max(size.x, size.y, size.z) || 1;
+    const desiredSize = 120;
+    const scaleFactor = desiredSize / maxDim;
+    portfolioModel.scale.setScalar(scaleFactor);
+    portfolioModel.position.set(-140, -10, -80);
+    heroGroup.add(portfolioModel);
+    registerHomePageTarget(portfolioModel, "portfolio");
+    const adjustedBox = new Box3().setFromObject(portfolioModel);
+    const target = new Vector3();
+    adjustedBox.getCenter(target);
+    const homeBounds = new Box3().setFromObject(heroGroup);
+    const homeCenter = new Vector3();
+    homeBounds.getCenter(homeCenter);
+    pageCameraSettings.home.target.copy(homeCenter);
+    pageCameraSettings.home.zoom = Math.min(
+      pageCameraSettings.home.zoom,
+      pageCameraSettings.turntable.zoom * 0.7,
+    );
+    pageCameraSettings.portfolio = {
+      target,
+      yaw: normalizeDegrees(pageCameraSettings.turntable.yaw - 55),
+      pitch: Math.max(-75, pageCameraSettings.turntable.pitch + 5),
+      zoom: Math.max(0.6, pageCameraSettings.turntable.zoom * 0.9),
+    };
+    if (activePage === "home" && !pageTransitionState.active) {
+      applyPageCameraSettings(pageCameraSettings.home);
+      updateCameraDebugPanel();
+    } else if (activePage === "portfolio" && !pageTransitionState.active) {
+      applyPageCameraSettings(pageCameraSettings.portfolio);
+      updateCameraDebugPanel();
+    }
+  })
+  .catch((error) => {
+    console.error("Failed to load portfolio model:", error);
   });
 
 const updateFocusCardPosition = () => {
@@ -2286,6 +2603,8 @@ const updateCameraTargetsForWindowSize = () => {
     defaultCameraTarget.y + verticalPan + 20,
     defaultCameraTarget.z + 40,
   );
+  pageCameraSettings.turntable.target.copy(defaultCameraTarget);
+  pageCameraSettings.home.target.copy(defaultCameraTarget);
 
   // Update focus card position on window resize
   updateFocusCardPosition();
@@ -2319,6 +2638,7 @@ const animate = (time: number) => {
 
   // Update camera animation
   cameraRig.updateAnimation(delta);
+  updateScenePageTransition();
   // const isTonearmPlaying = turntableController?.isPlaying() ?? false;
 
   if (vinylModel) {
@@ -2733,6 +3053,9 @@ function updateDragPlaneDepth(z: number) {
 // rpm helper moved to controller
 
 function startCameraOrbit(event: PointerEvent) {
+  if (activePage !== "turntable" || pageTransitionState.active) {
+    return;
+  }
   cameraOrbitState.isOrbiting = true;
   cameraOrbitState.pointerId = event.pointerId;
   cameraOrbitState.lastX = event.clientX;
@@ -2746,6 +3069,8 @@ function startCameraOrbit(event: PointerEvent) {
 
 function handleCameraOrbitMove(event: PointerEvent) {
   if (
+    activePage !== "turntable" ||
+    pageTransitionState.active ||
     !cameraOrbitState.isOrbiting ||
     event.pointerId !== cameraOrbitState.pointerId
   ) {
@@ -2783,6 +3108,9 @@ function endCameraOrbit(event: PointerEvent) {
 }
 
 function startCameraPan(event: PointerEvent) {
+  if (activePage !== "turntable" || pageTransitionState.active) {
+    return;
+  }
   cameraPanState.isPanning = true;
   cameraPanState.pointerId = event.pointerId;
   cameraPanState.lastX = event.clientX;
@@ -2792,6 +3120,8 @@ function startCameraPan(event: PointerEvent) {
 
 function handleCameraPanMove(event: PointerEvent) {
   if (
+    activePage !== "turntable" ||
+    pageTransitionState.active ||
     !cameraPanState.isPanning ||
     event.pointerId !== cameraPanState.pointerId
   ) {
