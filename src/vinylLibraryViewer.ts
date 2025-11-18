@@ -1038,7 +1038,7 @@ export class VinylLibraryViewer {
             position: relative;
             display: inline-block;
             vertical-align: baseline;
-            top: -2px;
+            top: -1px;
           }
 
           .vinyl-viewer-widget .sort-container .filter-btn {

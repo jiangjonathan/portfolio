@@ -89,13 +89,18 @@ export function setVideoAspectRatio(aspectRatio: number): void {
 }
 
 export function createYouTubePlayer(): YouTubeBridge {
+  const SMALL_PLAYER_Z_INDEX = "21000";
+  const COLLAPSE_BUTTON_Z_INDEX = "21001";
+  const FULLSCREEN_BUTTON_Z_INDEX = "21002";
+  const FULLSCREEN_CONTROLS_Z_INDEX = "21003";
+
   const wrapper = document.createElement("div");
   wrapper.className = "yt-shell";
   Object.assign(wrapper.style, {
     position: "absolute",
     top: "1.5rem",
     left: "1.5rem",
-    zIndex: "1000",
+    zIndex: SMALL_PLAYER_Z_INDEX,
     pointerEvents: "auto",
     transition: "all 0.3s ease-in-out",
   });
@@ -108,13 +113,38 @@ export function createYouTubePlayer(): YouTubeBridge {
   viewport.style.transformOrigin = "center center";
   wrapper.appendChild(viewport);
 
+  let pendingViewportTransitionHandler:
+    | ((event: TransitionEvent) => void)
+    | null = null;
+
+  const waitForViewportHeightTransition = (callback: () => void) => {
+    if (pendingViewportTransitionHandler) {
+      viewport.removeEventListener(
+        "transitionend",
+        pendingViewportTransitionHandler,
+      );
+      pendingViewportTransitionHandler = null;
+    }
+
+    const handler = (event: TransitionEvent) => {
+      if (event.propertyName === "height") {
+        viewport.removeEventListener("transitionend", handler);
+        pendingViewportTransitionHandler = null;
+        callback();
+      }
+    };
+
+    pendingViewportTransitionHandler = handler;
+    viewport.addEventListener("transitionend", handler);
+  };
+
   // Button container that stays visible
   const buttonContainer = document.createElement("div");
   Object.assign(buttonContainer.style, {
     position: "absolute",
     top: "-10px",
     right: "-10px",
-    zIndex: "1001",
+    zIndex: COLLAPSE_BUTTON_Z_INDEX,
     pointerEvents: "none",
     opacity: "0",
     transition: "opacity 0.2s ease",
@@ -224,12 +254,14 @@ export function createYouTubePlayer(): YouTubeBridge {
         if (path) {
           path.setAttribute("fill", "#999");
         }
-        // Show fullscreen button (viewport height may still be animating, but show it anyway)
-        fullscreenButtonContainer.style.opacity = "1";
-        // After height transition completes, validate visibility
-        setTimeout(() => {
-          updateFullscreenButtonVisibility();
-        }, 550);
+        // Keep fullscreen button hidden until the height animation completes
+        fullscreenButtonContainer.style.opacity = "0";
+        fullscreenButtonContainer.style.pointerEvents = "none";
+        waitForViewportHeightTransition(() => {
+          if (wrapper.matches(":hover")) {
+            updateFullscreenButtonVisibility();
+          }
+        });
       } else {
         // Mouse not hovering, hide buttons until next hover
         buttonContainer.style.opacity = "0";
@@ -498,7 +530,7 @@ export function createYouTubePlayer(): YouTubeBridge {
     position: "absolute",
     bottom: "32px",
     right: "-10px",
-    zIndex: "1001",
+    zIndex: FULLSCREEN_BUTTON_Z_INDEX,
   };
   Object.assign(fullscreenButtonContainer.style, {
     ...SMALL_MODE_POSITION,
@@ -576,7 +608,7 @@ export function createYouTubePlayer(): YouTubeBridge {
       left: "1.5rem",
       top: "50%",
       transform: "translateY(-50%)",
-      zIndex: "10001",
+      zIndex: FULLSCREEN_CONTROLS_Z_INDEX,
       display: "flex",
       flexDirection: "column",
       gap: "1rem",
@@ -772,7 +804,7 @@ export function createYouTubePlayer(): YouTubeBridge {
         right: "1.5rem",
         opacity: "1",
         pointerEvents: "auto",
-        zIndex: "10002",
+        zIndex: FULLSCREEN_BUTTON_Z_INDEX,
       });
       // Change to exit fullscreen icon (minimize - arrows pointing inward)
       const fullscreenPath = fullscreenToggle.querySelector(
@@ -815,7 +847,7 @@ export function createYouTubePlayer(): YouTubeBridge {
           left: "1.5rem",
           width: "auto",
           height: "auto",
-          zIndex: "1000",
+          zIndex: SMALL_PLAYER_Z_INDEX,
         });
 
         const appDiv = document.getElementById("app");

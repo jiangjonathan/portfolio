@@ -1,5 +1,5 @@
 import type { Camera, Object3D } from "three";
-import { Raycaster, Vector2 } from "three";
+import { Material, Mesh, Raycaster, Vector2 } from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { mediaTimeToYaw } from "./media";
 import { clampValue, updatePointer } from "./utils";
@@ -506,13 +506,43 @@ export class TurntableController {
   }
 }
 
+const PRIORITY_OBJECT_NAMES = ["Text", "speedtext"];
+const TEXT_PRIORITY_RENDER_ORDER = 5000;
+
 const turntableLoader = new GLTFLoader();
+
+const applyPriorityToMaterials = (material: Material | Material[]) => {
+  const targetMaterials = Array.isArray(material) ? material : [material];
+  targetMaterials.forEach((mat) => {
+    if (!mat) return;
+    mat.depthTest = false;
+    mat.depthWrite = true;
+  });
+};
+
+const prioritizeTextMeshes = (root: Object3D) => {
+  PRIORITY_OBJECT_NAMES.forEach((name) => {
+    const node = root.getObjectByName(name);
+    if (!node) return;
+    node.traverse((child) => {
+      if (child instanceof Mesh) {
+        child.renderOrder = TEXT_PRIORITY_RENDER_ORDER;
+        if (child.material) {
+          applyPriorityToMaterials(child.material);
+        }
+      }
+    });
+  });
+};
 
 export function loadTurntableModel(): Promise<Object3D> {
   return new Promise((resolve, reject) => {
     turntableLoader.load(
       "/turntable.glb",
-      (gltf) => resolve(gltf.scene),
+      (gltf) => {
+        prioritizeTextMeshes(gltf.scene);
+        resolve(gltf.scene);
+      },
       undefined,
       (error) => reject(error),
     );
