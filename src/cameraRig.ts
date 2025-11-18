@@ -93,6 +93,23 @@ export class CameraRig {
     return this.zoomFactor;
   }
 
+  getCameraDistance() {
+    const zoomScalar = 1 / this.zoomFactor;
+    return this.fitDistance * this.frameOffset * zoomScalar;
+  }
+
+  setCameraDistance(distance: number) {
+    if (distance <= 0) {
+      return;
+    }
+    const zoomScalar = 1 / this.zoomFactor;
+    if (zoomScalar <= 0 || this.fitDistance <= 0) {
+      return;
+    }
+    this.frameOffset = Math.max(0.01, distance / zoomScalar / this.fitDistance);
+    this.updateCameraPosition();
+  }
+
   refit() {
     if (!this.framedObject) {
       return;

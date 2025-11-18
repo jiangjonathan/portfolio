@@ -106,6 +106,9 @@ tutorialContainer.style.cssText = `
   font-size: 0.85rem;
   line-height: 1.6;
   display: none;
+  opacity: 0;
+  transition: opacity 0.45s ease;
+  pointer-events: none;
 `;
 root.appendChild(tutorialContainer);
 
@@ -122,10 +125,12 @@ vinylViewerContainer.style.cssText = `
   overflow-y: auto;
   scrollbar-width: none;
   -ms-overflow-style: none;
-  transition: opacity 0.3s ease;
-  opacity: 1;
+  transition: opacity 0.45s ease, transform 0.45s ease;
+  opacity: 0;
+  transform: translateY(8px);
   padding: 20px 40px 20px 20px;
 `;
+vinylViewerContainer.style.pointerEvents = "none";
 
 // Create hide/show library button (positioned outside the viewer container)
 const hideLibraryBtn = document.createElement("button");
@@ -194,6 +199,38 @@ focusCardInfoContainer.id = "vinyl-focus-card-info-root";
 focusCardInfoContainer.className =
   "focus-card-container focus-card-info-container";
 root.appendChild(focusCardInfoContainer);
+
+const vinylUIReadyState = {
+  tutorial: false,
+  viewer: false,
+};
+let vinylUIFadeTriggered = false;
+
+const triggerVinylUIFadeIn = () => {
+  if (vinylUIFadeTriggered) {
+    return;
+  }
+  vinylUIFadeTriggered = true;
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      vinylViewerContainer.style.opacity = "1";
+      vinylViewerContainer.style.transform = "translateY(0)";
+      vinylViewerContainer.style.pointerEvents = "auto";
+      tutorialContainer.style.opacity = "1";
+      tutorialContainer.style.pointerEvents = "auto";
+    });
+  });
+};
+
+const markVinylUIReady = (key: "tutorial" | "viewer") => {
+  if (vinylUIReadyState[key]) {
+    return;
+  }
+  vinylUIReadyState[key] = true;
+  if (vinylUIReadyState.tutorial && vinylUIReadyState.viewer) {
+    triggerVinylUIFadeIn();
+  }
+};
 
 const focusCardContainers = [focusCardCoverContainer, focusCardInfoContainer];
 
@@ -560,6 +597,220 @@ scene.add(ambientLight, keyLight, fillLight, rimLight);
 
 const cameraRig = createCameraRig();
 const { camera } = cameraRig;
+const RAD2DEG = 180 / Math.PI;
+const DEG2RAD = Math.PI / 180;
+
+const editingInputs: Set<HTMLInputElement> = new Set();
+const registerEditingInput = (input: HTMLInputElement) => {
+  input.addEventListener("focus", () => editingInputs.add(input));
+  input.addEventListener("blur", () => editingInputs.delete(input));
+};
+
+const createNumberInputControl = (
+  labelText: string,
+  options: {
+    min?: number;
+    max?: number;
+    step?: number;
+    suffix?: string;
+  } = {},
+): {
+  control: HTMLDivElement;
+  input: HTMLInputElement;
+  unit: HTMLSpanElement;
+} => {
+  const { min, max, step, suffix } = options;
+  const control = document.createElement("div");
+  Object.assign(control.style, {
+    display: "flex",
+    alignItems: "center",
+    gap: "0.35rem",
+    width: "100%",
+  });
+
+  const label = document.createElement("span");
+  label.textContent = labelText;
+  Object.assign(label.style, {
+    fontSize: "0.75rem",
+    fontWeight: "600",
+    minWidth: "46px",
+  });
+
+  const input = document.createElement("input");
+  input.type = "number";
+  if (min !== undefined) input.min = min.toString();
+  if (max !== undefined) input.max = max.toString();
+  if (step !== undefined) input.step = step.toString();
+  Object.assign(input.style, {
+    flexGrow: "1",
+    cursor: "text",
+    padding: "0.15rem 0.35rem",
+    fontSize: "0.8rem",
+  });
+  registerEditingInput(input);
+
+  const unit = document.createElement("span");
+  unit.textContent = suffix ?? "";
+  Object.assign(unit.style, {
+    fontSize: "0.75rem",
+    minWidth: "24px",
+    textAlign: "right",
+  });
+
+  control.append(label, input, unit);
+  return { control, input, unit };
+};
+
+const cameraDebugPanel = document.createElement("div");
+cameraDebugPanel.id = "camera-debug-panel";
+Object.assign(cameraDebugPanel.style, {
+  position: "fixed",
+  bottom: "1rem",
+  right: "1rem",
+  width: "260px",
+  padding: "0.6rem 0.85rem",
+  borderRadius: "0.75rem",
+  background: "rgba(0, 0, 0, 0.75)",
+  border: "1px solid rgba(255, 255, 255, 0.4)",
+  color: "#fff",
+  fontSize: "0.75rem",
+  fontFamily: "monospace",
+  zIndex: "1000",
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.4rem",
+});
+
+const cameraDebugInfoRow = document.createElement("div");
+cameraDebugInfoRow.style.display = "flex";
+cameraDebugInfoRow.style.justifyContent = "space-between";
+
+const cameraYawText = document.createElement("span");
+cameraYawText.textContent = "Yaw --°";
+const cameraPitchText = document.createElement("span");
+cameraPitchText.textContent = "Pitch --°";
+cameraDebugInfoRow.append(cameraYawText, cameraPitchText);
+
+const yawControl = createNumberInputControl("Yaw", {
+  min: -180,
+  max: 180,
+  step: 0.5,
+  suffix: "°",
+});
+const pitchControl = createNumberInputControl("Pitch", {
+  min: -89,
+  max: 89,
+  step: 0.5,
+  suffix: "°",
+});
+const zoomControl = createNumberInputControl("Zoom", {
+  min: 0.3,
+  max: 4,
+  step: 0.05,
+});
+
+const cameraXControl = createNumberInputControl("Cam X", { step: 0.1 });
+const cameraYControl = createNumberInputControl("Cam Y", { step: 0.1 });
+const cameraZControl = createNumberInputControl("Cam Z", { step: 0.1 });
+
+const tempDirection = new Vector3();
+
+const applyCameraStyleInputs = () => {
+  const yawDeg = parseFloat(yawControl.input.value);
+  const pitchDeg = parseFloat(pitchControl.input.value);
+  if (Number.isFinite(yawDeg) && Number.isFinite(pitchDeg)) {
+    const yawRad = yawDeg * DEG2RAD;
+    const pitchRad = pitchDeg * DEG2RAD;
+    const cosPitch = Math.cos(pitchRad);
+    tempDirection.set(
+      Math.sin(yawRad) * cosPitch,
+      Math.sin(pitchRad),
+      Math.cos(yawRad) * cosPitch,
+    );
+    tempDirection.normalize();
+    cameraRig.setViewDirection(tempDirection);
+  }
+  const zoomVal = parseFloat(zoomControl.input.value);
+  if (Number.isFinite(zoomVal)) {
+    cameraRig.setZoomFactor(zoomVal);
+  }
+};
+
+const applyCameraPositionInputs = () => {
+  const x = parseFloat(cameraXControl.input.value);
+  const y = parseFloat(cameraYControl.input.value);
+  const z = parseFloat(cameraZControl.input.value);
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
+    return;
+  }
+  const desired = new Vector3(x, y, z);
+  const target = cameraRig.getTarget();
+  const offset = desired.sub(target);
+  if (offset.lengthSq() < 1e-8) {
+    return;
+  }
+  const distance = offset.length();
+  cameraRig.setViewDirection(offset.normalize());
+  cameraRig.setCameraDistance(distance);
+};
+
+const cameraStyleInputs = [
+  yawControl.input,
+  pitchControl.input,
+  zoomControl.input,
+];
+cameraStyleInputs.forEach((input) => {
+  input.addEventListener("change", () => {
+    applyCameraStyleInputs();
+  });
+});
+const cameraPositionInputs = [
+  cameraXControl.input,
+  cameraYControl.input,
+  cameraZControl.input,
+];
+cameraPositionInputs.forEach((input) => {
+  input.addEventListener("change", applyCameraPositionInputs);
+});
+
+cameraDebugPanel.append(
+  cameraDebugInfoRow,
+  yawControl.control,
+  pitchControl.control,
+  zoomControl.control,
+  cameraXControl.control,
+  cameraYControl.control,
+  cameraZControl.control,
+);
+root.appendChild(cameraDebugPanel);
+
+const updateCameraDebugPanel = () => {
+  const orbitAngles = cameraRig.getOrbitAngles();
+  const yawDeg = orbitAngles.azimuth * RAD2DEG;
+  const pitchDeg = orbitAngles.polar * RAD2DEG;
+  cameraYawText.textContent = `Yaw ${yawDeg.toFixed(1)}°`;
+  cameraPitchText.textContent = `Pitch ${pitchDeg.toFixed(1)}°`;
+  if (!editingInputs.has(yawControl.input)) {
+    yawControl.input.value = yawDeg.toFixed(1);
+  }
+  if (!editingInputs.has(pitchControl.input)) {
+    pitchControl.input.value = pitchDeg.toFixed(1);
+  }
+  const zoomFactor = cameraRig.getZoomFactor();
+  if (!editingInputs.has(zoomControl.input)) {
+    zoomControl.input.value = zoomFactor.toFixed(2);
+  }
+  const cameraPos = camera.position;
+  if (!editingInputs.has(cameraXControl.input)) {
+    cameraXControl.input.value = cameraPos.x.toFixed(2);
+  }
+  if (!editingInputs.has(cameraYControl.input)) {
+    cameraYControl.input.value = cameraPos.y.toFixed(2);
+  }
+  if (!editingInputs.has(cameraZControl.input)) {
+    cameraZControl.input.value = cameraPos.z.toFixed(2);
+  }
+};
 
 const { vinylNormalTexture } = loadTextures(renderer);
 
@@ -2308,6 +2559,7 @@ const animate = (time: number) => {
   }
   window.PLAYING_SOUND = turntableController?.isPlaying() ?? false;
   updateVideoProgress();
+  updateCameraDebugPanel();
 
   // Update camera debug display
   // const camPos = camera.position;
@@ -2628,6 +2880,8 @@ function endCameraPan(event: PointerEvent) {
     (window as any).tutorialManager = tutorialManager;
   } catch (error) {
     console.error("✗ Failed to initialize tutorial manager:", error);
+  } finally {
+    markVinylUIReady("tutorial");
   }
 })();
 
@@ -2657,5 +2911,7 @@ function endCameraPan(event: PointerEvent) {
     (window as any).vinylLibraryViewer = vinylLibraryViewer;
   } catch (error) {
     console.error("✗ Failed to initialize vinyl library viewer:", error);
+  } finally {
+    markVinylUIReady("viewer");
   }
 })();
