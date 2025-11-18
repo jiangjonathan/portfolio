@@ -11,6 +11,9 @@ import type { Material } from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 const vinylLoader = new GLTFLoader();
+const VINYL_RENDER_ORDER = 400;
+const VINYL_POLYGON_OFFSET_FACTOR = -1.2;
+const VINYL_POLYGON_OFFSET_UNITS = 0;
 
 export function loadVinylModel(normalTexture: Texture): Promise<Object3D> {
   return new Promise((resolve, reject) => {
@@ -46,6 +49,35 @@ export function applyGrooveMaterial(model: Object3D, texture: Texture) {
 
       updateGrooveMaterial(material, texture);
     });
+    applyVinylRenderBias(mesh);
+  });
+}
+
+function applyVinylRenderBias(mesh: Mesh) {
+  mesh.renderOrder = Math.max(mesh.renderOrder, VINYL_RENDER_ORDER);
+  applyPolygonOffsetToMaterials(
+    mesh,
+    VINYL_POLYGON_OFFSET_FACTOR,
+    VINYL_POLYGON_OFFSET_UNITS,
+  );
+}
+
+function applyPolygonOffsetToMaterials(
+  mesh: Mesh,
+  factor: number,
+  units: number,
+) {
+  const materials = Array.isArray(mesh.material)
+    ? mesh.material
+    : [mesh.material];
+  materials.forEach((material) => {
+    if (!material) {
+      return;
+    }
+    material.polygonOffset = true;
+    material.polygonOffsetFactor = factor;
+    material.polygonOffsetUnits = units;
+    material.needsUpdate = true;
   });
 }
 

@@ -550,8 +550,20 @@ let vinylCameraTrackingEnabled = false;
 // Camera target positions (pan/translation only, no angle change)
 // Will be initialized after heroGroup is loaded based on bounding box center
 let defaultCameraTarget = new Vector3(0, 0.15, 0);
+const turntableFocusTarget = new Vector3(0, 0.15, 0);
+const portfolioFocusTarget = new Vector3(-80, 7, -40);
+const PORTFOLIO_CAMERA_TARGET_OFFSET = new Vector3(0, 12, 0);
+const PORTFOLIO_COVER_ORDER = 250;
+const PORTFOLIO_PAPER_ORDER = 200;
+const PORTFOLIO_TEXT_ORDER = 300;
+const PORTFOLIO_COVER_KEYS = ["cover"];
+const PORTFOLIO_PAPER_KEYS = ["whitepaper", "backpaper"];
+const PORTFOLIO_TEXT_KEYS = ["text"];
+const PORTFOLIO_COVER_OFFSET = -1.5;
+const PORTFOLIO_PAPER_OFFSET = -0.9;
+const PORTFOLIO_TEXT_OFFSET = -2.2;
 const CAMERA_TARGETS: Record<TurntablePosition, Vector3> = {
-  default: defaultCameraTarget,
+  default: turntableFocusTarget,
   "bottom-center": new Vector3(), // Will be set after heroGroup loads
   "bottom-left": new Vector3(), // Will be set after heroGroup loads
   fullscreen: new Vector3(), // Will be set after heroGroup loads
@@ -775,13 +787,18 @@ type PageCameraSettings = {
   pitch: number;
   zoom: number;
 };
-const HOME_CAMERA_OFFSET = new Vector3(-35, -12, -65);
+const HOME_CAMERA_OFFSET = new Vector3(-15, -6, -30);
 const HOME_CAMERA_YAW = -28;
-const HOME_CAMERA_PITCH = -32;
-const HOME_CAMERA_ZOOM = 1.08;
+const HOME_CAMERA_PITCH = 32;
+const HOME_CAMERA_ZOOM = 1;
 const PORTFOLIO_CAMERA_YAW = -58;
-const PORTFOLIO_CAMERA_PITCH = -30;
+const PORTFOLIO_CAMERA_PITCH = 30;
 const PORTFOLIO_CAMERA_ZOOM = 1.2;
+
+const TURNTABLE_CAMERA_YAW = 0;
+const TURNTABLE_CAMERA_PITCH = 45;
+const TURNTABLE_CAMERA_ZOOM = 1.6;
+const HOME_FRAME_OFFSET = 2;
 
 const pageCameraSettings: Record<ScenePage, PageCameraSettings> = {
   home: {
@@ -791,16 +808,16 @@ const pageCameraSettings: Record<ScenePage, PageCameraSettings> = {
     zoom: HOME_CAMERA_ZOOM,
   },
   turntable: {
-    target: defaultCameraTarget.clone(),
-    yaw: 0,
-    pitch: -45,
-    zoom: 1.6,
+    target: turntableFocusTarget.clone(),
+    yaw: TURNTABLE_CAMERA_YAW,
+    pitch: TURNTABLE_CAMERA_PITCH,
+    zoom: TURNTABLE_CAMERA_ZOOM,
   },
   portfolio: {
-    target: new Vector3(-60, 0, -40),
-    yaw: -40,
-    pitch: -25,
-    zoom: 1.1,
+    target: portfolioFocusTarget.clone(),
+    yaw: PORTFOLIO_CAMERA_YAW,
+    pitch: PORTFOLIO_CAMERA_PITCH,
+    zoom: PORTFOLIO_CAMERA_ZOOM,
   },
 };
 let activePage: ScenePage = "home";
@@ -819,13 +836,6 @@ const directionFromAngles = (
       Math.cos(yawRad) * cosPitch,
     )
     .normalize();
-};
-
-const normalizeDegrees = (value: number) => {
-  let result = value % 360;
-  if (result > 180) result -= 360;
-  if (result < -180) result += 360;
-  return result;
 };
 
 const lerpAngleDegrees = (start: number, end: number, t: number) => {
@@ -885,11 +895,72 @@ const applyHomeCameraPreset = () => {
   pageCameraSettings.home.zoom = HOME_CAMERA_ZOOM;
 };
 
-const applyPortfolioCameraPreset = (focusPoint: Vector3) => {
-  pageCameraSettings.portfolio.target.copy(focusPoint);
+const applyPortfolioCameraPreset = () => {
+  pageCameraSettings.portfolio.target.copy(portfolioFocusTarget);
   pageCameraSettings.portfolio.yaw = PORTFOLIO_CAMERA_YAW;
   pageCameraSettings.portfolio.pitch = PORTFOLIO_CAMERA_PITCH;
   pageCameraSettings.portfolio.zoom = PORTFOLIO_CAMERA_ZOOM;
+};
+
+const prioritizePortfolioCoverRendering = (model: Object3D) => {
+  model.traverse((child) => {
+    if (!("isMesh" in child) || !(child as Mesh).isMesh) {
+      return;
+    }
+    const mesh = child as Mesh;
+    const name = mesh.name.toLowerCase();
+    if (PORTFOLIO_TEXT_KEYS.some((key) => name.includes(key))) {
+      setMeshRenderPriority(
+        mesh,
+        PORTFOLIO_TEXT_ORDER,
+        PORTFOLIO_TEXT_OFFSET,
+        0,
+      );
+    } else if (PORTFOLIO_COVER_KEYS.some((key) => name.includes(key))) {
+      setMeshRenderPriority(
+        mesh,
+        PORTFOLIO_COVER_ORDER,
+        PORTFOLIO_COVER_OFFSET,
+        0,
+      );
+    } else if (PORTFOLIO_PAPER_KEYS.some((key) => name.includes(key))) {
+      setMeshRenderPriority(
+        mesh,
+        PORTFOLIO_PAPER_ORDER,
+        PORTFOLIO_PAPER_OFFSET,
+        0,
+      );
+    }
+  });
+};
+
+const setMeshRenderPriority = (
+  mesh: Mesh,
+  order: number,
+  factor: number,
+  units: number,
+) => {
+  mesh.renderOrder = Math.max(mesh.renderOrder, order);
+  applyPolygonOffsetToMaterials(mesh, factor, units);
+};
+
+const applyPolygonOffsetToMaterials = (
+  mesh: Mesh,
+  factor: number,
+  units: number,
+) => {
+  const materials = Array.isArray(mesh.material)
+    ? mesh.material
+    : [mesh.material];
+  materials.forEach((material) => {
+    if (!material) {
+      return;
+    }
+    material.polygonOffset = true;
+    material.polygonOffsetFactor = factor;
+    material.polygonOffsetUnits = units;
+    material.needsUpdate = true;
+  });
 };
 
 const homeOverlay = document.createElement("div");
@@ -998,6 +1069,20 @@ const setActiveScenePage = (page: ScenePage) => {
   }
   const toSettings = pageCameraSettings[page];
   const fromSettings = captureCameraState();
+  let frameObjectTarget: Object3D = heroGroup;
+  let frameOffset = page === "home" ? HOME_FRAME_OFFSET : 2.6;
+  if (page === "turntable" && turntableSceneRoot) {
+    frameObjectTarget = turntableSceneRoot;
+  } else if (page === "portfolio" && portfolioSceneRoot) {
+    frameObjectTarget = portfolioSceneRoot;
+  }
+  cameraRig.frameObject(frameObjectTarget, frameOffset);
+  cameraRig.setLookTarget(fromSettings.target, false);
+  cameraRig.setViewDirection(
+    directionFromAngles(fromSettings.yaw, fromSettings.pitch),
+    false,
+  );
+  cameraRig.setZoomFactor(fromSettings.zoom);
   pageTransitionState.startTime = performance.now();
   pageTransitionState.fromSettings = cloneCameraSettings(fromSettings);
   pageTransitionState.toSettings = cloneCameraSettings(toSettings);
@@ -1129,7 +1214,7 @@ let labelOptions: LabelApplicationOptions = {
 const heroGroup = new Group();
 scene.add(heroGroup);
 
-let zoomFactor = 1.6;
+let zoomFactor = 1;
 cameraRig.setZoomFactor(zoomFactor);
 
 // const cameraInfoDisplay = createCameraInfoDisplay();
@@ -1176,7 +1261,9 @@ let turntableSceneRoot: Object3D | null = null;
 let portfolioSceneRoot: Object3D | null = null;
 const turntableBounds = new Box3();
 const turntableBoundsSize = new Vector3();
-let turntableReferenceSize = 1;
+const turntableBoundsCenter = new Vector3();
+const portfolioBounds = new Box3();
+const portfolioBoundsCenter = new Vector3();
 type VinylSource = "focus" | "turntable";
 let activeVinylSource: VinylSource | null = null;
 let currentDragSource: VinylSource | null = null;
@@ -2259,7 +2346,7 @@ canvas.addEventListener("pointermove", (event) => {
       const hoveredTarget = new Vector3(
         CAMERA_TARGETS["fullscreen"].x,
         CAMERA_TARGETS["fullscreen"].y - 18,
-        defaultCameraTarget.z - 23.4,
+        turntableFocusTarget.z - 23.4,
       );
       cameraRig.setLookTarget(hoveredTarget, true);
     } else if (!isTurntableHovered && wasHovered) {
@@ -2462,30 +2549,22 @@ loadTurntableModel()
     turntableSceneRoot = turntable;
     registerHomePageTarget(turntable, "turntable");
 
-    cameraRig.frameObject(heroGroup, 2.6);
+    cameraRig.frameObject(heroGroup, HOME_FRAME_OFFSET);
     baseTurntableCameraPosition.copy(camera.position);
     turntableBounds.setFromObject(turntable);
     turntableBounds.getSize(turntableBoundsSize);
-    turntableReferenceSize = Math.max(
-      1,
-      Math.max(
-        turntableBoundsSize.x,
-        turntableBoundsSize.y,
-        turntableBoundsSize.z,
-      ),
-    );
-
+    turntableBounds.getCenter(turntableBoundsCenter);
+    turntableFocusTarget.copy(turntableBoundsCenter);
     // Store the actual default camera target (bounding box center)
     defaultCameraTarget.copy(cameraRig.getTarget());
 
     // Initialize camera positions (will be set by updateCameraTargetsForWindowSize)
     updateCameraTargetsForWindowSize();
-    const initialOrbit = cameraRig.getOrbitAngles();
     pageCameraSettings.turntable = {
-      target: defaultCameraTarget.clone(),
-      yaw: initialOrbit.azimuth * RAD2DEG,
-      pitch: initialOrbit.polar * RAD2DEG,
-      zoom: cameraRig.getZoomFactor(),
+      target: turntableFocusTarget.clone(),
+      yaw: TURNTABLE_CAMERA_YAW,
+      pitch: TURNTABLE_CAMERA_PITCH,
+      zoom: TURNTABLE_CAMERA_ZOOM,
     };
     applyHomeCameraPreset();
     applyPageCameraSettings(pageCameraSettings.home);
@@ -2524,12 +2603,16 @@ loadPortfolioModel()
     portfolioModel.visible = true;
     const referenceScale = turntableSceneRoot ? turntableSceneRoot.scale.x : 1;
     portfolioModel.scale.setScalar(referenceScale);
-    portfolioModel.position.set(-145, -5, -90);
+    portfolioModel.position.set(-80, -5, -40);
     heroGroup.add(portfolioModel);
     registerHomePageTarget(portfolioModel, "portfolio");
-    const portfolioFocusPoint = portfolioModel.position.clone();
-    portfolioFocusPoint.y += 12;
-    applyPortfolioCameraPreset(portfolioFocusPoint);
+    prioritizePortfolioCoverRendering(portfolioModel);
+    portfolioBounds.setFromObject(portfolioModel);
+    portfolioBounds.getCenter(portfolioBoundsCenter);
+    portfolioFocusTarget
+      .copy(portfolioBoundsCenter)
+      .add(PORTFOLIO_CAMERA_TARGET_OFFSET);
+    applyPortfolioCameraPreset();
     applyHomeCameraPreset();
     if (activePage === "home" && !pageTransitionState.active) {
       applyPageCameraSettings(pageCameraSettings.home);
@@ -2612,24 +2695,24 @@ const updateCameraTargetsForWindowSize = () => {
   const leftwardPan = MAX_LEFT_PAN * t;
 
   CAMERA_TARGETS["bottom-center"].set(
-    defaultCameraTarget.x,
-    defaultCameraTarget.y + verticalPan,
-    defaultCameraTarget.z,
+    turntableFocusTarget.x,
+    turntableFocusTarget.y + verticalPan,
+    turntableFocusTarget.z,
   );
 
   CAMERA_TARGETS["bottom-left"].set(
-    defaultCameraTarget.x + leftwardPan,
-    defaultCameraTarget.y + verticalPan,
-    defaultCameraTarget.z,
+    turntableFocusTarget.x + leftwardPan,
+    turntableFocusTarget.y + verticalPan,
+    turntableFocusTarget.z,
   );
 
   // Fullscreen position: same as bottom-center but with 5 units higher pan and 5 units forward on Z
   CAMERA_TARGETS["fullscreen"].set(
-    defaultCameraTarget.x,
-    defaultCameraTarget.y + verticalPan + 20,
-    defaultCameraTarget.z + 40,
+    turntableFocusTarget.x,
+    turntableFocusTarget.y + verticalPan + 20,
+    turntableFocusTarget.z + 40,
   );
-  pageCameraSettings.turntable.target.copy(defaultCameraTarget);
+  pageCameraSettings.turntable.target.copy(turntableFocusTarget);
   applyHomeCameraPreset();
   if (activePage === "home" && !pageTransitionState.active) {
     applyPageCameraSettings(pageCameraSettings.home);
