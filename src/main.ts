@@ -824,7 +824,7 @@ const HOME_CAMERA_PITCH = 32;
 const HOME_CAMERA_ZOOM = 1;
 const PORTFOLIO_CAMERA_YAW = -58;
 const PORTFOLIO_CAMERA_PITCH = 30;
-const PORTFOLIO_CAMERA_ZOOM = 1.2;
+const PORTFOLIO_CAMERA_ZOOM = 4.0;
 const PORTFOLIO_TOP_CAMERA_PITCH = 88;
 const PLACEHOLDER_CAMERA_YAW = 0;
 const PLACEHOLDER_CAMERA_PITCH = 45;
@@ -1003,6 +1003,9 @@ const applyHomeCameraPreset = () => {
   pageCameraSettings.home.zoom = HOME_CAMERA_ZOOM;
 };
 
+let portfolioCoverMesh: Mesh | null = null;
+let portfolioCoverOriginalRotation = 0;
+
 const prioritizePortfolioCoverRendering = (model: Object3D) => {
   model.traverse((child) => {
     if (!("isMesh" in child) || !(child as Mesh).isMesh) {
@@ -1024,6 +1027,14 @@ const prioritizePortfolioCoverRendering = (model: Object3D) => {
         PORTFOLIO_COVER_OFFSET,
         0,
       );
+      // Store reference to cover mesh for animation
+      portfolioCoverMesh = mesh;
+      portfolioCoverOriginalRotation = mesh.rotation.z;
+      console.log("[Portfolio Cover] Found cover mesh:", mesh.name);
+      console.log(
+        "[Portfolio Cover] Original Z rotation:",
+        portfolioCoverOriginalRotation,
+      );
     } else if (PORTFOLIO_PAPER_KEYS.some((key) => name.includes(key))) {
       setMeshRenderPriority(
         mesh,
@@ -1033,6 +1044,54 @@ const prioritizePortfolioCoverRendering = (model: Object3D) => {
       );
     }
   });
+};
+
+const animatePortfolioCoverFlip = (reverse = false) => {
+  if (!portfolioCoverMesh) {
+    console.log("[Portfolio Cover] Cover mesh not found");
+    return;
+  }
+
+  console.log(
+    "[Portfolio Cover] Starting flip animation",
+    reverse ? "(reverse)" : "",
+  );
+  console.log(
+    "[Portfolio Cover] Initial rotation:",
+    portfolioCoverMesh.rotation.z,
+  );
+
+  const startRotation = portfolioCoverMesh.rotation.z;
+  const targetRotation = reverse
+    ? portfolioCoverOriginalRotation
+    : portfolioCoverOriginalRotation + Math.PI;
+  const duration = 800; // milliseconds
+  const startTime = performance.now();
+
+  const animate = (currentTime: number) => {
+    const elapsed = currentTime - startTime;
+    const progress = Math.min(elapsed / duration, 1);
+
+    // Ease in-out function for smoother animation
+    const easeProgress =
+      progress < 0.5
+        ? 2 * progress * progress
+        : 1 - Math.pow(-2 * progress + 2, 2) / 2;
+
+    portfolioCoverMesh!.rotation.z =
+      startRotation + (targetRotation - startRotation) * easeProgress;
+
+    if (progress < 1) {
+      requestAnimationFrame(animate);
+    } else {
+      console.log(
+        "[Portfolio Cover] Animation complete. Final rotation:",
+        portfolioCoverMesh!.rotation.z,
+      );
+    }
+  };
+
+  requestAnimationFrame(animate);
 };
 
 const setMeshRenderPriority = (
@@ -1148,7 +1207,9 @@ globalControls.appendChild(homeNavButton);
 const portfolioNavButton = document.createElement("button");
 portfolioNavButton.textContent = "portfolio view";
 portfolioNavButton.addEventListener("click", () => {
+  console.log("[Portfolio] Button clicked");
   setActiveScenePage("portfolio");
+  animatePortfolioCoverFlip();
 });
 globalControls.appendChild(portfolioNavButton);
 
@@ -1167,6 +1228,10 @@ globalControls.appendChild(resetTutorialButton);
 const setActiveScenePage = (page: ScenePage) => {
   if (page === activePage) {
     return;
+  }
+  // Reverse portfolio cover animation when leaving portfolio page
+  if (activePage === "portfolio" && page !== "portfolio") {
+    animatePortfolioCoverFlip(true);
   }
   const toSettings = pageCameraSettings[page];
   const fromSettings = captureCameraState();
@@ -2426,6 +2491,9 @@ canvas.addEventListener("pointerdown", (event) => {
           const page = findPageForObject(hit.object as Object3D);
           if (page && page !== "home") {
             setActiveScenePage(page);
+            if (page === "portfolio") {
+              animatePortfolioCoverFlip();
+            }
             break;
           }
         }
@@ -3123,6 +3191,8 @@ const animate = (time: number) => {
             viewport.style.height = `${targetHeight}px`;
           }
         }
+        // Update button visibility after viewport height change
+        yt.updateButtonVisibility();
       }
     } else if (!tonearmNowInPlayArea && isTonearmInPlayArea) {
       // Tonearm just left play area - hide player
@@ -3137,6 +3207,8 @@ const animate = (time: number) => {
           viewport.style.height = "0px";
         }
       }
+      // Update button visibility after viewport height change
+      yt.updateButtonVisibility();
     }
   }
 

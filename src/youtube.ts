@@ -44,6 +44,7 @@ export interface YouTubeBridge {
   isPlayerCollapsed(): boolean;
   setPlayerCollapsed(collapsed: boolean): void;
   setFKeyListenerEnabled(enabled: boolean): void;
+  updateButtonVisibility(): void;
 }
 
 let apiReadyPromise: Promise<void> | null = null;
@@ -278,14 +279,11 @@ export function createYouTubePlayer(): YouTubeBridge {
   const updateButtonVisibility = () => {
     const isPlayerVisible = viewport.clientHeight > 0;
     const isTonearmInPlayArea = isTonearmInPlayAreaQuery?.() ?? false;
-    const isOnTurntablePage = isOnTurntablePageQuery?.() ?? false;
     // Show button if:
     // 1. Video has been loaded AND
-    // 2. On turntable page AND
-    // 3. Either (tonearm is in play area AND player is visible) OR player is collapsed
+    // 2. Either (tonearm is in play area AND player is visible) OR player is collapsed
     if (
       hasLoadedVideo &&
-      isOnTurntablePage &&
       ((isTonearmInPlayArea && isPlayerVisible) || isCollapsed)
     ) {
       buttonContainer.style.opacity = "1";
@@ -1086,6 +1084,10 @@ export function createYouTubePlayer(): YouTubeBridge {
     },
     setFKeyListenerEnabled(enabled: boolean) {
       setFKeyListenersEnabled(enabled);
+    },
+    updateButtonVisibility() {
+      updateButtonVisibility();
+      updateFullscreenButtonVisibility();
     },
   };
 
