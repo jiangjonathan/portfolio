@@ -42,6 +42,7 @@ export interface YouTubeBridge {
   setIsTonearmInPlayAreaQuery(callback: () => boolean): void;
   isPlayerCollapsed(): boolean;
   setPlayerCollapsed(collapsed: boolean): void;
+  setFKeyListenerEnabled(enabled: boolean): void;
 }
 
 let apiReadyPromise: Promise<void> | null = null;
@@ -1047,16 +1048,19 @@ export function createYouTubePlayer(): YouTubeBridge {
         collapseButton.appendChild(currentArrowSvg);
       }
     },
+    setFKeyListenerEnabled(enabled: boolean) {
+      setFKeyListenersEnabled(enabled);
+    },
   };
 
   (bridge as any)._fullscreenControls = () => fullscreenControls;
 
-  // Add F key handler to toggle fullscreen mode (only when tonearm is in play area)
   let isFPressed = false;
-  const handleFKeyToggle = (event: KeyboardEvent) => {
+  let fKeyListenersAttached = false;
+
+  function handleFKeyToggle(event: KeyboardEvent) {
     if ((event.key.toLowerCase() === "f" || event.key === "F") && !isFPressed) {
       isFPressed = true;
-      // Don't toggle if the key is pressed within an input, textarea, or contenteditable element
       const target = event.target as HTMLElement;
       if (
         target.tagName === "INPUT" ||
@@ -1065,27 +1069,48 @@ export function createYouTubePlayer(): YouTubeBridge {
       ) {
         return;
       }
-      // Always prevent default for F key to prevent browser focus behavior
       event.preventDefault();
 
-      // Only toggle if tonearm is in play area
       const isTonearmInPlayArea = isTonearmInPlayAreaQuery?.() ?? false;
       if (!isTonearmInPlayArea) {
         return;
       }
       setFullscreen(!isFullscreenMode);
     }
-  };
+  }
 
-  const handleFKeyUp = (event: KeyboardEvent) => {
+  function handleFKeyUp(event: KeyboardEvent) {
     if (event.key.toLowerCase() === "f" || event.key === "F") {
       isFPressed = false;
     }
-  };
+  }
 
-  document.addEventListener("keydown", handleFKeyToggle);
-  document.addEventListener("keyup", handleFKeyUp);
-  (bridge as any)._fKeyToggleHandler = handleFKeyToggle;
+  function attachFKeyListeners() {
+    if (fKeyListenersAttached) {
+      return;
+    }
+    document.addEventListener("keydown", handleFKeyToggle);
+    document.addEventListener("keyup", handleFKeyUp);
+    fKeyListenersAttached = true;
+  }
+
+  function detachFKeyListeners() {
+    if (!fKeyListenersAttached) {
+      return;
+    }
+    document.removeEventListener("keydown", handleFKeyToggle);
+    document.removeEventListener("keyup", handleFKeyUp);
+    fKeyListenersAttached = false;
+    isFPressed = false;
+  }
+
+  function setFKeyListenersEnabled(enabled: boolean) {
+    if (enabled) {
+      attachFKeyListeners();
+    } else {
+      detachFKeyListeners();
+    }
+  }
 
   return bridge;
 }

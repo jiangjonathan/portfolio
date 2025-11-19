@@ -34,7 +34,7 @@ import {
 import {} from // createTonearmRotationDisplay,
 // createCameraInfoDisplay,
 "./ui";
-import { initializeYouTubePlayer } from "./youtube";
+import { initializeYouTubePlayer, type YouTubeBridge } from "./youtube";
 import { createMetadataController } from "./metadata";
 import { updatePointer } from "./utils";
 import {
@@ -821,6 +821,7 @@ const pageCameraSettings: Record<ScenePage, PageCameraSettings> = {
   },
 };
 let activePage: ScenePage = "home";
+let youtubeBridge: YouTubeBridge | null = null;
 const directionFromAngles = (
   yawDeg: number,
   pitchDeg: number,
@@ -1088,6 +1089,7 @@ const setActiveScenePage = (page: ScenePage) => {
   pageTransitionState.toSettings = cloneCameraSettings(toSettings);
   pageTransitionState.active = true;
   activePage = page;
+  youtubeBridge?.setFKeyListenerEnabled(page === "turntable");
   vinylCameraTrackingEnabled = page === "turntable";
   updateHomeOverlayVisibility();
   setTurntableUIVisible(activePage === "turntable");
@@ -1382,6 +1384,7 @@ const cameraOrbitState = {
   pointerId: -1,
   lastX: 0,
   lastY: 0,
+  mode: null as ScenePage | null,
 };
 
 const cameraPanState = {
@@ -1454,6 +1457,8 @@ const {
   updateProgress: updateVideoProgress,
   ready: youtubeReady,
 } = youtubePlayer;
+youtubeBridge = yt;
+yt.setFKeyListenerEnabled(false);
 
 type VinylSelectionDetail = {
   entryId?: string | null;
@@ -2212,7 +2217,10 @@ canvas.addEventListener("pointerdown", (event) => {
     return;
   }
   if (event.button === 2) {
-    if (activePage !== "turntable" || pageTransitionState.active) {
+    if (
+      (activePage !== "turntable" && activePage !== "home") ||
+      pageTransitionState.active
+    ) {
       return;
     }
     startCameraOrbit(event);
@@ -2604,6 +2612,7 @@ loadPortfolioModel()
     const referenceScale = turntableSceneRoot ? turntableSceneRoot.scale.x : 1;
     portfolioModel.scale.setScalar(referenceScale);
     portfolioModel.position.set(-80, -5, -40);
+    portfolioModel.rotation.set(0, Math.PI * 0.25, 0);
     heroGroup.add(portfolioModel);
     registerHomePageTarget(portfolioModel, "portfolio");
     prioritizePortfolioCoverRendering(portfolioModel);
@@ -3166,23 +3175,28 @@ function updateDragPlaneDepth(z: number) {
 // rpm helper moved to controller
 
 function startCameraOrbit(event: PointerEvent) {
-  if (activePage !== "turntable" || pageTransitionState.active) {
+  if (
+    (activePage !== "turntable" && activePage !== "home") ||
+    pageTransitionState.active
+  ) {
     return;
   }
   cameraOrbitState.isOrbiting = true;
   cameraOrbitState.pointerId = event.pointerId;
   cameraOrbitState.lastX = event.clientX;
   cameraOrbitState.lastY = event.clientY;
+  cameraOrbitState.mode = activePage;
 
-  // Save rotation state before user starts rotating
-  cameraRig.saveRotationState();
+  if (activePage === "turntable") {
+    cameraRig.saveRotationState();
+  }
 
   canvas.setPointerCapture(event.pointerId);
 }
 
 function handleCameraOrbitMove(event: PointerEvent) {
   if (
-    activePage !== "turntable" ||
+    (activePage !== "turntable" && activePage !== "home") ||
     pageTransitionState.active ||
     !cameraOrbitState.isOrbiting ||
     event.pointerId !== cameraOrbitState.pointerId
@@ -3193,9 +3207,10 @@ function handleCameraOrbitMove(event: PointerEvent) {
   const deltaY = event.clientY - cameraOrbitState.lastY;
   cameraOrbitState.lastX = event.clientX;
   cameraOrbitState.lastY = event.clientY;
+  const allowPolar = cameraOrbitState.mode === "turntable";
   cameraRig.orbit(
     deltaX * CAMERA_ORBIT_SENSITIVITY,
-    deltaY * CAMERA_ORBIT_SENSITIVITY,
+    allowPolar ? deltaY * CAMERA_ORBIT_SENSITIVITY : 0,
   );
   return true;
 }
@@ -3210,8 +3225,12 @@ function endCameraOrbit(event: PointerEvent) {
   cameraOrbitState.isOrbiting = false;
   cameraOrbitState.pointerId = -1;
 
-  // Restore to saved rotation state with animation
-  cameraRig.restoreRotationState();
+  if (cameraOrbitState.mode === "turntable") {
+    // Restore to saved rotation state with animation
+    cameraRig.restoreRotationState();
+  }
+
+  cameraOrbitState.mode = null;
 
   try {
     canvas.releasePointerCapture(event.pointerId);
