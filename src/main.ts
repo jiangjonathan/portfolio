@@ -825,6 +825,7 @@ const HOME_CAMERA_ZOOM = 1;
 const PORTFOLIO_CAMERA_YAW = -58;
 const PORTFOLIO_CAMERA_PITCH = 30;
 const PORTFOLIO_CAMERA_ZOOM = 1.2;
+const PORTFOLIO_TOP_CAMERA_PITCH = 88;
 const PLACEHOLDER_CAMERA_YAW = 0;
 const PLACEHOLDER_CAMERA_PITCH = 45;
 const PLACEHOLDER_CAMERA_ZOOM = 1.4;
@@ -850,6 +851,7 @@ const PLACEHOLDER_SCENES = [
 ] as const;
 const PLACEHOLDER_SIZE = 10;
 const placeholderMeshes: Record<string, Mesh> = {};
+const pageSceneRoots: Record<string, Object3D> = {};
 
 type PortfolioSceneConfig = {
   id: "portfolio";
@@ -867,7 +869,7 @@ const PORTFOLIO_SCENE_CONFIGS: ReadonlyArray<PortfolioSceneConfig> = [
   },
 ];
 
-const HERO_LAYOUT_RADIUS = 40;
+const HERO_LAYOUT_RADIUS = 50;
 const HERO_LAYOUT_Y = 0;
 const HERO_LAYOUT_START_ANGLE = Math.PI / 8;
 const HERO_LAYOUT_PAGES: Array<string> = [
@@ -920,6 +922,12 @@ const pageCameraSettings: Record<ScenePage, PageCameraSettings> = {
     pitch: PLACEHOLDER_CAMERA_PITCH,
     zoom: PLACEHOLDER_CAMERA_ZOOM,
   },
+};
+
+const setHeroPageVisibility = (page: ScenePage | null) => {
+  Object.entries(pageSceneRoots).forEach(([pageId, model]) => {
+    model.visible = page === null || pageId === page;
+  });
 };
 let activePage: ScenePage = "home";
 let youtubeBridge: YouTubeBridge | null = null;
@@ -1183,11 +1191,22 @@ const setActiveScenePage = (page: ScenePage) => {
   pageTransitionState.fromSettings = cloneCameraSettings(fromSettings);
   pageTransitionState.toSettings = cloneCameraSettings(toSettings);
   pageTransitionState.active = true;
+  const wasTurntable = activePage === "turntable";
   activePage = page;
   youtubeBridge?.setFKeyListenerEnabled(page === "turntable");
+  const shouldShowFocusVinyl = page === "turntable";
+  focusVinylManuallyHidden = !shouldShowFocusVinyl;
+  if (!shouldShowFocusVinyl && focusVinylState?.model) {
+    focusVinylState.model.visible = false;
+    setFocusCoverClickBodyClass(false);
+  }
+  updateFocusVinylVisibility();
   vinylCameraTrackingEnabled = page === "turntable";
   updateHomeOverlayVisibility();
   setTurntableUIVisible(activePage === "turntable");
+  if (wasTurntable && page !== "turntable") {
+    hideFocusCardAndVinyl();
+  }
 };
 
 const findPageForObject = (object: Object3D | null): ScenePage | null => {
@@ -1400,7 +1419,6 @@ let focusVinylState: FocusVinylState | null = null;
 let turntableVinylState: TurntableVinylState | null = null;
 let focusVinylLoadToken = 0;
 let turntableSceneRoot: Object3D | null = null;
-const pageSceneRoots: Record<string, Object3D> = {};
 const turntableBounds = new Box3();
 const turntableBoundsSize = new Vector3();
 const turntableBoundsCenter = new Vector3();
@@ -1518,7 +1536,8 @@ const updateTurntableVinylVisuals = (visuals: LabelVisualOptions) => {
 };
 let shouldTrackFocusCard = false; // Flag to enable focus card tracking
 let focusCardAnchorPosition = new Vector3(); // Saved position for focus card anchor
-const turntableAnchorPosition = new Vector3(0, 6.41, 0); // Fixed turntable anchor position (read-only)
+const TURN_TABLE_ANCHOR_OFFSET = new Vector3(0, 6.41, 0);
+const turntableAnchorPosition = new Vector3(0, 6.41, 0); // Updated to model position + offset
 const cameraOrbitState = {
   isOrbiting: false,
   pointerId: -1,
@@ -1893,6 +1912,18 @@ const resetFocusCoverFallbackState = () => {
   return focusCoverFallbackAnimationKey;
 };
 
+const hideFocusCardAndVinyl = () => {
+  focusCardContainers.forEach((container) => {
+    container.innerHTML = "";
+    container.style.opacity = "0";
+    container.style.pointerEvents = "none";
+  });
+  focusVinylManuallyHidden = true;
+  focusVinylHoverOffsetTarget = 0;
+  setFocusCoverClickBodyClass(false);
+  updateFocusVinylVisibility();
+};
+
 const waitForFocusVinylOffset = (
   target: number,
   animationKey: number,
@@ -2074,6 +2105,7 @@ yt.setIsTonearmInPlayAreaQuery(() => isTonearmInPlayArea);
 // Auto-hide library and button in fullscreen player mode
 yt.onFullscreenChange((isFullscreen: boolean) => {
   runWhenTurntableReady(() => {
+    setHeroPageVisibility(isFullscreen ? "turntable" : null);
     if (isFullscreen) {
       isFullscreenMode = true;
       hideFocusVinylForFullscreen();
@@ -2698,6 +2730,9 @@ loadTurntableModel()
     heroGroup.add(turntable);
     turntableSceneRoot = turntable;
     registerHomePageTarget(turntable, "turntable");
+    turntableAnchorPosition
+      .copy(turntableCirclePos)
+      .add(TURN_TABLE_ANCHOR_OFFSET);
 
     cameraRig.frameObject(heroGroup, HOME_FRAME_OFFSET);
     baseTurntableCameraPosition.copy(camera.position);
@@ -2766,6 +2801,9 @@ loadPortfolioModel()
     portfolioModel.position.add(offset);
     const focusPoint = circlePos.clone().add(PORTFOLIO_CAMERA_TARGET_OFFSET);
     pageCameraSettings.portfolio.target.copy(focusPoint);
+    const rotationYawDeg = Math.PI * 0.25 * RAD2DEG;
+    pageCameraSettings.portfolio.yaw = rotationYawDeg;
+    pageCameraSettings.portfolio.pitch = PORTFOLIO_TOP_CAMERA_PITCH;
     applyHomeCameraPreset();
     if (activePage === "home" && !pageTransitionState.active) {
       applyPageCameraSettings(pageCameraSettings.home);
