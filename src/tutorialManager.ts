@@ -65,7 +65,7 @@ export class TutorialManager {
       },
       {
         action: "start-player" as TutorialAction,
-        text: "click the start button or press [space] to start the turntable",
+        text: "click the start button or press [space] to start/stop the turntable",
       },
       {
         action: "drag-tonearm" as TutorialAction,

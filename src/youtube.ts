@@ -117,31 +117,6 @@ export function createYouTubePlayer(): YouTubeBridge {
   viewport.style.transformOrigin = "center center";
   wrapper.appendChild(viewport);
 
-  let pendingViewportTransitionHandler:
-    | ((event: TransitionEvent) => void)
-    | null = null;
-
-  const waitForViewportHeightTransition = (callback: () => void) => {
-    if (pendingViewportTransitionHandler) {
-      viewport.removeEventListener(
-        "transitionend",
-        pendingViewportTransitionHandler,
-      );
-      pendingViewportTransitionHandler = null;
-    }
-
-    const handler = (event: TransitionEvent) => {
-      if (event.propertyName === "height") {
-        viewport.removeEventListener("transitionend", handler);
-        pendingViewportTransitionHandler = null;
-        callback();
-      }
-    };
-
-    pendingViewportTransitionHandler = handler;
-    viewport.addEventListener("transitionend", handler);
-  };
-
   // Button container that stays visible
   const buttonContainer = document.createElement("div");
   Object.assign(buttonContainer.style, {
@@ -221,80 +196,49 @@ export function createYouTubePlayer(): YouTubeBridge {
     if (isCollapsed) {
       viewport.style.height = "0px";
       collapseButton.title = "Show player";
-      // Replace SVG with down arrow
       currentArrowSvg.remove();
       currentArrowSvg = createArrowSvg("down");
       collapseButton.appendChild(currentArrowSvg);
-      // Hide fullscreen button when collapsed so it doesn't cover the uncollapse button
       fullscreenButtonContainer.style.display = "none";
     } else {
-      // Restore to previous height or calculate it
       const isTonearmInPlayArea = isTonearmInPlayAreaQuery?.() ?? false;
       if (isTonearmInPlayArea) {
         const targetHeight = 512 / DYNAMIC_VIDEO_ASPECT;
         viewport.style.height = `${targetHeight}px`;
       }
       collapseButton.title = "Hide player";
-      // Replace SVG with up arrow
       currentArrowSvg.remove();
       currentArrowSvg = createArrowSvg("up");
       collapseButton.appendChild(currentArrowSvg);
-      // Show fullscreen button when expanded
       fullscreenButtonContainer.style.display = "flex";
-    }
-    // After state change, update button visibility based on current state
-    if (isCollapsed) {
-      // Show black button when collapsed
-      updateButtonVisibility();
-      updateFullscreenButtonVisibility();
-    } else {
-      // When uncollapsing, check if mouse is hovering
-      // If hovering, show buttons immediately; otherwise they'll show on next hover
-      const isMouseHovering = wrapper.matches(":hover");
-      if (isMouseHovering) {
-        // Show collapse button with grey color
-        buttonContainer.style.opacity = "1";
-        const path = currentArrowSvg.querySelector("path") as SVGPathElement;
-        if (path) {
-          path.setAttribute("fill", "#999");
-        }
-        // Keep fullscreen button hidden until the height animation completes
+      if (!wrapper.matches(":hover")) {
         fullscreenButtonContainer.style.opacity = "0";
         fullscreenButtonContainer.style.pointerEvents = "none";
-        waitForViewportHeightTransition(() => {
-          if (wrapper.matches(":hover")) {
-            updateFullscreenButtonVisibility();
-          }
-        });
-      } else {
-        // Mouse not hovering, hide buttons until next hover
-        buttonContainer.style.opacity = "0";
-        fullscreenButtonContainer.style.opacity = "0";
       }
     }
+    updateButtonVisibility();
   });
 
   buttonContainer.appendChild(collapseButton);
 
-  // Show button on hover, or always show when collapsed
-  const updateButtonVisibility = () => {
-    const isPlayerVisible = viewport.clientHeight > 0;
+  const updateCollapseButtonVisibility = () => {
     const isTonearmInPlayArea = isTonearmInPlayAreaQuery?.() ?? false;
-    // Show button if:
-    // 1. Video has been loaded AND
-    // 2. Either (tonearm is in play area AND player is visible) OR player is collapsed
-    if (
+    const isPlayerVisible = viewport.clientHeight > 0;
+    const isHoveringPlayer = wrapper.matches(":hover");
+    const shouldShowWithControls =
       hasLoadedVideo &&
-      ((isTonearmInPlayArea && isPlayerVisible) || isCollapsed)
-    ) {
+      controlsAreVisible &&
+      !isCollapsed &&
+      isTonearmInPlayArea &&
+      isPlayerVisible &&
+      isHoveringPlayer;
+    const shouldShowWhileCollapsed = hasLoadedVideo && isCollapsed;
+    if (shouldShowWithControls || shouldShowWhileCollapsed) {
       buttonContainer.style.opacity = "1";
       buttonContainer.style.pointerEvents = "auto";
-      // Change button color: grey when player visible, black when collapsed
-      if (isCollapsed) {
-        const path = currentArrowSvg.querySelector("path") as SVGPathElement;
-        if (path) {
-          path.setAttribute("fill", "#000");
-        }
+      const path = currentArrowSvg.querySelector("path") as SVGPathElement;
+      if (path) {
+        path.setAttribute("fill", "#999");
       }
     } else {
       buttonContainer.style.opacity = "0";
@@ -302,19 +246,18 @@ export function createYouTubePlayer(): YouTubeBridge {
     }
   };
 
-  // Show fullscreen button on hover when player is visible
   const updateFullscreenButtonVisibility = () => {
-    const isPlayerVisible = viewport.clientHeight > 0;
     const isTonearmInPlayArea = isTonearmInPlayAreaQuery?.() ?? false;
     const isOnTurntablePage = isOnTurntablePageQuery?.() ?? false;
-    // Only show if video loaded AND player is visible AND not collapsed AND tonearm is in play area AND on turntable page
-    if (
+    const isHoveringPlayer = wrapper.matches(":hover");
+    const shouldShow =
       hasLoadedVideo &&
-      isPlayerVisible &&
+      controlsAreVisible &&
       !isCollapsed &&
       isTonearmInPlayArea &&
-      isOnTurntablePage
-    ) {
+      isOnTurntablePage &&
+      isHoveringPlayer;
+    if (shouldShow) {
       fullscreenButtonContainer.style.opacity = "1";
       fullscreenButtonContainer.style.pointerEvents = "auto";
       fullscreenButtonContainer.style.display = "flex";
@@ -324,14 +267,18 @@ export function createYouTubePlayer(): YouTubeBridge {
     }
   };
 
+  const updateButtonVisibility = () => {
+    updateCollapseButtonVisibility();
+    updateFullscreenButtonVisibility();
+  };
+
   wrapper.addEventListener("mouseenter", () => {
     const isTonearmInPlayArea = isTonearmInPlayAreaQuery?.() ?? false;
-    if (!isCollapsed && isTonearmInPlayArea) {
+    if (!isCollapsed && controlsAreVisible && isTonearmInPlayArea) {
       const path = currentArrowSvg.querySelector("path") as SVGPathElement;
       if (path) {
         path.setAttribute("fill", "#999");
       }
-      // Show button when hovering over expanded player
       buttonContainer.style.opacity = "1";
       buttonContainer.style.pointerEvents = "auto";
       updateFullscreenButtonVisibility();
@@ -339,7 +286,6 @@ export function createYouTubePlayer(): YouTubeBridge {
   });
 
   wrapper.addEventListener("mouseleave", () => {
-    // Only hide button if not collapsed. If collapsed, keep it visible
     if (!isCollapsed) {
       buttonContainer.style.opacity = "0";
       buttonContainer.style.pointerEvents = "none";
@@ -370,6 +316,7 @@ export function createYouTubePlayer(): YouTubeBridge {
   let isTonearmInPlayAreaQuery: (() => boolean) | null = null;
   let isOnTurntablePageQuery: (() => boolean) | null = null;
   let hasLoadedVideo = false;
+  let controlsAreVisible = false;
 
   const disablePlayerInteraction = () => {
     const iframe = player?.getIframe?.();
@@ -499,6 +446,7 @@ export function createYouTubePlayer(): YouTubeBridge {
       player.cueVideoById(videoId);
       disablePlayerInteraction();
       hasLoadedVideo = true;
+      updateButtonVisibility();
       return new Promise<void>((resolve) => {
         onVideoLoadedCallback = resolve;
       });
@@ -530,6 +478,7 @@ export function createYouTubePlayer(): YouTubeBridge {
             disablePlayerInteraction();
             updateVideoMetadata();
             hasLoadedVideo = true;
+            updateButtonVisibility();
             resolve();
           },
           onStateChange: (event: any) => {
@@ -1017,6 +966,8 @@ export function createYouTubePlayer(): YouTubeBridge {
       if (fullscreenToggle) {
         (fullscreenToggle as any)._setVisible?.(visible);
       }
+      controlsAreVisible = visible;
+      updateButtonVisibility();
     },
     onPlaybackProgress(callback: (progress: number) => void) {
       (this as any).onPlaybackProgressCallback = callback;
@@ -1089,7 +1040,12 @@ export function createYouTubePlayer(): YouTubeBridge {
         collapseButton.appendChild(currentArrowSvg);
         // Show fullscreen button when expanded
         fullscreenButtonContainer.style.display = "flex";
+        if (!wrapper.matches(":hover")) {
+          fullscreenButtonContainer.style.opacity = "0";
+          fullscreenButtonContainer.style.pointerEvents = "none";
+        }
       }
+      updateButtonVisibility();
     },
     setFKeyListenerEnabled(enabled: boolean) {
       setFKeyListenersEnabled(enabled);
