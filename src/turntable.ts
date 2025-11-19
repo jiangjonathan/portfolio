@@ -136,6 +136,9 @@ export class TurntableController {
       0,
       this.mediaDuration,
     );
+    // Reset tonearm to home position when loading new media
+    this.tonearmBaseRotation = this.tonearmHomeRotation;
+    this.autoReturn = false;
   }
 
   handlePointerDown(e: PointerEvent): boolean {

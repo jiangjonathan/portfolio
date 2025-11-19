@@ -1206,6 +1206,10 @@ const setActiveScenePage = (page: ScenePage) => {
   setTurntableUIVisible(activePage === "turntable");
   if (wasTurntable && page !== "turntable") {
     hideFocusCardAndVinyl();
+    // Collapse player when leaving turntable
+    if (yt && !yt.isPlayerCollapsed()) {
+      yt.setPlayerCollapsed(true);
+    }
   }
 };
 
@@ -2101,6 +2105,9 @@ yt.setControlsVisible(false);
 
 // Register callback to query tonearm state when exiting fullscreen
 yt.setIsTonearmInPlayAreaQuery(() => isTonearmInPlayArea);
+
+// Register callback to query if on turntable page
+yt.setIsOnTurntablePageQuery(() => activePage === "turntable");
 
 // Auto-hide library and button in fullscreen player mode
 yt.onFullscreenChange((isFullscreen: boolean) => {
@@ -3119,19 +3126,16 @@ const animate = (time: number) => {
         }
       }
     } else if (!tonearmNowInPlayArea && isTonearmInPlayArea) {
-      // Tonearm just left play area - hide player (unless we're in the last 2 seconds)
-      const timeRemaining = youtubePlayer.getDuration() - yt.getCurrentTime();
-      if (timeRemaining > 2 || shouldForceHidePlayer) {
-        isTonearmInPlayArea = false;
-        yt.setControlsVisible(false);
-        // Only collapse player if it wasn't manually collapsed by user
-        if (!yt.isPlayerCollapsed()) {
-          const viewport = root.querySelector(
-            ".yt-player-viewport",
-          ) as HTMLElement;
-          if (viewport) {
-            viewport.style.height = "0px";
-          }
+      // Tonearm just left play area - hide player
+      isTonearmInPlayArea = false;
+      yt.setControlsVisible(false);
+      // Only collapse player if it wasn't manually collapsed by user
+      if (!yt.isPlayerCollapsed()) {
+        const viewport = root.querySelector(
+          ".yt-player-viewport",
+        ) as HTMLElement;
+        if (viewport) {
+          viewport.style.height = "0px";
         }
       }
     }

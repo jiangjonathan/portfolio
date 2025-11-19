@@ -40,6 +40,7 @@ export interface YouTubeBridge {
   isFullscreen(): boolean;
   onFullscreenChange(callback: (isFullscreen: boolean) => void): void;
   setIsTonearmInPlayAreaQuery(callback: () => boolean): void;
+  setIsOnTurntablePageQuery(callback: () => boolean): void;
   isPlayerCollapsed(): boolean;
   setPlayerCollapsed(collapsed: boolean): void;
   setFKeyListenerEnabled(enabled: boolean): void;
@@ -279,6 +280,7 @@ export function createYouTubePlayer(): YouTubeBridge {
     // Show button if player is visible (on hover) OR if player is collapsed
     if (isPlayerVisible || isCollapsed) {
       buttonContainer.style.opacity = "1";
+      buttonContainer.style.pointerEvents = "auto";
       // Change button color: grey when player visible, black when collapsed
       if (isCollapsed) {
         const path = currentArrowSvg.querySelector("path") as SVGPathElement;
@@ -288,6 +290,7 @@ export function createYouTubePlayer(): YouTubeBridge {
       }
     } else {
       buttonContainer.style.opacity = "0";
+      buttonContainer.style.pointerEvents = "none";
     }
   };
 
@@ -295,10 +298,17 @@ export function createYouTubePlayer(): YouTubeBridge {
   const updateFullscreenButtonVisibility = () => {
     const isPlayerVisible = viewport.clientHeight > 0;
     const isTonearmInPlayArea = isTonearmInPlayAreaQuery?.() ?? false;
-    // Only show if player is visible AND not collapsed AND tonearm is in play area
-    if (isPlayerVisible && !isCollapsed && isTonearmInPlayArea) {
+    const isOnTurntablePage = isOnTurntablePageQuery?.() ?? false;
+    // Only show if player is visible AND not collapsed AND tonearm is in play area AND on turntable page
+    if (
+      isPlayerVisible &&
+      !isCollapsed &&
+      isTonearmInPlayArea &&
+      isOnTurntablePage
+    ) {
       fullscreenButtonContainer.style.opacity = "1";
       fullscreenButtonContainer.style.pointerEvents = "auto";
+      fullscreenButtonContainer.style.display = "flex";
     } else {
       fullscreenButtonContainer.style.opacity = "0";
       fullscreenButtonContainer.style.pointerEvents = "none";
@@ -349,6 +359,7 @@ export function createYouTubePlayer(): YouTubeBridge {
   let userActivityTimeout: number | null = null;
   let fullscreenChangeCallback: ((isFullscreen: boolean) => void) | null = null;
   let isTonearmInPlayAreaQuery: (() => boolean) | null = null;
+  let isOnTurntablePageQuery: (() => boolean) | null = null;
 
   const disablePlayerInteraction = () => {
     const iframe = player?.getIframe?.();
@@ -584,7 +595,10 @@ export function createYouTubePlayer(): YouTubeBridge {
     toggle.appendChild(icon);
 
     toggle.addEventListener("click", () => {
-      setFullscreen(!isFullscreenMode);
+      // Only respond to clicks if fullscreen button is visible (has auto pointer-events)
+      if (fullscreenButtonContainer.style.pointerEvents === "auto") {
+        setFullscreen(!isFullscreenMode);
+      }
     });
 
     toggle.addEventListener("mouseenter", () => {
@@ -1019,6 +1033,9 @@ export function createYouTubePlayer(): YouTubeBridge {
     setIsTonearmInPlayAreaQuery(callback: () => boolean) {
       isTonearmInPlayAreaQuery = callback;
     },
+    setIsOnTurntablePageQuery(callback: () => boolean) {
+      isOnTurntablePageQuery = callback;
+    },
     isPlayerCollapsed(): boolean {
       return isCollapsed;
     },
@@ -1034,6 +1051,10 @@ export function createYouTubePlayer(): YouTubeBridge {
         currentArrowSvg.remove();
         currentArrowSvg = createArrowSvg("down");
         collapseButton.appendChild(currentArrowSvg);
+        // Hide fullscreen button when collapsed so it doesn't cover the uncollapse button
+        fullscreenButtonContainer.style.display = "none";
+        // Show the collapse button since player is now collapsed
+        updateButtonVisibility();
       } else {
         // Restore to previous height or calculate it
         const isTonearmInPlayArea = isTonearmInPlayAreaQuery?.() ?? false;
@@ -1046,6 +1067,8 @@ export function createYouTubePlayer(): YouTubeBridge {
         currentArrowSvg.remove();
         currentArrowSvg = createArrowSvg("up");
         collapseButton.appendChild(currentArrowSvg);
+        // Show fullscreen button when expanded
+        fullscreenButtonContainer.style.display = "flex";
       }
     },
     setFKeyListenerEnabled(enabled: boolean) {
