@@ -277,8 +277,17 @@ export function createYouTubePlayer(): YouTubeBridge {
   // Show button on hover, or always show when collapsed
   const updateButtonVisibility = () => {
     const isPlayerVisible = viewport.clientHeight > 0;
-    // Show button if player is visible (on hover) OR if player is collapsed
-    if (isPlayerVisible || isCollapsed) {
+    const isTonearmInPlayArea = isTonearmInPlayAreaQuery?.() ?? false;
+    const isOnTurntablePage = isOnTurntablePageQuery?.() ?? false;
+    // Show button if:
+    // 1. Video has been loaded AND
+    // 2. On turntable page AND
+    // 3. Either (tonearm is in play area AND player is visible) OR player is collapsed
+    if (
+      hasLoadedVideo &&
+      isOnTurntablePage &&
+      ((isTonearmInPlayArea && isPlayerVisible) || isCollapsed)
+    ) {
       buttonContainer.style.opacity = "1";
       buttonContainer.style.pointerEvents = "auto";
       // Change button color: grey when player visible, black when collapsed
@@ -299,8 +308,9 @@ export function createYouTubePlayer(): YouTubeBridge {
     const isPlayerVisible = viewport.clientHeight > 0;
     const isTonearmInPlayArea = isTonearmInPlayAreaQuery?.() ?? false;
     const isOnTurntablePage = isOnTurntablePageQuery?.() ?? false;
-    // Only show if player is visible AND not collapsed AND tonearm is in play area AND on turntable page
+    // Only show if video loaded AND player is visible AND not collapsed AND tonearm is in play area AND on turntable page
     if (
+      hasLoadedVideo &&
       isPlayerVisible &&
       !isCollapsed &&
       isTonearmInPlayArea &&
@@ -360,6 +370,7 @@ export function createYouTubePlayer(): YouTubeBridge {
   let fullscreenChangeCallback: ((isFullscreen: boolean) => void) | null = null;
   let isTonearmInPlayAreaQuery: (() => boolean) | null = null;
   let isOnTurntablePageQuery: (() => boolean) | null = null;
+  let hasLoadedVideo = false;
 
   const disablePlayerInteraction = () => {
     const iframe = player?.getIframe?.();
@@ -488,6 +499,7 @@ export function createYouTubePlayer(): YouTubeBridge {
       console.log(`[YouTube] Player exists and ready, cueing video`);
       player.cueVideoById(videoId);
       disablePlayerInteraction();
+      hasLoadedVideo = true;
       return new Promise<void>((resolve) => {
         onVideoLoadedCallback = resolve;
       });
@@ -518,6 +530,7 @@ export function createYouTubePlayer(): YouTubeBridge {
             player!.setPlaybackRate(1);
             disablePlayerInteraction();
             updateVideoMetadata();
+            hasLoadedVideo = true;
             resolve();
           },
           onStateChange: (event: any) => {

@@ -3105,7 +3105,6 @@ const animate = (time: number) => {
   if (!yt.isFullscreen()) {
     const vinylReadyForPlayback =
       ON_TURNTABLE && loadedSelectionVideoId !== null;
-    const shouldForceHidePlayer = !vinylReadyForPlayback;
     const tonearmNowInPlayArea =
       vinylReadyForPlayback &&
       (turntableController?.isTonearmInPlayArea() ?? false);
