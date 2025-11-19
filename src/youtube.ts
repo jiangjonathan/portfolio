@@ -34,6 +34,7 @@ export interface YouTubeBridge {
   isOverlayEnabled(): boolean;
   setControlsVisible(visible: boolean): void;
   onPlaybackProgress(callback: (progress: number) => void): void;
+  onPlaybackEnded(callback: () => void): void;
   getAspectRatio(): number;
   setAspectRatio(aspectRatio: number | null): void;
   setFullscreen(enabled: boolean): void;
@@ -534,6 +535,11 @@ export function createYouTubePlayer(): YouTubeBridge {
           onStateChange: (event: any) => {
             const state = event.data;
             console.log(`[YouTube] Player state changed: ${state}`);
+            const YTState = (window as any).YT?.PlayerState;
+            if (state === YTState?.ENDED) {
+              console.log(`[YouTube] Video ended (state ${state})`);
+              (bridge as any).onPlaybackEndedCallback?.();
+            }
             if (state === 5) {
               console.log(`[YouTube] Video cued (state 5)`);
               updateVideoMetadata();
@@ -1014,6 +1020,9 @@ export function createYouTubePlayer(): YouTubeBridge {
     },
     onPlaybackProgress(callback: (progress: number) => void) {
       (this as any).onPlaybackProgressCallback = callback;
+    },
+    onPlaybackEnded(callback: () => void) {
+      (this as any).onPlaybackEndedCallback = callback;
     },
     getAspectRatio() {
       return DYNAMIC_VIDEO_ASPECT;

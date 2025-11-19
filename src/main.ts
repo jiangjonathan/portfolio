@@ -1699,6 +1699,9 @@ const {
 } = youtubePlayer;
 youtubeBridge = yt;
 yt.setFKeyListenerEnabled(false);
+yt.onPlaybackEnded(() => {
+  turntableController?.notifyPlaybackFinishedExternally();
+});
 
 type VinylSelectionDetail = {
   entryId?: string | null;
@@ -2223,9 +2226,9 @@ yt.onPlaybackProgress(() => {
   const duration = youtubePlayer.getDuration();
   const timeRemaining = duration - currentTime;
 
-  // When video has 2 seconds or less remaining, animate controls and viewport out (only in small mode)
+  // When video has 1 seconds or less remaining, animate controls and viewport out (only in small mode)
   if (!yt.isFullscreen()) {
-    if (timeRemaining <= 2 && !hasStartedFadeOut) {
+    if (timeRemaining <= 1 && !hasStartedFadeOut) {
       hasStartedFadeOut = true;
       // Fade out the controls
       yt.setControlsVisible(false);
@@ -2234,7 +2237,7 @@ yt.onPlaybackProgress(() => {
       if (viewport) {
         viewport.style.height = "0px";
       }
-    } else if (timeRemaining > 2) {
+    } else if (timeRemaining > 1) {
       // Reset the flag if we seek back
       hasStartedFadeOut = false;
     }

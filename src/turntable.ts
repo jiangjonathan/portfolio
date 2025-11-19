@@ -67,6 +67,7 @@ export class TurntableController {
 
   // constants copied from main
   private readonly TONEARM_MIN_YAW = (-33.33 * Math.PI) / 180;
+  private readonly TONEARM_MIN_DRAG_YAW = (-33 * Math.PI) / 180;
   private readonly TONEARM_MAX_YAW = (10 * Math.PI) / 180;
   private readonly TONEARM_PLAY_YAW_THRESHOLD = (-15 * Math.PI) / 180;
   private readonly TONEARM_DRAG_SENSITIVITY = 0.012;
@@ -181,7 +182,7 @@ export class TurntableController {
       const sens = this.TONEARM_DRAG_SENSITIVITY / this.getZoomFactor();
       this.tonearmBaseRotation = clampValue(
         this.tonearmBaseRotation + dx * sens,
-        this.TONEARM_MIN_YAW,
+        this.TONEARM_MIN_DRAG_YAW,
         this.TONEARM_MAX_YAW,
       );
       this.scrubVideoToCurrentYaw();
@@ -273,17 +274,9 @@ export class TurntableController {
           this.tonearmBaseRotation <= this.TONEARM_MIN_YAW + 1e-5 ||
           this.mediaCurrentTime >= this.mediaDuration - 1e-4
         ) {
-          this.autoReturn = true;
-          this.startOn = false;
-          if (this.playingSound) {
-            this.playingSound = false;
-            this.onPause?.();
-          }
+          this.completePlayback();
         }
-      } else if (
-        !this.isDraggingTonearm &&
-        (this.autoReturn || !inPlayableYaw)
-      ) {
+      } else if (!this.isDraggingTonearm && this.autoReturn) {
         this.tonearmBaseRotation +=
           (this.tonearmHomeRotation - this.tonearmBaseRotation) *
           this.TONEARM_RETURN_RATE;
@@ -297,6 +290,15 @@ export class TurntableController {
         ) {
           this.autoReturn = false;
         }
+      } else if (!this.isDraggingTonearm && !inPlayableYaw) {
+        this.tonearmBaseRotation +=
+          (this.tonearmHomeRotation - this.tonearmBaseRotation) *
+          this.TONEARM_RETURN_RATE;
+        this.tonearmBaseRotation = clampValue(
+          this.tonearmBaseRotation,
+          this.TONEARM_MIN_YAW,
+          this.TONEARM_MAX_YAW,
+        );
       }
 
       const wobblePhase = this.tonearmPlayTime * this.TONEARM_WOBBLE_SPEED;
@@ -390,10 +392,26 @@ export class TurntableController {
     }
   }
 
+  notifyPlaybackFinishedExternally() {
+    this.completePlayback();
+  }
+
   returnTonearmHome() {
     this.autoReturn = false;
     this.tonearmBaseRotation = this.tonearmHomeRotation;
     this.setMediaCurrentTime(0, false);
+  }
+
+  private completePlayback() {
+    this.autoReturn = true;
+    this.startOn = false;
+    if (this.mediaDuration > 0) {
+      this.setMediaCurrentTime(this.mediaDuration, false);
+    }
+    if (this.playingSound) {
+      this.playingSound = false;
+      this.onPause?.();
+    }
   }
 
   resetState() {
