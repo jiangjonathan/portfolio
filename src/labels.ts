@@ -22,6 +22,10 @@ const defaultLabelOptions: LabelApplicationOptions = {
   offsetY: 0,
 };
 
+const LABEL_RENDER_ORDER = 420;
+const LABEL_POLYGON_OFFSET_FACTOR = -0.45;
+const LABEL_POLYGON_OFFSET_UNITS = -0.35;
+
 export type LabelVisualOptions = {
   background: string;
   fontFamily: string;
@@ -275,7 +279,14 @@ export function applyLabelTextures(
     entry.material.roughness = 0.55;
     entry.material.metalness = 0.08;
     if ("clearcoat" in entry.material) entry.material.clearcoat = 0;
+    entry.material.polygonOffset = true;
+    entry.material.polygonOffsetFactor = LABEL_POLYGON_OFFSET_FACTOR;
+    entry.material.polygonOffsetUnits = LABEL_POLYGON_OFFSET_UNITS;
     entry.material.needsUpdate = true;
+    entry.mesh.renderOrder = Math.max(
+      entry.mesh.renderOrder ?? 0,
+      LABEL_RENDER_ORDER,
+    );
   });
 }
 

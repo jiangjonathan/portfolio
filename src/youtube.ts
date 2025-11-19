@@ -225,14 +225,17 @@ export function createYouTubePlayer(): YouTubeBridge {
     const isTonearmInPlayArea = isTonearmInPlayAreaQuery?.() ?? false;
     const isPlayerVisible = viewport.clientHeight > 0;
     const isHoveringPlayer = wrapper.matches(":hover");
+    const isOnTurntablePage = isOnTurntablePageQuery?.() ?? false;
     const shouldShowWithControls =
       hasLoadedVideo &&
       controlsAreVisible &&
       !isCollapsed &&
       isTonearmInPlayArea &&
       isPlayerVisible &&
-      isHoveringPlayer;
-    const shouldShowWhileCollapsed = hasLoadedVideo && isCollapsed;
+      isHoveringPlayer &&
+      isOnTurntablePage;
+    const shouldShowWhileCollapsed =
+      hasLoadedVideo && isCollapsed && isOnTurntablePage;
     if (shouldShowWithControls || shouldShowWhileCollapsed) {
       buttonContainer.style.opacity = "1";
       buttonContainer.style.pointerEvents = "auto";

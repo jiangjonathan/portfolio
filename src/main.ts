@@ -3,6 +3,7 @@ import {
   Box3,
   BoxGeometry,
   BufferGeometry,
+  CanvasTexture,
   Color,
   Euler,
   Group,
@@ -565,9 +566,15 @@ const PORTFOLIO_TEXT_ORDER = 300;
 const PORTFOLIO_COVER_KEYS = ["cover"];
 const PORTFOLIO_PAPER_KEYS = ["whitepaper", "backpaper"];
 const PORTFOLIO_TEXT_KEYS = ["text"];
-const PORTFOLIO_COVER_OFFSET = -1.5;
-const PORTFOLIO_PAPER_OFFSET = -0.9;
-const PORTFOLIO_TEXT_OFFSET = -2.2;
+const PORTFOLIO_COVER_OFFSET = -2;
+const PORTFOLIO_COVER_UNITS = -1.2;
+const PORTFOLIO_PAPER_OFFSET = -1;
+const PORTFOLIO_PAPER_UNITS = -0.6;
+const PORTFOLIO_TEXT_OFFSET = -2.8;
+const PORTFOLIO_TEXT_UNITS = -1.6;
+const BUSINESS_CARD_WIDTH = 18;
+const BUSINESS_CARD_HEIGHT = 10;
+const BUSINESS_CARD_THICKNESS = 0.6;
 const CAMERA_TARGETS: Record<TurntablePosition, Vector3> = {
   default: turntableFocusTarget,
   "bottom-center": new Vector3(), // Will be set after heroGroup loads
@@ -614,6 +621,101 @@ const createPlaceholderScenes = () => {
     pageSceneRoots[config.id] = mesh;
     pageCameraSettings[config.id].target.copy(circlePos);
   });
+};
+
+const createBusinessCardTexture = () => {
+  const canvas = document.createElement("canvas");
+  canvas.width = 2048;
+  canvas.height = 1152;
+  const context = canvas.getContext("2d");
+  if (!context) {
+    throw new Error("Failed to acquire canvas context for business card.");
+  }
+
+  context.fillStyle = "#fdf9f3";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+
+  context.strokeStyle = "#ded3ca";
+  context.lineWidth = canvas.height * 0.012;
+  context.beginPath();
+  context.moveTo(canvas.width * 0.08, canvas.height * 0.3);
+  context.lineTo(canvas.width * 0.92, canvas.height * 0.3);
+  context.stroke();
+
+  context.fillStyle = "#221f1c";
+  context.textBaseline = "middle";
+  context.font = `600 ${canvas.height * 0.09}px "Space Grotesk", "Inter", sans-serif`;
+  context.textAlign = "left";
+  context.fillText("123 123 1234", canvas.width * 0.08, canvas.height * 0.18);
+
+  context.textAlign = "center";
+  context.font = `700 ${canvas.height * 0.2}px "Space Grotesk", "Inter", sans-serif`;
+  context.fillText("Jonathan JIANG", canvas.width / 2, canvas.height * 0.54);
+
+  context.font = `500 ${canvas.height * 0.09}px "Space Grotesk", "Inter", sans-serif`;
+  context.fillText(
+    "jonathanrsjiang@icloud.com",
+    canvas.width / 2,
+    canvas.height * 0.82,
+  );
+
+  const texture = new CanvasTexture(canvas);
+  texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  texture.needsUpdate = true;
+  return texture;
+};
+
+const createBusinessCardScene = () => {
+  const geometry = new BoxGeometry(
+    BUSINESS_CARD_WIDTH,
+    BUSINESS_CARD_HEIGHT,
+    BUSINESS_CARD_THICKNESS,
+  );
+  const frontTexture = createBusinessCardTexture();
+  const faceMaterial = new MeshStandardMaterial({
+    map: frontTexture,
+    color: 0xffffff,
+    roughness: 0.38,
+    metalness: 0.08,
+  });
+  faceMaterial.polygonOffset = true;
+  faceMaterial.polygonOffsetFactor = -0.6;
+  faceMaterial.polygonOffsetUnits = -0.6;
+
+  const backMaterial = new MeshStandardMaterial({
+    color: 0xf5f0ea,
+    roughness: 0.55,
+    metalness: 0.04,
+  });
+  const edgeMaterial = new MeshStandardMaterial({
+    color: 0xe6ddd4,
+    roughness: 0.65,
+    metalness: 0.03,
+  });
+
+  const materials = [
+    edgeMaterial.clone(),
+    edgeMaterial.clone(),
+    edgeMaterial.clone(),
+    edgeMaterial.clone(),
+    faceMaterial,
+    backMaterial,
+  ];
+
+  const cardMesh = new Mesh(geometry, materials);
+  cardMesh.castShadow = true;
+  cardMesh.receiveShadow = true;
+  cardMesh.name = BUSINESS_CARD_PAGE;
+
+  const circlePos = getHeroCirclePosition(BUSINESS_CARD_PAGE);
+  cardMesh.position.copy(circlePos);
+  cardMesh.rotation.y = Math.PI * 0.32;
+  cardMesh.rotation.x = Math.PI * -0.08;
+
+  heroGroup.add(cardMesh);
+  registerHomePageTarget(cardMesh, BUSINESS_CARD_PAGE);
+  pageSceneRoots[BUSINESS_CARD_PAGE] = cardMesh;
+  pageCameraSettings.business_card.target.copy(circlePos);
 };
 const baseTurntableCameraPosition = new Vector3();
 const RAD2DEG = 180 / Math.PI;
@@ -809,10 +911,12 @@ type ScenePage =
   | "home"
   | "turntable"
   | "portfolio"
+  | "business_card"
   | "placeholder_A"
   | "placeholder_B";
 
 const TURNTABLE_PAGE = "turntable";
+const BUSINESS_CARD_PAGE = "business_card";
 type PageCameraSettings = {
   target: Vector3;
   yaw: number;
@@ -875,6 +979,7 @@ const HERO_LAYOUT_START_ANGLE = Math.PI / 8;
 const HERO_LAYOUT_PAGES: Array<string> = [
   TURNTABLE_PAGE,
   ...PORTFOLIO_SCENE_CONFIGS.map((config) => config.id),
+  BUSINESS_CARD_PAGE,
   ...PLACEHOLDER_SCENES.map((config) => config.id),
 ];
 const getHeroCirclePosition = (pageId: string) => {
@@ -909,6 +1014,12 @@ const pageCameraSettings: Record<ScenePage, PageCameraSettings> = {
     yaw: PORTFOLIO_CAMERA_YAW,
     pitch: PORTFOLIO_CAMERA_PITCH,
     zoom: PORTFOLIO_CAMERA_ZOOM,
+  },
+  business_card: {
+    target: getHeroCirclePosition(BUSINESS_CARD_PAGE),
+    yaw: -24,
+    pitch: 32,
+    zoom: 1.8,
   },
   placeholder_A: {
     target: getHeroCirclePosition("placeholder_A"),
@@ -1018,14 +1129,14 @@ const prioritizePortfolioCoverRendering = (model: Object3D) => {
         mesh,
         PORTFOLIO_TEXT_ORDER,
         PORTFOLIO_TEXT_OFFSET,
-        0,
+        PORTFOLIO_TEXT_UNITS,
       );
     } else if (PORTFOLIO_COVER_KEYS.some((key) => name.includes(key))) {
       setMeshRenderPriority(
         mesh,
         PORTFOLIO_COVER_ORDER,
         PORTFOLIO_COVER_OFFSET,
-        0,
+        PORTFOLIO_COVER_UNITS,
       );
       // Store reference to cover mesh for animation
       portfolioCoverMesh = mesh;
@@ -1040,7 +1151,7 @@ const prioritizePortfolioCoverRendering = (model: Object3D) => {
         mesh,
         PORTFOLIO_PAPER_ORDER,
         PORTFOLIO_PAPER_OFFSET,
-        0,
+        PORTFOLIO_PAPER_UNITS,
       );
     }
   });
@@ -1916,7 +2027,7 @@ function prepareFocusVinylPresentation(model: Object3D, token: number) {
     if (token === focusVinylLoadToken && focusVinylState?.model === model) {
       updateFocusVinylVisibility();
     }
-  }, 700);
+  }, 800);
 
   setTimeout(() => {
     if (token === focusVinylLoadToken && focusVinylState?.model === model) {
@@ -2867,6 +2978,7 @@ loadTurntableModel()
   });
 
 createPlaceholderScenes();
+createBusinessCardScene();
 loadPortfolioModel()
   .then((portfolioModel) => {
     portfolioModel.visible = true;

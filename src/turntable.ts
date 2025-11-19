@@ -536,8 +536,12 @@ const applyPriorityToMaterials = (material: Material | Material[]) => {
   const targetMaterials = Array.isArray(material) ? material : [material];
   targetMaterials.forEach((mat) => {
     if (!mat) return;
-    mat.depthTest = false;
-    mat.depthWrite = true;
+    mat.depthTest = true;
+    mat.depthWrite = false;
+    mat.polygonOffset = true;
+    mat.polygonOffsetFactor = -0.5;
+    mat.polygonOffsetUnits = -0.5;
+    mat.needsUpdate = true;
   });
 };
 

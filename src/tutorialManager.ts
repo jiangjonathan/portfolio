@@ -57,7 +57,7 @@ export class TutorialManager {
       },
       {
         action: "click-album-cover" as TutorialAction,
-        text: "click on the album cover of the focused song to open the vinyl",
+        text: "click the album cover of the focused song to open the vinyl",
       },
       {
         action: "drag-vinyl" as TutorialAction,
@@ -69,7 +69,7 @@ export class TutorialManager {
       },
       {
         action: "drag-tonearm" as TutorialAction,
-        text: "drag the tonearm onto the vinyl to start playing / scrub",
+        text: "drag the tonearm onto the vinyl to start playing / scrub media",
       },
       {
         action: "toggle-fullscreen" as TutorialAction,
