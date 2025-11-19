@@ -1,9 +1,7 @@
 import "./style.css";
 import {
   Box3,
-  BoxGeometry,
   BufferGeometry,
-  CanvasTexture,
   Color,
   Euler,
   Group,
@@ -11,12 +9,10 @@ import {
   LineBasicMaterial,
   Material,
   Mesh,
-  MeshStandardMaterial,
   Object3D,
   Plane,
   Quaternion,
   Raycaster,
-  SphereGeometry,
   Vector2,
   Vector3,
 } from "three";
@@ -48,12 +44,6 @@ import { updatePointer } from "./utils";
 import {
   CAMERA_ORBIT_SENSITIVITY,
   PAN_SENSITIVITY,
-  UI_MAX_WIDTH,
-  UI_Z_INDEX,
-  VIEWER_MAX_WIDTH,
-  HIDE_BUTTON_Z_INDEX,
-  LINK_COLOR,
-  LINK_HOVER_COLOR,
   FALLBACK_BACKGROUND_COLOR,
 } from "./config";
 import {
@@ -68,147 +58,89 @@ import { initializeCache } from "./albumCoverCache";
 import type { VideoMetadata } from "./youtube";
 import { TutorialManager } from "./tutorialManager";
 
+// New modular imports
+import {
+  directionFromAngles,
+  lerpAngleDegrees,
+  cloneCameraSettings,
+  applyPageCameraSettings,
+  captureCameraState,
+  findPageForObject,
+  calculateYawToFacePosition,
+  HOME_CAMERA_YAW,
+  HOME_CAMERA_PITCH,
+  HOME_CAMERA_ZOOM,
+  PORTFOLIO_CAMERA_YAW,
+  PORTFOLIO_CAMERA_PITCH,
+  PORTFOLIO_CAMERA_ZOOM,
+  PORTFOLIO_TOP_CAMERA_PITCH,
+  PLACEHOLDER_CAMERA_YAW,
+  PLACEHOLDER_CAMERA_PITCH,
+  PLACEHOLDER_CAMERA_ZOOM,
+  TURNTABLE_CAMERA_YAW,
+  TURNTABLE_CAMERA_PITCH,
+  TURNTABLE_CAMERA_ZOOM,
+  HOME_FRAME_OFFSET,
+  type ScenePage,
+  type PageCameraSettings,
+} from "./pageNavigation";
+import {
+  createBusinessCardMesh,
+  createPlaceholderMesh,
+  prioritizePortfolioCoverRendering,
+  BUSINESS_CARD_PAGE,
+  PLACEHOLDER_SCENES,
+  PORTFOLIO_CAMERA_TARGET_OFFSET,
+} from "./sceneObjects";
+import { createBusinessCardAnimation } from "./businessCardAnimation";
+import {
+  getFocusVinylScale,
+  applyFocusVinylScale,
+  cloneLabelVisuals,
+  getSelectionCoverUrl,
+  applyLabelTextureQuality,
+} from "./vinylHelpers";
+import {
+  VINYL_DRAG_THRESHOLD,
+  FOCUS_VINYL_CLICK_ANIMATION_SPEED,
+  type VinylSource,
+  type VinylSelectionDetail,
+  type FocusVinylState,
+  type TurntableVinylState,
+} from "./vinylInteractions";
+import { TurntableStateManager } from "./turntableState";
+import { setupDOM } from "./domSetup";
+
 declare global {
   interface Window {
     PLAYING_SOUND: boolean;
   }
 }
 
-const root = document.getElementById("app");
-
-if (!root) {
-  throw new Error("Missing #app container.");
-}
-
-root.innerHTML = "";
+// Setup DOM and get element references
+const dom = setupDOM();
+const {
+  root,
+  canvas,
+  vinylLibraryContainer,
+  tutorialContainer,
+  vinylViewerContainer,
+  hideLibraryBtn,
+  focusCardCoverContainer,
+  focusCardInfoContainer,
+  showFocusBtn,
+  homeOverlay,
+  homeNavButton,
+  portfolioNavButton,
+  resetTutorialButton,
+  cameraDebugPanel,
+} = dom;
 
 // Initialize IndexedDB cache for album covers
 initializeCache().catch((error) => {
   console.error("Failed to initialize album cover cache:", error);
   // Continue even if cache initialization fails
 });
-
-// Create container for vinyl library widget (form) - moved to bottom left
-const vinylLibraryContainer = document.createElement("div");
-vinylLibraryContainer.id = "vinyl-library-widget";
-vinylLibraryContainer.style.cssText = `
-  position: fixed;
-  bottom: 20px;
-  left: 20px;
-  max-width: ${UI_MAX_WIDTH};
-  z-index: ${UI_Z_INDEX};
-  overflow: visible;
-`;
-root.appendChild(vinylLibraryContainer);
-
-// Create tutorial container (appears above the + sign)
-const tutorialContainer = document.createElement("div");
-tutorialContainer.id = "vinyl-tutorial";
-tutorialContainer.style.cssText = `
-  position: fixed;
-  bottom: 250px;
-  left: 20px;
-  max-width: 350px;
-  z-index: ${UI_Z_INDEX};
-  background: transparent;
-  padding: 0;
-  border: none;
-  font-size: 0.85rem;
-  line-height: 1.6;
-  display: none;
-  opacity: 0;
-  transition: opacity 0.45s ease;
-  pointer-events: none;
-`;
-root.appendChild(tutorialContainer);
-
-// Create container for vinyl library viewer (grid)
-const vinylViewerContainer = document.createElement("div");
-vinylViewerContainer.id = "vinyl-library-viewer";
-vinylViewerContainer.style.cssText = `
-  position: fixed;
-  top: 0;
-  right: -20px;
-  bottom: 0;
-  max-width: ${VIEWER_MAX_WIDTH};
-  z-index: ${UI_Z_INDEX};
-  overflow-y: auto;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-  transition: opacity 0.45s ease, transform 0.45s ease;
-  opacity: 0;
-  transform: translateY(8px);
-  padding: 20px 40px 20px 20px;
-`;
-vinylViewerContainer.style.pointerEvents = "none";
-
-// Create hide/show library button (positioned outside the viewer container)
-const hideLibraryBtn = document.createElement("button");
-hideLibraryBtn.id = "vinyl-hide-library-btn";
-hideLibraryBtn.className = "vinyl-hyperlink";
-hideLibraryBtn.textContent = "hide library";
-hideLibraryBtn.style.cssText = `
-  position: fixed;
-  bottom: 20px;
-  right: 20px;
-  z-index: ${HIDE_BUTTON_Z_INDEX};
-  transition: opacity 0.3s ease, transform 0.3s ease;
-  opacity: 1;
-`;
-hideLibraryBtn.addEventListener("click", () => {
-  const libraryGrid = document.getElementById("vinyl-viewer-grid");
-  const filterControls = document.querySelector(".filter-controls");
-
-  if (!libraryGrid) return;
-
-  const isHidden = libraryGrid.style.opacity === "0";
-  if (isHidden) {
-    // Fade in
-    libraryGrid.style.display = "";
-    if (filterControls) (filterControls as HTMLElement).style.display = "";
-
-    requestAnimationFrame(() => {
-      libraryGrid.style.transition = "opacity 0.3s ease";
-      libraryGrid.style.opacity = "1";
-      if (filterControls) {
-        (filterControls as HTMLElement).style.transition = "opacity 0.3s ease";
-        (filterControls as HTMLElement).style.opacity = "1";
-      }
-    });
-
-    hideLibraryBtn.textContent = "hide library";
-  } else {
-    // Fade out
-    libraryGrid.style.transition = "opacity 0.3s ease";
-    libraryGrid.style.opacity = "0";
-    if (filterControls) {
-      (filterControls as HTMLElement).style.transition = "opacity 0.3s ease";
-      (filterControls as HTMLElement).style.opacity = "0";
-    }
-
-    setTimeout(() => {
-      libraryGrid.style.display = "none";
-      if (filterControls)
-        (filterControls as HTMLElement).style.display = "none";
-    }, 300);
-
-    hideLibraryBtn.textContent = "show library";
-  }
-});
-root.appendChild(hideLibraryBtn);
-
-// Create focus card container (outside vinyl-library-viewer to avoid overflow clipping in Safari)
-const focusCardCoverContainer = document.createElement("div");
-focusCardCoverContainer.id = "vinyl-focus-card-cover-root";
-focusCardCoverContainer.className =
-  "focus-card-container focus-card-cover-container";
-root.appendChild(focusCardCoverContainer);
-
-const focusCardInfoContainer = document.createElement("div");
-focusCardInfoContainer.id = "vinyl-focus-card-info-root";
-focusCardInfoContainer.className =
-  "focus-card-container focus-card-info-container";
-root.appendChild(focusCardInfoContainer);
 
 const vinylUIReadyState = {
   tutorial: false,
@@ -241,310 +173,10 @@ const markVinylUIReady = (key: "tutorial" | "viewer") => {
 
 const focusCardContainers = [focusCardCoverContainer, focusCardInfoContainer];
 
-// Create show focus button (positioned next to hide library button)
-const showFocusBtn = document.createElement("button");
-showFocusBtn.id = "vinyl-show-focus-btn";
-showFocusBtn.className = "vinyl-hyperlink";
-showFocusBtn.textContent = "show focus";
-showFocusBtn.style.cssText = `
-  position: fixed;
-  bottom: 20px;
-  right: 110px;
-  z-index: ${HIDE_BUTTON_Z_INDEX};
-  transition: opacity 0.3s ease, transform 0.3s ease;
-  opacity: 1;
-  display: none;
-`;
-showFocusBtn.addEventListener("click", () => {
-  const viewer = (window as any).vinylLibraryViewer;
-  if (viewer) {
-    viewer.showFocusCard();
-  }
-});
-root.appendChild(showFocusBtn);
-
-// Hide scrollbar for webkit browsers and add global hyperlink button styles
-const style = document.createElement("style");
-style.textContent = `
-  #vinyl-library-viewer::-webkit-scrollbar {
-    display: none;
-  }
-
-  /* Centralized hyperlink button styling */
-  :root {
-    --vinyl-link-color: ${LINK_COLOR};
-    --vinyl-link-hover-color: ${LINK_HOVER_COLOR};
-    --vinyl-link-font-size: 0.85rem;
-    --vinyl-link-text-shadow: 0.2px 0 0 rgba(255, 0, 0, 0.5), -0.2px 0 0 rgba(0, 100, 200, 0.5);
-  }
-
-  .vinyl-hyperlink {
-    padding: 0;
-    background: transparent;
-    color: var(--vinyl-link-color);
-    border: none;
-    border-radius: 0;
-    font-weight: normal;
-    cursor: pointer;
-    font-size: var(--vinyl-link-font-size);
-    transition: color 0.15s;
-    letter-spacing: 0;
-    text-transform: none;
-    text-decoration: underline;
-    font-family: inherit;
-    -webkit-font-smoothing: none;
-    -moz-osx-font-smoothing: grayscale;
-    text-shadow: var(--vinyl-link-text-shadow);
-  }
-
-  .vinyl-hyperlink:hover {
-    background: transparent;
-    color: var(--vinyl-link-hover-color);
-  }
-
-  .vinyl-hyperlink:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  #global-controls button {
-    padding: 8px 16px;
-    background: rgba(0, 0, 0, 0.7);
-    color: #fff;
-    border: 1px solid #666;
-    border-radius: 4px;
-    cursor: pointer;
-    font-family: inherit;
-    font-size: 14px;
-    transition: background 0.15s;
-    -webkit-font-smoothing: none;
-    -moz-osx-font-smoothing: grayscale;
-  }
-
-  #global-controls button:hover {
-    background: rgba(0, 0, 0, 0.9);
-  }
-
-  #vinyl-position-controls {
-    position: fixed;
-    right: 50%;
-    top: 50%;
-    transform: translate(50%, -50%);
-    background: rgba(0, 0, 0, 0.8);
-    padding: 20px;
-    border: 1px solid #666;
-    border-radius: 8px;
-    z-index: 1000;
-    color: #fff;
-    font-family: monospace;
-    font-size: 14px;
-    min-width: 250px;
-  }
-
-  #vinyl-position-controls h3 {
-    margin: 0 0 15px 0;
-    font-size: 16px;
-    text-align: center;
-    border-bottom: 1px solid #666;
-    padding-bottom: 10px;
-    cursor: move;
-    user-select: none;
-  }
-
-  #vinyl-position-controls .control-row {
-    margin-bottom: 15px;
-  }
-
-  #vinyl-position-controls label {
-    display: block;
-    margin-bottom: 5px;
-    font-size: 12px;
-    color: #aaa;
-  }
-
-  #vinyl-position-controls input[type="number"] {
-    width: 100%;
-    padding: 6px;
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid #666;
-    border-radius: 4px;
-    color: #0f0;
-    font-family: monospace;
-    font-size: 13px;
-  }
-
-  #vinyl-position-controls input[type="number"]:focus {
-    outline: none;
-    border-color: #0f0;
-    background: rgba(255, 255, 255, 0.15);
-  }
-
-  #vinyl-position-controls button {
-    width: 100%;
-    padding: 8px;
-    margin-top: 10px;
-    background: rgba(255, 0, 0, 0.7);
-    color: #fff;
-    border: 1px solid #f00;
-    border-radius: 4px;
-    cursor: pointer;
-    font-family: monospace;
-    transition: background 0.15s;
-  }
-
-  #vinyl-position-controls button:hover {
-    background: rgba(255, 0, 0, 0.9);
-  }
-`;
-document.head.appendChild(style);
-root.appendChild(vinylViewerContainer);
-
-// Create vinyl position controls (temporary)
-// const vinylPositionControls = document.createElement("div");
-// vinylPositionControls.id = "vinyl-position-controls";
-// vinylPositionControls.innerHTML = `
-//   <h3>Vinyl Position Controls</h3>
-//   <div class="control-row">
-//     <label>X Position</label>
-//     <input type="number" id="vinyl-x" value="0" step="0.1">
-//   </div>
-//   <div class="control-row">
-//     <label>Y Position</label>
-//     <input type="number" id="vinyl-y" value="0" step="0.1">
-//   </div>
-//   <div class="control-row">
-//     <label>Z Position</label>
-//     <input type="number" id="vinyl-z" value="0" step="0.1">
-//   </div>
-//   <div class="control-row">
-//     <label>Scale</label>
-//     <input type="number" id="vinyl-scale" value="1" step="0.01" min="0.01">
-//   </div>
-//   <div class="control-row">
-//     <label>Camera Azimuth (degrees)</label>
-//     <input type="number" id="camera-azimuth" value="0" step="1">
-//   </div>
-//   <div class="control-row">
-//     <label>Camera Polar (degrees)</label>
-//     <input type="number" id="camera-polar" value="45" step="1" min="0" max="90">
-//   </div>
-//   <button id="vinyl-reset-position">Reset All</button>
-// `;
-// root.appendChild(vinylPositionControls);
-
 // Vinyl position offset (added to the calculated position)
 const vinylPositionOffset = new Vector3(0, 0, 0);
 const vinylDisplayPosition = new Vector3();
 let vinylScaleFactor = 1.0;
-
-// Add event listeners for position controls
-// const vinylXInput = document.getElementById("vinyl-x") as HTMLInputElement;
-// const vinylYInput = document.getElementById("vinyl-y") as HTMLInputElement;
-// const vinylZInput = document.getElementById("vinyl-z") as HTMLInputElement;
-// const vinylScaleInput = document.getElementById(
-//   "vinyl-scale",
-// ) as HTMLInputElement;
-// const cameraAzimuthInput = document.getElementById(
-//   "camera-azimuth",
-// ) as HTMLInputElement;
-// const cameraPolarInput = document.getElementById(
-//   "camera-polar",
-// ) as HTMLInputElement;
-// const vinylResetBtn = document.getElementById("vinyl-reset-position");
-
-// vinylXInput.addEventListener("input", () => {
-//   vinylPositionOffset.x = parseFloat(vinylXInput.value) || 0;
-// });
-
-// vinylYInput.addEventListener("input", () => {
-//   vinylPositionOffset.y = parseFloat(vinylYInput.value) || 0;
-// });
-
-// vinylZInput.addEventListener("input", () => {
-//   vinylPositionOffset.z = parseFloat(vinylZInput.value) || 0;
-// });
-
-// vinylScaleInput.addEventListener("input", () => {
-//   vinylScaleFactor = parseFloat(vinylScaleInput.value) || 1;
-// });
-
-// cameraAzimuthInput.addEventListener("input", () => {
-//   const azimuthDeg = parseFloat(cameraAzimuthInput.value) || 0;
-//   const polarDeg = parseFloat(cameraPolarInput.value) || 45;
-//   const azimuthRad = (azimuthDeg * Math.PI) / 180;
-//   const polarRad = (polarDeg * Math.PI) / 180;
-
-//   const direction = new Vector3(
-//     Math.sin(azimuthRad) * Math.cos(polarRad),
-//     Math.sin(polarRad),
-//     Math.cos(azimuthRad) * Math.cos(polarRad),
-//   );
-//   cameraRig.setViewDirection(direction);
-// });
-
-// cameraPolarInput.addEventListener("input", () => {
-//   const azimuthDeg = parseFloat(cameraAzimuthInput.value) || 0;
-//   const polarDeg = parseFloat(cameraPolarInput.value) || 45;
-//   const azimuthRad = (azimuthDeg * Math.PI) / 180;
-//   const polarRad = (polarDeg * Math.PI) / 180;
-
-//   const direction = new Vector3(
-//     Math.sin(azimuthRad) * Math.cos(polarRad),
-//     Math.sin(polarRad),
-//     Math.cos(azimuthRad) * Math.cos(polarRad),
-//   );
-//   cameraRig.setViewDirection(direction);
-// });
-
-// vinylResetBtn?.addEventListener("click", () => {
-//   vinylPositionOffset.set(0, 0, 0);
-//   vinylScaleFactor = 1.0;
-//   vinylXInput.value = "0";
-//   vinylYInput.value = "0";
-//   vinylZInput.value = "0";
-//   vinylScaleInput.value = "1";
-//   cameraAzimuthInput.value = "0";
-//   cameraPolarInput.value = "45";
-
-//   // Reset camera to default view
-//   const direction = new Vector3(
-//     0,
-//     Math.sin((45 * Math.PI) / 180),
-//     Math.cos((45 * Math.PI) / 180),
-//   );
-//   cameraRig.setViewDirection(direction);
-// });
-
-// Make vinyl position controls draggable
-// const vinylControlsHeader = vinylPositionControls.querySelector("h3");
-// let isDraggingControls = false;
-// let controlsDragOffsetX = 0;
-// let controlsDragOffsetY = 0;
-
-// vinylControlsHeader?.addEventListener("mousedown", (e) => {
-//   isDraggingControls = true;
-//   const rect = vinylPositionControls.getBoundingClientRect();
-//   controlsDragOffsetX = e.clientX - rect.left;
-//   controlsDragOffsetY = e.clientY - rect.top;
-//   vinylPositionControls.style.transition = "none";
-// });
-
-// document.addEventListener("mousemove", (e) => {
-//   if (!isDraggingControls) return;
-
-//   const x = e.clientX - controlsDragOffsetX;
-//   const y = e.clientY - controlsDragOffsetY;
-
-//   vinylPositionControls.style.right = "auto";
-//   vinylPositionControls.style.top = "auto";
-//   vinylPositionControls.style.left = `${x}px`;
-//   vinylPositionControls.style.top = `${y}px`;
-//   vinylPositionControls.style.transform = "none";
-// });
-
-// document.addEventListener("mouseup", () => {
-//   isDraggingControls = false;
-// });
 
 // Turntable position cycling (camera view)
 type TurntablePosition =
@@ -559,22 +191,7 @@ let vinylCameraTrackingEnabled = false;
 // Will be initialized after heroGroup is loaded based on bounding box center
 let defaultCameraTarget = new Vector3(0, 0, 0);
 const turntableFocusTarget = new Vector3(0, 0.15, 0);
-const PORTFOLIO_CAMERA_TARGET_OFFSET = new Vector3(0, 12, 0);
-const PORTFOLIO_COVER_ORDER = 250;
-const PORTFOLIO_PAPER_ORDER = 200;
-const PORTFOLIO_TEXT_ORDER = 300;
-const PORTFOLIO_COVER_KEYS = ["cover"];
-const PORTFOLIO_PAPER_KEYS = ["whitepaper", "backpaper"];
-const PORTFOLIO_TEXT_KEYS = ["text"];
-const PORTFOLIO_COVER_OFFSET = -2;
-const PORTFOLIO_COVER_UNITS = -1.2;
-const PORTFOLIO_PAPER_OFFSET = -1;
-const PORTFOLIO_PAPER_UNITS = -0.6;
-const PORTFOLIO_TEXT_OFFSET = -2.8;
-const PORTFOLIO_TEXT_UNITS = -1.6;
-const BUSINESS_CARD_WIDTH = 18;
-const BUSINESS_CARD_HEIGHT = 10;
-const BUSINESS_CARD_THICKNESS = 0.6;
+// PORTFOLIO_* and BUSINESS_CARD_* constants now imported from sceneObjects.ts
 const CAMERA_TARGETS: Record<TurntablePosition, Vector3> = {
   default: turntableFocusTarget,
   "bottom-center": new Vector3(), // Will be set after heroGroup loads
@@ -582,9 +199,7 @@ const CAMERA_TARGETS: Record<TurntablePosition, Vector3> = {
   fullscreen: new Vector3(), // Will be set after heroGroup loads
 };
 
-const canvas = document.createElement("canvas");
-canvas.id = "vinyl-viewer";
-root.appendChild(canvas);
+// Canvas is now created by setupDOM()
 
 const renderer = createRenderer(canvas);
 const scene = createScene();
@@ -606,15 +221,8 @@ const loadPortfolioModel = (): Promise<Object3D> =>
 
 const createPlaceholderScenes = () => {
   PLACEHOLDER_SCENES.forEach((config) => {
-    const geometry =
-      config.geometry === "box"
-        ? new BoxGeometry(PLACEHOLDER_SIZE, PLACEHOLDER_SIZE, PLACEHOLDER_SIZE)
-        : new SphereGeometry(PLACEHOLDER_SIZE / 2, 32, 16);
-    const material = new MeshStandardMaterial({ color: config.color });
-    const mesh = new Mesh(geometry, material);
     const circlePos = getHeroCirclePosition(config.id);
-    mesh.position.copy(circlePos);
-    mesh.name = config.id;
+    const mesh = createPlaceholderMesh(config, circlePos);
     heroGroup.add(mesh);
     placeholderMeshes[config.id] = mesh;
     registerHomePageTarget(mesh, config.id);
@@ -623,100 +231,17 @@ const createPlaceholderScenes = () => {
   });
 };
 
-const createBusinessCardTexture = () => {
-  const canvas = document.createElement("canvas");
-  canvas.width = 2048;
-  canvas.height = 1152;
-  const context = canvas.getContext("2d");
-  if (!context) {
-    throw new Error("Failed to acquire canvas context for business card.");
-  }
-
-  context.fillStyle = "#fdf9f3";
-  context.fillRect(0, 0, canvas.width, canvas.height);
-
-  context.strokeStyle = "#ded3ca";
-  context.lineWidth = canvas.height * 0.012;
-  context.beginPath();
-  context.moveTo(canvas.width * 0.08, canvas.height * 0.3);
-  context.lineTo(canvas.width * 0.92, canvas.height * 0.3);
-  context.stroke();
-
-  context.fillStyle = "#221f1c";
-  context.textBaseline = "middle";
-  context.font = `600 ${canvas.height * 0.09}px "Space Grotesk", "Inter", sans-serif`;
-  context.textAlign = "left";
-  context.fillText("123 123 1234", canvas.width * 0.08, canvas.height * 0.18);
-
-  context.textAlign = "center";
-  context.font = `700 ${canvas.height * 0.2}px "Space Grotesk", "Inter", sans-serif`;
-  context.fillText("Jonathan JIANG", canvas.width / 2, canvas.height * 0.54);
-
-  context.font = `500 ${canvas.height * 0.09}px "Space Grotesk", "Inter", sans-serif`;
-  context.fillText(
-    "jonathanrsjiang@icloud.com",
-    canvas.width / 2,
-    canvas.height * 0.82,
-  );
-
-  const texture = new CanvasTexture(canvas);
-  texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
-  texture.needsUpdate = true;
-  return texture;
-};
+// createBusinessCardTexture and createBusinessCardScene now use functions from sceneObjects.ts
 
 const createBusinessCardScene = () => {
-  const geometry = new BoxGeometry(
-    BUSINESS_CARD_WIDTH,
-    BUSINESS_CARD_HEIGHT,
-    BUSINESS_CARD_THICKNESS,
-  );
-  const frontTexture = createBusinessCardTexture();
-  const faceMaterial = new MeshStandardMaterial({
-    map: frontTexture,
-    color: 0xffffff,
-    roughness: 0.38,
-    metalness: 0.08,
-  });
-  faceMaterial.polygonOffset = true;
-  faceMaterial.polygonOffsetFactor = -0.6;
-  faceMaterial.polygonOffsetUnits = -0.6;
-
-  const backMaterial = new MeshStandardMaterial({
-    color: 0xf5f0ea,
-    roughness: 0.55,
-    metalness: 0.04,
-  });
-  const edgeMaterial = new MeshStandardMaterial({
-    color: 0xe6ddd4,
-    roughness: 0.65,
-    metalness: 0.03,
-  });
-
-  const materials = [
-    edgeMaterial.clone(),
-    edgeMaterial.clone(),
-    edgeMaterial.clone(),
-    edgeMaterial.clone(),
-    faceMaterial,
-    backMaterial,
-  ];
-
-  const cardMesh = new Mesh(geometry, materials);
-  cardMesh.castShadow = true;
-  cardMesh.receiveShadow = true;
-  cardMesh.name = BUSINESS_CARD_PAGE;
-
   const circlePos = getHeroCirclePosition(BUSINESS_CARD_PAGE);
-  cardMesh.position.copy(circlePos);
-  cardMesh.rotation.y = Math.PI * 0.32;
-  cardMesh.rotation.x = Math.PI * -0.08;
-
+  const cardMesh = createBusinessCardMesh(renderer, circlePos);
   heroGroup.add(cardMesh);
   registerHomePageTarget(cardMesh, BUSINESS_CARD_PAGE);
   pageSceneRoots[BUSINESS_CARD_PAGE] = cardMesh;
   pageCameraSettings.business_card.target.copy(circlePos);
 };
+
 const baseTurntableCameraPosition = new Vector3();
 const RAD2DEG = 180 / Math.PI;
 const DEG2RAD = Math.PI / 180;
@@ -782,7 +307,7 @@ const createNumberInputControl = (
   return { control, input, unit };
 };
 
-const cameraDebugPanel = document.createElement("div");
+// cameraDebugPanel is now created by setupDOM()
 cameraDebugPanel.id = "camera-debug-panel";
 Object.assign(cameraDebugPanel.style, {
   position: "fixed",
@@ -855,7 +380,7 @@ const applyCameraStyleInputs = () => {
   if (Number.isFinite(zoomVal)) {
     cameraRig.setZoomFactor(zoomVal);
   }
-  pageCameraSettings[activePage] = captureCameraState();
+  pageCameraSettings[activePage] = captureCameraState(cameraRig);
 };
 
 const applyCameraPositionInputs = () => {
@@ -874,7 +399,7 @@ const applyCameraPositionInputs = () => {
   const distance = offset.length();
   cameraRig.setViewDirection(offset.normalize());
   cameraRig.setCameraDistance(distance);
-  pageCameraSettings[activePage] = captureCameraState();
+  pageCameraSettings[activePage] = captureCameraState(cameraRig);
 };
 
 const cameraStyleInputs = [
@@ -907,55 +432,18 @@ cameraDebugPanel.append(
 );
 root.appendChild(cameraDebugPanel);
 
-type ScenePage =
-  | "home"
-  | "turntable"
-  | "portfolio"
-  | "business_card"
-  | "placeholder_A"
-  | "placeholder_B";
+// Types and constants now imported from pageNavigation.ts and sceneObjects.ts
 
 const TURNTABLE_PAGE = "turntable";
-const BUSINESS_CARD_PAGE = "business_card";
-type PageCameraSettings = {
-  target: Vector3;
-  yaw: number;
-  pitch: number;
-  zoom: number;
-};
-const HOME_CAMERA_YAW = -28;
-const HOME_CAMERA_PITCH = 32;
-const HOME_CAMERA_ZOOM = 1;
-const PORTFOLIO_CAMERA_YAW = -58;
-const PORTFOLIO_CAMERA_PITCH = 30;
-const PORTFOLIO_CAMERA_ZOOM = 4.0;
-const PORTFOLIO_TOP_CAMERA_PITCH = 88.88;
-const PLACEHOLDER_CAMERA_YAW = 0;
-const PLACEHOLDER_CAMERA_PITCH = 45;
-const PLACEHOLDER_CAMERA_ZOOM = 1.4;
-
-const TURNTABLE_CAMERA_YAW = 0;
-const TURNTABLE_CAMERA_PITCH = 45;
-const TURNTABLE_CAMERA_ZOOM = 1.6;
-const HOME_FRAME_OFFSET = 2;
-
-const PLACEHOLDER_SCENES = [
-  {
-    id: "placeholder_A",
-    geometry: "box" as const,
-    color: 0xff2d2d,
-    position: new Vector3(-45, -5, -40),
-  },
-  {
-    id: "placeholder_B",
-    geometry: "sphere" as const,
-    color: 0x2454ff,
-    position: new Vector3(-30, -5, -60),
-  },
-] as const;
-const PLACEHOLDER_SIZE = 10;
+// PLACEHOLDER_SIZE now in sceneObjects.ts
 const placeholderMeshes: Record<string, Mesh> = {};
 const pageSceneRoots: Record<string, Object3D> = {};
+
+const businessCardAnimation = createBusinessCardAnimation({
+  root,
+  getBusinessCardMesh: () =>
+    (pageSceneRoots[BUSINESS_CARD_PAGE] as Object3D) ?? null,
+});
 
 type PortfolioSceneConfig = {
   id: "portfolio";
@@ -1015,12 +503,15 @@ const pageCameraSettings: Record<ScenePage, PageCameraSettings> = {
     pitch: PORTFOLIO_CAMERA_PITCH,
     zoom: PORTFOLIO_CAMERA_ZOOM,
   },
-  business_card: {
-    target: getHeroCirclePosition(BUSINESS_CARD_PAGE),
-    yaw: -24,
-    pitch: 32,
-    zoom: 1.8,
-  },
+  business_card: (() => {
+    const cardPos = getHeroCirclePosition(BUSINESS_CARD_PAGE);
+    return {
+      target: cardPos,
+      yaw: calculateYawToFacePosition(cardPos),
+      pitch: 28,
+      zoom: 1.5,
+    };
+  })(),
   placeholder_A: {
     target: getHeroCirclePosition("placeholder_A"),
     yaw: PLACEHOLDER_CAMERA_YAW,
@@ -1042,56 +533,7 @@ const setHeroPageVisibility = (page: ScenePage | null) => {
 };
 let activePage: ScenePage = "home";
 let youtubeBridge: YouTubeBridge | null = null;
-const directionFromAngles = (
-  yawDeg: number,
-  pitchDeg: number,
-  out: Vector3 = new Vector3(),
-) => {
-  const yawRad = yawDeg * DEG2RAD;
-  const pitchRad = pitchDeg * DEG2RAD;
-  const cosPitch = Math.cos(pitchRad);
-  return out
-    .set(
-      Math.sin(yawRad) * cosPitch,
-      Math.sin(pitchRad),
-      Math.cos(yawRad) * cosPitch,
-    )
-    .normalize();
-};
-
-const lerpAngleDegrees = (start: number, end: number, t: number) => {
-  let diff = ((end - start + 180) % 360) - 180;
-  if (diff < -180) diff += 360;
-  return start + diff * t;
-};
-
-const cloneCameraSettings = (
-  settings: PageCameraSettings,
-): PageCameraSettings => ({
-  target: settings.target.clone(),
-  yaw: settings.yaw,
-  pitch: settings.pitch,
-  zoom: settings.zoom,
-});
-
-const applyPageCameraSettings = (settings: PageCameraSettings) => {
-  cameraRig.setLookTarget(settings.target, false);
-  cameraRig.setViewDirection(
-    directionFromAngles(settings.yaw, settings.pitch),
-    false,
-  );
-  cameraRig.setZoomFactor(settings.zoom);
-};
-
-const captureCameraState = (): PageCameraSettings => {
-  const orbitAngles = cameraRig.getOrbitAngles();
-  return {
-    target: cameraRig.getTarget().clone(),
-    yaw: orbitAngles.azimuth * RAD2DEG,
-    pitch: orbitAngles.polar * RAD2DEG,
-    zoom: cameraRig.getZoomFactor(),
-  };
-};
+// directionFromAngles, lerpAngleDegrees, cloneCameraSettings, applyPageCameraSettings, captureCameraState now imported from pageNavigation.ts
 
 const pageTransitionDuration = 0.9;
 const pageTransitionState = {
@@ -1117,43 +559,17 @@ const applyHomeCameraPreset = () => {
 let portfolioCoverMesh: Mesh | null = null;
 let portfolioCoverOriginalRotation = 0;
 
-const prioritizePortfolioCoverRendering = (model: Object3D) => {
-  model.traverse((child) => {
-    if (!("isMesh" in child) || !(child as Mesh).isMesh) {
-      return;
-    }
-    const mesh = child as Mesh;
-    const name = mesh.name.toLowerCase();
-    if (PORTFOLIO_TEXT_KEYS.some((key) => name.includes(key))) {
-      setMeshRenderPriority(
-        mesh,
-        PORTFOLIO_TEXT_ORDER,
-        PORTFOLIO_TEXT_OFFSET,
-        PORTFOLIO_TEXT_UNITS,
-      );
-    } else if (PORTFOLIO_COVER_KEYS.some((key) => name.includes(key))) {
-      setMeshRenderPriority(
-        mesh,
-        PORTFOLIO_COVER_ORDER,
-        PORTFOLIO_COVER_OFFSET,
-        PORTFOLIO_COVER_UNITS,
-      );
-      // Store reference to cover mesh for animation
-      portfolioCoverMesh = mesh;
-      portfolioCoverOriginalRotation = mesh.rotation.z;
-      console.log("[Portfolio Cover] Found cover mesh:", mesh.name);
-      console.log(
-        "[Portfolio Cover] Original Z rotation:",
-        portfolioCoverOriginalRotation,
-      );
-    } else if (PORTFOLIO_PAPER_KEYS.some((key) => name.includes(key))) {
-      setMeshRenderPriority(
-        mesh,
-        PORTFOLIO_PAPER_ORDER,
-        PORTFOLIO_PAPER_OFFSET,
-        PORTFOLIO_PAPER_UNITS,
-      );
-    }
+// prioritizePortfolioCoverRendering now imported from sceneObjects.ts
+// Custom wrapper to store cover mesh reference for animation
+const setupPortfolioCover = (model: Object3D) => {
+  prioritizePortfolioCoverRendering(model, (mesh) => {
+    portfolioCoverMesh = mesh;
+    portfolioCoverOriginalRotation = mesh.rotation.z;
+    console.log("[Portfolio Cover] Found cover mesh:", mesh.name);
+    console.log(
+      "[Portfolio Cover] Original Z rotation:",
+      portfolioCoverOriginalRotation,
+    );
   });
 };
 
@@ -1205,56 +621,10 @@ const animatePortfolioCoverFlip = (reverse = false) => {
   requestAnimationFrame(animate);
 };
 
-const setMeshRenderPriority = (
-  mesh: Mesh,
-  order: number,
-  factor: number,
-  units: number,
-) => {
-  mesh.renderOrder = Math.max(mesh.renderOrder, order);
-  applyPolygonOffsetToMaterials(mesh, factor, units);
-};
+// setMeshRenderPriority and applyPolygonOffsetToMaterials now in sceneObjects.ts
 
-const applyPolygonOffsetToMaterials = (
-  mesh: Mesh,
-  factor: number,
-  units: number,
-) => {
-  const materials = Array.isArray(mesh.material)
-    ? mesh.material
-    : [mesh.material];
-  materials.forEach((material) => {
-    if (!material) {
-      return;
-    }
-    material.polygonOffset = true;
-    material.polygonOffsetFactor = factor;
-    material.polygonOffsetUnits = units;
-    material.needsUpdate = true;
-  });
-};
-
-const homeOverlay = document.createElement("div");
-homeOverlay.id = "home-overlay";
+// homeOverlay is now created by setupDOM()
 homeOverlay.textContent = "home view — click a model to explore";
-Object.assign(homeOverlay.style, {
-  position: "fixed",
-  top: "1.5rem",
-  left: "50%",
-  transform: "translateX(-50%)",
-  padding: "0.75rem 1.5rem",
-  borderRadius: "999px",
-  background: "rgba(0, 0, 0, 0.75)",
-  color: "#fff",
-  fontSize: "0.85rem",
-  letterSpacing: "0.05em",
-  textTransform: "uppercase",
-  pointerEvents: "auto",
-  opacity: "1",
-  transition: "opacity 0.4s ease",
-  zIndex: "1200",
-});
-root.appendChild(homeOverlay);
 
 const updateHomeOverlayVisibility = () => {
   const isHome = activePage === "home";
@@ -1265,7 +635,7 @@ const setTurntableUIVisible = (visible: boolean) => {
   const effective =
     visible &&
     vinylUIFadeTriggered &&
-    !isFullscreenMode &&
+    !turntableStateManager.getIsFullscreenMode() &&
     activePage === "turntable";
   vinylViewerContainer.style.opacity = effective ? "1" : "0";
   vinylViewerContainer.style.pointerEvents = effective ? "auto" : "none";
@@ -1295,38 +665,17 @@ homeOverlay.addEventListener("click", () => {
   setActiveScenePage("turntable");
 });
 
-const globalControls = document.createElement("div");
-globalControls.id = "global-controls";
-Object.assign(globalControls.style, {
-  position: "fixed",
-  bottom: "20px",
-  left: "50%",
-  transform: "translateX(-50%)",
-  display: "flex",
-  gap: "0.75rem",
-  zIndex: HIDE_BUTTON_Z_INDEX,
-});
-root.appendChild(globalControls);
-
-const homeNavButton = document.createElement("button");
-homeNavButton.textContent = "home view";
+// globalControls, homeNavButton, portfolioNavButton, resetTutorialButton now created by setupDOM()
 homeNavButton.addEventListener("click", () => {
   setActiveScenePage("home");
 });
-globalControls.appendChild(homeNavButton);
 
-const portfolioNavButton = document.createElement("button");
-portfolioNavButton.textContent = "portfolio view";
 portfolioNavButton.addEventListener("click", () => {
   console.log("[Portfolio] Button clicked");
   setActiveScenePage("portfolio");
   animatePortfolioCoverFlip();
 });
-globalControls.appendChild(portfolioNavButton);
 
-const resetTutorialButton = document.createElement("button");
-resetTutorialButton.id = "reset-tutorial-button";
-resetTutorialButton.textContent = "reset tutorial";
 resetTutorialButton.addEventListener("click", () => {
   const tutorialManager = (window as any).tutorialManager;
   if (tutorialManager) {
@@ -1334,7 +683,6 @@ resetTutorialButton.addEventListener("click", () => {
     console.log("Tutorial reset");
   }
 });
-globalControls.appendChild(resetTutorialButton);
 
 const setActiveScenePage = (page: ScenePage) => {
   if (page === activePage) {
@@ -1345,7 +693,7 @@ const setActiveScenePage = (page: ScenePage) => {
     animatePortfolioCoverFlip(true);
   }
   const toSettings = pageCameraSettings[page];
-  const fromSettings = captureCameraState();
+  const fromSettings = captureCameraState(cameraRig);
   let frameObjectTarget: Object3D = heroGroup;
   let frameOffset = page === "home" ? HOME_FRAME_OFFSET : 2.6;
   if (page === "turntable" && turntableSceneRoot) {
@@ -1369,6 +717,7 @@ const setActiveScenePage = (page: ScenePage) => {
   pageTransitionState.active = true;
   const wasTurntable = activePage === "turntable";
   activePage = page;
+  turntableStateManager.setActivePage(page);
   youtubeBridge?.setFKeyListenerEnabled(page === "turntable");
   const shouldShowFocusVinyl = page === "turntable";
   focusVinylManuallyHidden = !shouldShowFocusVinyl;
@@ -1395,17 +744,7 @@ const setActiveScenePage = (page: ScenePage) => {
   }
 };
 
-const findPageForObject = (object: Object3D | null): ScenePage | null => {
-  let current: Object3D | null = object;
-  while (current) {
-    const entry = homePageTargets.find((target) => target.model === current);
-    if (entry) {
-      return entry.page;
-    }
-    current = current.parent as Object3D | null;
-  }
-  return null;
-};
+// findPageForObject now imported from pageNavigation.ts
 
 const pendingTurntableCallbacks: Array<() => void> = [];
 const runWhenTurntableReady = (callback: () => void, autoNavigate = true) => {
@@ -1482,27 +821,19 @@ const updateCameraDebugPanel = () => {
 
 const { vinylNormalTexture } = loadTextures(renderer);
 
-const FOCUS_VINYL_BASE_SCALE = 0.88;
+// FOCUS_VINYL_BASE_SCALE now in vinylHelpers.ts
 
 let labelVisuals: LabelVisualOptions = createDefaultLabelVisuals();
 
-const applyLabelTextureQuality = (textures: LabelTextures) => {
-  const anisotropy = renderer.capabilities.getMaxAnisotropy();
-  textures.sideA.anisotropy = anisotropy;
-  textures.sideB.anisotropy = anisotropy;
-};
+// applyLabelTextureQuality now imported from vinylHelpers.ts
 
-const getFocusVinylScale = () =>
-  FOCUS_VINYL_BASE_SCALE / cameraRig.getZoomFactor();
-
-const applyFocusVinylScale = () => {
-  if (focusVinylState) {
-    focusVinylState.model.scale.setScalar(getFocusVinylScale());
-  }
-};
+// getFocusVinylScale and applyFocusVinylScale now imported from vinylHelpers.ts
 
 let focusLabelTextures: LabelTextures = createLabelTextures(labelVisuals);
-applyLabelTextureQuality(focusLabelTextures);
+applyLabelTextureQuality(
+  focusLabelTextures,
+  renderer.capabilities.getMaxAnisotropy(),
+);
 
 let labelOptions: LabelApplicationOptions = {
   scale: 1,
@@ -1589,18 +920,7 @@ cameraRig.setZoomFactor(zoomFactor);
 // root.appendChild(cameraDebugDisplay);
 
 let vinylModel: Object3D | null = null;
-type FocusVinylState = {
-  model: Object3D;
-  selection: VinylSelectionDetail;
-};
-
-type TurntableVinylState = {
-  model: Object3D;
-  selection: VinylSelectionDetail;
-  labelTextures: LabelTextures;
-  labelVisuals: LabelVisualOptions;
-};
-
+// FocusVinylState and TurntableVinylState now imported from vinylInteractions.ts
 let focusVinylState: FocusVinylState | null = null;
 let turntableVinylState: TurntableVinylState | null = null;
 let focusVinylLoadToken = 0;
@@ -1608,7 +928,7 @@ let turntableSceneRoot: Object3D | null = null;
 const turntableBounds = new Box3();
 const turntableBoundsSize = new Vector3();
 const turntableBoundsCenter = new Vector3();
-type VinylSource = "focus" | "turntable";
+// VinylSource type now imported from vinylInteractions.ts
 let activeVinylSource: VinylSource | null = null;
 let currentDragSource: VinylSource | null = null;
 let pendingPromotionSource: VinylSource | null = null;
@@ -1621,7 +941,7 @@ type FlyawayVinyl = {
   textures: LabelTextures;
 };
 const flyawayVinyls: FlyawayVinyl[] = [];
-let isFullscreenMode = false;
+// isFullscreenMode now managed by TurntableStateManager
 let fullscreenVinylRestoreTimeout: number | null = null;
 
 const syncAnimationStateToModel = (model: Object3D) => {
@@ -1654,7 +974,7 @@ const setActiveVinylSource = (
     if (vinylModel && syncState) {
       syncAnimationStateToModel(vinylModel);
     }
-    applyFocusVinylScale();
+    applyFocusVinylScale(focusVinylState?.model ?? null, cameraRig);
   } else if (source === "turntable") {
     vinylModel = turntableVinylState?.model ?? null;
     if (vinylModel && syncState) {
@@ -1665,8 +985,7 @@ const setActiveVinylSource = (
   }
 };
 
-const cloneLabelVisuals = (visuals: LabelVisualOptions): LabelVisualOptions =>
-  JSON.parse(JSON.stringify(visuals));
+// cloneLabelVisuals now imported from vinylHelpers.ts
 
 const disposeFocusVinyl = () => {
   if (!focusVinylState) {
@@ -1696,7 +1015,10 @@ const disposeTurntableVinyl = () => {
 const detachFocusTexturesForTurntable = (): LabelTextures => {
   const textures = focusLabelTextures;
   focusLabelTextures = createLabelTextures(labelVisuals);
-  applyLabelTextureQuality(focusLabelTextures);
+  applyLabelTextureQuality(
+    focusLabelTextures,
+    renderer.capabilities.getMaxAnisotropy(),
+  );
   return textures;
 };
 
@@ -1708,7 +1030,7 @@ const updateTurntableVinylVisuals = (visuals: LabelVisualOptions) => {
   turntableVinylState.labelTextures.sideB.dispose();
   const snapshot = cloneLabelVisuals(visuals);
   const textures = createLabelTextures(snapshot);
-  applyLabelTextureQuality(textures);
+  applyLabelTextureQuality(textures, renderer.capabilities.getMaxAnisotropy());
   turntableVinylState.labelTextures = textures;
   turntableVinylState.labelVisuals = snapshot;
   applyLabelTextures(
@@ -1772,7 +1094,10 @@ function rebuildLabelTextures() {
   focusLabelTextures.sideA.dispose();
   focusLabelTextures.sideB.dispose();
   focusLabelTextures = createLabelTextures(labelVisuals);
-  applyLabelTextureQuality(focusLabelTextures);
+  applyLabelTextureQuality(
+    focusLabelTextures,
+    renderer.capabilities.getMaxAnisotropy(),
+  );
   if (focusVinylState) {
     applyLabelTextures(
       focusVinylState.model,
@@ -1801,28 +1126,22 @@ const {
   ready: youtubeReady,
 } = youtubePlayer;
 youtubeBridge = yt;
+
+// Initialize turntable state manager
+const turntableStateManager = new TurntableStateManager(yt, root);
+
 yt.setFKeyListenerEnabled(false);
 yt.onPlaybackEnded(() => {
   turntableController?.notifyPlaybackFinishedExternally();
 });
 
-type VinylSelectionDetail = {
-  entryId?: string | null;
-  videoId: string;
-  artistName: string;
-  songName: string;
-  aspectRatio?: number;
-  imageUrl?: string;
-};
-
+// VinylSelectionDetail now imported from vinylInteractions.ts
 let pendingVinylSelection: VinylSelectionDetail | null = null;
 let loadedSelectionVideoId: string | null = null;
 let selectionVisualUpdateId = 0;
 let currentVideoLoad: Promise<void> | null = null;
 
-const getSelectionCoverUrl = (selection: VinylSelectionDetail) =>
-  selection.imageUrl ||
-  `https://img.youtube.com/vi/${selection.videoId}/maxresdefault.jpg`;
+// getSelectionCoverUrl now imported from vinylHelpers.ts
 
 const applySelectionVisualsToVinyl = async (
   selection: VinylSelectionDetail,
@@ -1859,7 +1178,7 @@ const applySelectionVisualsToVinyl = async (
 };
 
 const loadVideoForCurrentSelection = async () => {
-  if (!pendingVinylSelection || !ON_TURNTABLE) {
+  if (!pendingVinylSelection || !turntableStateManager.isOnTurntable()) {
     return;
   }
 
@@ -1871,7 +1190,7 @@ const loadVideoForCurrentSelection = async () => {
     }
     if (
       !pendingVinylSelection ||
-      !ON_TURNTABLE ||
+      !turntableStateManager.isOnTurntable() ||
       (loadedSelectionVideoId &&
         pendingVinylSelection.videoId === loadedSelectionVideoId)
     ) {
@@ -1881,7 +1200,7 @@ const loadVideoForCurrentSelection = async () => {
 
   const selection = pendingVinylSelection;
   const loadPromise = (async () => {
-    hasStartedFadeOut = false;
+    turntableStateManager.resetFadeOut();
     turntableController?.returnTonearmHome();
     turntableController?.pausePlayback();
     loadedSelectionVideoId = null;
@@ -1935,7 +1254,7 @@ const loadVideoForCurrentSelection = async () => {
       yt.setVolume(100);
     }, 300);
 
-    if (ON_TURNTABLE) {
+    if (turntableStateManager.isOnTurntable()) {
       loadedSelectionVideoId = selection.videoId;
       console.log(
         `Loaded for turntable: ${selection.artistName} - ${selection.songName}`,
@@ -2000,7 +1319,7 @@ async function handleFocusSelection(selection: VinylSelectionDetail) {
     model.visible = false;
     heroGroup.add(model);
     applyLabelTextures(model, focusLabelTextures, labelOptions, labelVisuals);
-    applyFocusVinylScale();
+    applyFocusVinylScale(focusVinylState?.model ?? null, cameraRig);
     setActiveVinylSource("focus");
     prepareFocusVinylPresentation(model, loadToken);
   } catch (error) {
@@ -2010,7 +1329,7 @@ async function handleFocusSelection(selection: VinylSelectionDetail) {
 
 function prepareFocusVinylPresentation(model: Object3D, token: number) {
   setActiveVinylSource("focus");
-  vinylScaleFactor = getFocusVinylScale();
+  vinylScaleFactor = getFocusVinylScale(cameraRig);
   vinylAnimationState.cameraRelativeOffsetValid = false;
   updateFocusCardPosition();
 
@@ -2049,7 +1368,7 @@ window.addEventListener("update-aspect-ratio", (event: any) => {
 // Listen for focus card album cover hover to shift vinyl (with animation)
 const FOCUS_VINYL_HOVER_DISTANCE = 5;
 const FOCUS_VINYL_HOVER_ANIMATION_SPEED = 0.25;
-const FOCUS_VINYL_CLICK_ANIMATION_SPEED = 0.12;
+// FOCUS_VINYL_CLICK_ANIMATION_SPEED now imported from vinylInteractions.ts
 const FOCUS_COVER_CLICK_CLASS = "focus-cover-click-active";
 const FOCUS_COVER_CLICK_TIMEOUT = 3000;
 let focusVinylHoverOffset = 0;
@@ -2084,7 +1403,9 @@ const updateFocusVinylVisibility = () => {
   // Only show focus vinyl if there's a focus card rendered
   const hasFocusCard = focusCardCoverContainer.childElementCount > 0;
   focusVinylState.model.visible =
-    !isFullscreenMode && !focusVinylManuallyHidden && hasFocusCard;
+    !turntableStateManager.getIsFullscreenMode() &&
+    !focusVinylManuallyHidden &&
+    hasFocusCard;
 };
 
 const clearFocusCoverFallbackTimer = () => {
@@ -2285,66 +1606,17 @@ window.addEventListener("focus-card-shown", (event: any) => {
   });
 });
 
-// Initially hide the player controls (only show when tonearm is in play area)
-yt.setControlsVisible(false);
-
-// Register callback to query tonearm state when exiting fullscreen
-yt.setIsTonearmInPlayAreaQuery(() => isTonearmInPlayArea);
-
-// Register callback to query if on turntable page
-yt.setIsOnTurntablePageQuery(() => activePage === "turntable");
-
-// Auto-hide library and button in fullscreen player mode
-yt.onFullscreenChange((isFullscreen: boolean) => {
-  runWhenTurntableReady(() => {
-    setHeroPageVisibility(isFullscreen ? "turntable" : null);
-    if (isFullscreen) {
-      isFullscreenMode = true;
-      hideFocusVinylForFullscreen();
-      setTurntableUIVisible(false);
-
-      // Switch to fullscreen camera position
-      turntablePositionState = "fullscreen";
-      cameraRig.setLookTarget(CAMERA_TARGETS["fullscreen"], true);
-      cameraRig.setPolarAngle(2, true);
-    } else {
-      isFullscreenMode = false;
-      scheduleFocusVinylRestore();
-      setTurntableUIVisible(true);
-
-      // Return to bottom-center when exiting fullscreen
-      turntablePositionState = "bottom-center";
-      cameraRig.setLookTarget(CAMERA_TARGETS["bottom-center"], true);
-      // Restore bottom-center polar angle (22 degrees)
-      cameraRig.setPolarAngle(22, true);
-    }
-  });
-});
-
-// Track when video reaches the last 2 seconds to animate out
-let hasStartedFadeOut = false;
+// YouTube player callbacks now managed by TurntableStateManager
 let isTonearmInPlayArea = false;
-yt.onPlaybackProgress(() => {
-  const currentTime = yt.getCurrentTime();
-  const duration = youtubePlayer.getDuration();
-  const timeRemaining = duration - currentTime;
-
-  // When video has 1 seconds or less remaining, animate controls and viewport out (only in small mode)
-  if (!yt.isFullscreen()) {
-    if (timeRemaining <= 1 && !hasStartedFadeOut) {
-      hasStartedFadeOut = true;
-      // Fade out the controls
-      yt.setControlsVisible(false);
-      // Animate viewport height to 0
-      const viewport = root.querySelector(".yt-player-viewport") as HTMLElement;
-      if (viewport) {
-        viewport.style.height = "0px";
-      }
-    } else if (timeRemaining > 1) {
-      // Reset the flag if we seek back
-      hasStartedFadeOut = false;
-    }
-  }
+turntableStateManager.initialize(cameraRig, CAMERA_TARGETS, {
+  runWhenTurntableReady,
+  setHeroPageVisibility,
+  hideFocusVinylForFullscreen,
+  scheduleFocusVinylRestore,
+  setTurntableUIVisible,
+  setTurntablePositionState: (state: string) => {
+    turntablePositionState = state as TurntablePosition;
+  },
 });
 
 let vinylDragPointerId: number | null = null;
@@ -2354,25 +1626,11 @@ let hasClearedNub = false;
 let nubClearanceY = 0;
 let vinylDragExceededThreshold = false;
 // tonearm drag handled by controller
-let ON_TURNTABLE = false;
-const notifyFocusVinylTurntableState = () => {
-  window.dispatchEvent(
-    new CustomEvent("focus-vinyl-turntable-state", {
-      detail: {
-        onTurntable: ON_TURNTABLE,
-        turntableVideoId: turntableVinylState?.selection.videoId ?? null,
-      },
-    }),
-  );
-  (window as any).__FOCUS_VINYL_ON_TURNTABLE__ = ON_TURNTABLE;
-  (window as any).__FOCUS_VINYL_TURNTABLE_VIDEO_ID__ =
-    turntableVinylState?.selection.videoId ?? null;
-};
-notifyFocusVinylTurntableState();
-const VINYL_DRAG_THRESHOLD = 38; // Y position threshold - vinyl only returns if below this value
+// ON_TURNTABLE state now managed by TurntableStateManager
+// VINYL_DRAG_THRESHOLD now imported from vinylInteractions.ts
 let isReturningToFocusCard = false; // Separate state for returning to focus card
 function setVinylOnTurntable(onTurntable: boolean) {
-  if (onTurntable === ON_TURNTABLE) {
+  if (onTurntable === turntableStateManager.isOnTurntable()) {
     return;
   }
 
@@ -2398,8 +1656,8 @@ function setVinylOnTurntable(onTurntable: boolean) {
     if (!turntableVinylState) {
       return;
     }
-    ON_TURNTABLE = true;
-    notifyFocusVinylTurntableState();
+    turntableStateManager.setOnTurntable(true);
+    turntableStateManager.setTurntableVinylState(turntableVinylState);
     turntableController?.setVinylPresence(true);
     // Only return tonearm home and load video if promoting from focus
     if (promotingFocus) {
@@ -2411,15 +1669,15 @@ function setVinylOnTurntable(onTurntable: boolean) {
   }
 
   pendingPromotionSource = null;
-  if (!ON_TURNTABLE) {
+  if (!turntableStateManager.isOnTurntable()) {
     return;
   }
 
-  ON_TURNTABLE = false;
-  notifyFocusVinylTurntableState();
+  turntableStateManager.setOnTurntable(false);
+  turntableStateManager.setTurntableVinylState(null);
   turntableController?.setVinylPresence(false);
   loadedSelectionVideoId = null;
-  isTonearmInPlayArea = false;
+  turntableStateManager.setTonearmInPlayArea(false);
   yt.setControlsVisible(false);
   const viewport = root?.querySelector(
     ".yt-player-viewport",
@@ -2464,8 +1722,8 @@ const startTurntableVinylFlyaway = () => {
     textures: labelTextures,
   });
   turntableVinylState = null;
-  ON_TURNTABLE = false;
-  notifyFocusVinylTurntableState();
+  turntableStateManager.setOnTurntable(false);
+  turntableStateManager.setTurntableVinylState(null);
   pendingPromotionSource = null;
   turntableController?.setVinylPresence(false);
   turntableController?.liftNeedle();
@@ -2608,8 +1866,12 @@ canvas.addEventListener("pointerdown", (event) => {
       const heroHits = raycaster.intersectObject(heroGroup, true);
       if (heroHits.length) {
         for (const hit of heroHits) {
-          const page = findPageForObject(hit.object as Object3D);
+          const page = findPageForObject(
+            hit.object as Object3D,
+            homePageTargets,
+          );
           if (page && page !== "home") {
+            businessCardAnimation.handlePageSelection(page);
             setActiveScenePage(page);
             if (page === "portfolio") {
               animatePortfolioCoverFlip();
@@ -2909,7 +2171,7 @@ loadTurntableModel()
         }
       },
     });
-    turntableController.setVinylPresence(ON_TURNTABLE);
+    turntableController.setVinylPresence(turntableStateManager.isOnTurntable());
     const applyDuration = () => {
       const duration = youtubePlayer.getDuration();
       if (duration > 1 && turntableController) {
@@ -2947,7 +2209,7 @@ loadTurntableModel()
       zoom: TURNTABLE_CAMERA_ZOOM,
     };
     applyHomeCameraPreset();
-    applyPageCameraSettings(pageCameraSettings.home);
+    applyPageCameraSettings(pageCameraSettings.home, cameraRig);
     pageTransitionState.fromSettings = cloneCameraSettings(
       pageCameraSettings.home,
     );
@@ -2968,7 +2230,7 @@ loadTurntableModel()
     swingState.currentZ = 0;
     swingState.targetX = 0;
     swingState.targetZ = 0;
-    updateDragPlaneDepth(turntableAnchorPosition.z);
+    updateDragPlaneDepthLocal(turntableAnchorPosition.z);
     updateTurntableNubClearance(turntable);
 
     vinylUserRotation = 0;
@@ -2990,7 +2252,7 @@ loadPortfolioModel()
     heroGroup.add(portfolioModel);
     pageSceneRoots["portfolio"] = portfolioModel;
     registerHomePageTarget(portfolioModel, "portfolio");
-    prioritizePortfolioCoverRendering(portfolioModel);
+    setupPortfolioCover(portfolioModel);
     // Center camera on model origin instead of bounding box center
     const focusPoint = circlePos.clone().add(PORTFOLIO_CAMERA_TARGET_OFFSET);
     pageCameraSettings.portfolio.target.copy(focusPoint);
@@ -2999,11 +2261,11 @@ loadPortfolioModel()
     pageCameraSettings.portfolio.pitch = PORTFOLIO_TOP_CAMERA_PITCH;
     applyHomeCameraPreset();
     if (activePage === "home" && !pageTransitionState.active) {
-      applyPageCameraSettings(pageCameraSettings.home);
+      applyPageCameraSettings(pageCameraSettings.home, cameraRig);
       updateCameraDebugPanel();
     }
     if (activePage === "portfolio" && !pageTransitionState.active) {
-      applyPageCameraSettings(pageCameraSettings.portfolio);
+      applyPageCameraSettings(pageCameraSettings.portfolio, cameraRig);
       updateCameraDebugPanel();
     }
   })
@@ -3054,8 +2316,8 @@ const updateFocusCardPosition = () => {
   if (activeVinylSource === "focus") {
     vinylTargetPosition.copy(vinylPosition);
     lastTargetPosition.copy(vinylPosition);
-    updateDragPlaneDepth(vinylPosition.z);
-    applyFocusVinylScale();
+    updateDragPlaneDepthLocal(vinylPosition.z);
+    applyFocusVinylScale(focusVinylState?.model ?? null, cameraRig);
   }
 };
 
@@ -3099,7 +2361,7 @@ const updateCameraTargetsForWindowSize = () => {
   pageCameraSettings.turntable.target.copy(turntableFocusTarget);
   applyHomeCameraPreset();
   if (activePage === "home" && !pageTransitionState.active) {
-    applyPageCameraSettings(pageCameraSettings.home);
+    applyPageCameraSettings(pageCameraSettings.home, cameraRig);
     updateCameraDebugPanel();
   }
 
@@ -3211,7 +2473,8 @@ const animate = (time: number) => {
         anchorType: currentVinylAnchorType,
       });
       const shouldSignalOnTurntable =
-        !ON_TURNTABLE && vinylAnimationResult.hasClearedNub;
+        !turntableStateManager.isOnTurntable() &&
+        vinylAnimationResult.hasClearedNub;
       if (
         activeVinylSource === "focus" &&
         turntableVinylState &&
@@ -3278,7 +2541,11 @@ const animate = (time: number) => {
   turntableController?.update(delta);
 
   // Sync turntable time with YouTube player to prevent desync when tab is inactive
-  if (turntableController && ON_TURNTABLE && loadedSelectionVideoId !== null) {
+  if (
+    turntableController &&
+    turntableStateManager.isOnTurntable() &&
+    loadedSelectionVideoId !== null
+  ) {
     turntableController.syncTime(yt.getCurrentTime());
   }
   // const cameraAngles = cameraRig.getOrbitAngles();
@@ -3290,13 +2557,14 @@ const animate = (time: number) => {
   // Show/hide player based on tonearm position in play area (only in small mode)
   if (!yt.isFullscreen()) {
     const vinylReadyForPlayback =
-      ON_TURNTABLE && loadedSelectionVideoId !== null;
+      turntableStateManager.isOnTurntable() && loadedSelectionVideoId !== null;
     const tonearmNowInPlayArea =
       vinylReadyForPlayback &&
       (turntableController?.isTonearmInPlayArea() ?? false);
     if (tonearmNowInPlayArea && !isTonearmInPlayArea) {
       // Tonearm just entered play area - show controls/timeline
       isTonearmInPlayArea = true;
+      turntableStateManager.setTonearmInPlayArea(true);
       if (youtubePlayer.getDuration() > 0) {
         yt.setControlsVisible(true);
         // Animate viewport back in only if not manually collapsed
@@ -3315,6 +2583,7 @@ const animate = (time: number) => {
     } else if (!tonearmNowInPlayArea && isTonearmInPlayArea) {
       // Tonearm just left play area - hide player
       isTonearmInPlayArea = false;
+      turntableStateManager.setTonearmInPlayArea(false);
       yt.setControlsVisible(false);
       // Only collapse player if it wasn't manually collapsed by user
       if (!yt.isPlayerCollapsed()) {
@@ -3331,7 +2600,7 @@ const animate = (time: number) => {
   }
 
   const angularStep = turntableController?.getAngularStep() ?? 0;
-  if (ON_TURNTABLE && vinylDragPointerId === null) {
+  if (turntableStateManager.isOnTurntable() && vinylDragPointerId === null) {
     vinylSpinAngle += angularStep;
   }
   if (turntableVinylState) {
@@ -3541,9 +2810,11 @@ function applyCartridgeColor(object: Object3D) {
 
 // tonearm handlers moved to turntable controller
 
-function updateDragPlaneDepth(z: number) {
+// updateDragPlaneDepth now imported from vinylHelpers.ts
+// Local wrapper to access dragPlane
+const updateDragPlaneDepthLocal = (z: number) => {
   dragPlane.constant = -z;
-}
+};
 
 // moved to utils.ts
 
