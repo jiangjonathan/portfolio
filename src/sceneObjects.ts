@@ -13,6 +13,10 @@ export const BUSINESS_CARD_PAGE = "business_card";
 export const BUSINESS_CARD_WIDTH = 18;
 export const BUSINESS_CARD_HEIGHT = 10;
 export const BUSINESS_CARD_THICKNESS = 0.15;
+export const BUSINESS_CARD_FOCUS_TARGET = new Vector3(0, 6, 0);
+export const BUSINESS_CARD_CAMERA_YAW = 0;
+export const BUSINESS_CARD_CAMERA_PITCH = 25;
+export const BUSINESS_CARD_CAMERA_ZOOM = 1.6;
 
 export const PLACEHOLDER_SIZE = 10;
 export const PLACEHOLDER_SCENES = [

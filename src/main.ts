@@ -89,6 +89,10 @@ import {
   createPlaceholderMesh,
   prioritizePortfolioCoverRendering,
   BUSINESS_CARD_PAGE,
+  BUSINESS_CARD_FOCUS_TARGET,
+  BUSINESS_CARD_CAMERA_YAW,
+  BUSINESS_CARD_CAMERA_PITCH,
+  BUSINESS_CARD_CAMERA_ZOOM,
   PLACEHOLDER_SCENES,
   PORTFOLIO_CAMERA_TARGET_OFFSET,
 } from "./sceneObjects";
@@ -239,7 +243,6 @@ const createBusinessCardScene = () => {
   heroGroup.add(cardMesh);
   registerHomePageTarget(cardMesh, BUSINESS_CARD_PAGE);
   pageSceneRoots[BUSINESS_CARD_PAGE] = cardMesh;
-  pageCameraSettings.business_card.target.copy(circlePos);
 };
 
 const baseTurntableCameraPosition = new Vector3();
@@ -503,15 +506,12 @@ const pageCameraSettings: Record<ScenePage, PageCameraSettings> = {
     pitch: PORTFOLIO_CAMERA_PITCH,
     zoom: PORTFOLIO_CAMERA_ZOOM,
   },
-  business_card: (() => {
-    const cardPos = getHeroCirclePosition(BUSINESS_CARD_PAGE);
-    return {
-      target: cardPos,
-      yaw: calculateYawToFacePosition(cardPos),
-      pitch: 28,
-      zoom: 1.5,
-    };
-  })(),
+  business_card: {
+    target: BUSINESS_CARD_FOCUS_TARGET.clone(),
+    yaw: BUSINESS_CARD_CAMERA_YAW,
+    pitch: BUSINESS_CARD_CAMERA_PITCH,
+    zoom: BUSINESS_CARD_CAMERA_ZOOM,
+  },
   placeholder_A: {
     target: getHeroCirclePosition("placeholder_A"),
     yaw: PLACEHOLDER_CAMERA_YAW,
@@ -688,9 +688,15 @@ const setActiveScenePage = (page: ScenePage) => {
   if (page === activePage) {
     return;
   }
-  // Reverse portfolio cover animation when leaving portfolio page
-  if (activePage === "portfolio" && page !== "portfolio") {
+  const previousPage = activePage;
+  if (previousPage === "portfolio" && page !== "portfolio") {
     animatePortfolioCoverFlip(true);
+  }
+  if (page === BUSINESS_CARD_PAGE) {
+    businessCardAnimation.handlePageSelection(page);
+  }
+  if (previousPage === BUSINESS_CARD_PAGE && page !== BUSINESS_CARD_PAGE) {
+    businessCardAnimation.resetToHome();
   }
   const toSettings = pageCameraSettings[page];
   const fromSettings = captureCameraState(cameraRig);
@@ -715,7 +721,7 @@ const setActiveScenePage = (page: ScenePage) => {
   pageTransitionState.fromSettings = cloneCameraSettings(fromSettings);
   pageTransitionState.toSettings = cloneCameraSettings(toSettings);
   pageTransitionState.active = true;
-  const wasTurntable = activePage === "turntable";
+  const wasTurntable = previousPage === "turntable";
   activePage = page;
   turntableStateManager.setActivePage(page);
   youtubeBridge?.setFKeyListenerEnabled(page === "turntable");
@@ -1871,7 +1877,6 @@ canvas.addEventListener("pointerdown", (event) => {
             homePageTargets,
           );
           if (page && page !== "home") {
-            businessCardAnimation.handlePageSelection(page);
             setActiveScenePage(page);
             if (page === "portfolio") {
               animatePortfolioCoverFlip();
