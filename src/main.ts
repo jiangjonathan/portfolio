@@ -1,14 +1,21 @@
 import "./style.css";
 import {
   Box3,
+  BoxGeometry,
+  BufferGeometry,
   Color,
+  Euler,
   Group,
+  Line,
+  LineBasicMaterial,
   Material,
   Mesh,
+  MeshStandardMaterial,
   Object3D,
   Plane,
   Quaternion,
   Raycaster,
+  SphereGeometry,
   Vector2,
   Vector3,
 } from "three";
@@ -549,9 +556,8 @@ let vinylCameraTrackingEnabled = false;
 
 // Camera target positions (pan/translation only, no angle change)
 // Will be initialized after heroGroup is loaded based on bounding box center
-let defaultCameraTarget = new Vector3(0, 0.15, 0);
+let defaultCameraTarget = new Vector3(0, 0, 0);
 const turntableFocusTarget = new Vector3(0, 0.15, 0);
-const portfolioFocusTarget = new Vector3(-80, 7, -40);
 const PORTFOLIO_CAMERA_TARGET_OFFSET = new Vector3(0, 12, 0);
 const PORTFOLIO_COVER_ORDER = 250;
 const PORTFOLIO_PAPER_ORDER = 200;
@@ -590,6 +596,25 @@ const loadPortfolioModel = (): Promise<Object3D> =>
       (error) => reject(error),
     );
   });
+
+const createPlaceholderScenes = () => {
+  PLACEHOLDER_SCENES.forEach((config) => {
+    const geometry =
+      config.geometry === "box"
+        ? new BoxGeometry(PLACEHOLDER_SIZE, PLACEHOLDER_SIZE, PLACEHOLDER_SIZE)
+        : new SphereGeometry(PLACEHOLDER_SIZE / 2, 32, 16);
+    const material = new MeshStandardMaterial({ color: config.color });
+    const mesh = new Mesh(geometry, material);
+    const circlePos = getHeroCirclePosition(config.id);
+    mesh.position.copy(circlePos);
+    mesh.name = config.id;
+    heroGroup.add(mesh);
+    placeholderMeshes[config.id] = mesh;
+    registerHomePageTarget(mesh, config.id);
+    pageSceneRoots[config.id] = mesh;
+    pageCameraSettings[config.id].target.copy(circlePos);
+  });
+};
 const baseTurntableCameraPosition = new Vector3();
 const RAD2DEG = 180 / Math.PI;
 const DEG2RAD = Math.PI / 180;
@@ -780,25 +805,89 @@ cameraDebugPanel.append(
 );
 root.appendChild(cameraDebugPanel);
 
-type ScenePage = "home" | "turntable" | "portfolio";
+type ScenePage =
+  | "home"
+  | "turntable"
+  | "portfolio"
+  | "placeholder_A"
+  | "placeholder_B";
+
+const TURNTABLE_PAGE = "turntable";
 type PageCameraSettings = {
   target: Vector3;
   yaw: number;
   pitch: number;
   zoom: number;
 };
-const HOME_CAMERA_OFFSET = new Vector3(-15, -6, -30);
 const HOME_CAMERA_YAW = -28;
 const HOME_CAMERA_PITCH = 32;
 const HOME_CAMERA_ZOOM = 1;
 const PORTFOLIO_CAMERA_YAW = -58;
 const PORTFOLIO_CAMERA_PITCH = 30;
 const PORTFOLIO_CAMERA_ZOOM = 1.2;
+const PLACEHOLDER_CAMERA_YAW = 0;
+const PLACEHOLDER_CAMERA_PITCH = 45;
+const PLACEHOLDER_CAMERA_ZOOM = 1.4;
 
 const TURNTABLE_CAMERA_YAW = 0;
 const TURNTABLE_CAMERA_PITCH = 45;
 const TURNTABLE_CAMERA_ZOOM = 1.6;
 const HOME_FRAME_OFFSET = 2;
+
+const PLACEHOLDER_SCENES = [
+  {
+    id: "placeholder_A",
+    geometry: "box" as const,
+    color: 0xff2d2d,
+    position: new Vector3(-45, -5, -40),
+  },
+  {
+    id: "placeholder_B",
+    geometry: "sphere" as const,
+    color: 0x2454ff,
+    position: new Vector3(-30, -5, -60),
+  },
+] as const;
+const PLACEHOLDER_SIZE = 10;
+const placeholderMeshes: Record<string, Mesh> = {};
+
+type PortfolioSceneConfig = {
+  id: "portfolio";
+  glbUrl: string;
+  rotation?: Euler;
+  focusOffset?: Vector3;
+};
+
+const PORTFOLIO_SCENE_CONFIGS: ReadonlyArray<PortfolioSceneConfig> = [
+  {
+    id: "portfolio",
+    glbUrl: "/portfolio.glb",
+    rotation: new Euler(0, Math.PI * 0.25, 0),
+    focusOffset: new Vector3(0, 12, 0),
+  },
+];
+
+const HERO_LAYOUT_RADIUS = 40;
+const HERO_LAYOUT_Y = 0;
+const HERO_LAYOUT_START_ANGLE = Math.PI / 8;
+const HERO_LAYOUT_PAGES: Array<string> = [
+  TURNTABLE_PAGE,
+  ...PORTFOLIO_SCENE_CONFIGS.map((config) => config.id),
+  ...PLACEHOLDER_SCENES.map((config) => config.id),
+];
+const getHeroCirclePosition = (pageId: string) => {
+  const index = HERO_LAYOUT_PAGES.indexOf(pageId);
+  if (index < 0) {
+    return new Vector3(0, HERO_LAYOUT_Y, 0);
+  }
+  const angle =
+    HERO_LAYOUT_START_ANGLE + (index / HERO_LAYOUT_PAGES.length) * Math.PI * 2;
+  return new Vector3(
+    Math.sin(angle) * HERO_LAYOUT_RADIUS,
+    HERO_LAYOUT_Y,
+    Math.cos(angle) * HERO_LAYOUT_RADIUS,
+  );
+};
 
 const pageCameraSettings: Record<ScenePage, PageCameraSettings> = {
   home: {
@@ -808,16 +897,28 @@ const pageCameraSettings: Record<ScenePage, PageCameraSettings> = {
     zoom: HOME_CAMERA_ZOOM,
   },
   turntable: {
-    target: turntableFocusTarget.clone(),
+    target: getHeroCirclePosition(TURNTABLE_PAGE),
     yaw: TURNTABLE_CAMERA_YAW,
     pitch: TURNTABLE_CAMERA_PITCH,
     zoom: TURNTABLE_CAMERA_ZOOM,
   },
   portfolio: {
-    target: portfolioFocusTarget.clone(),
+    target: getHeroCirclePosition("portfolio"),
     yaw: PORTFOLIO_CAMERA_YAW,
     pitch: PORTFOLIO_CAMERA_PITCH,
     zoom: PORTFOLIO_CAMERA_ZOOM,
+  },
+  placeholder_A: {
+    target: getHeroCirclePosition("placeholder_A"),
+    yaw: PLACEHOLDER_CAMERA_YAW,
+    pitch: PLACEHOLDER_CAMERA_PITCH,
+    zoom: PLACEHOLDER_CAMERA_ZOOM,
+  },
+  placeholder_B: {
+    target: getHeroCirclePosition("placeholder_B"),
+    yaw: PLACEHOLDER_CAMERA_YAW,
+    pitch: PLACEHOLDER_CAMERA_PITCH,
+    zoom: PLACEHOLDER_CAMERA_ZOOM,
   },
 };
 let activePage: ScenePage = "home";
@@ -888,19 +989,10 @@ const registerHomePageTarget = (model: Object3D, page: ScenePage) => {
 };
 
 const applyHomeCameraPreset = () => {
-  pageCameraSettings.home.target
-    .copy(defaultCameraTarget)
-    .add(HOME_CAMERA_OFFSET);
+  pageCameraSettings.home.target.copy(defaultCameraTarget);
   pageCameraSettings.home.yaw = HOME_CAMERA_YAW;
   pageCameraSettings.home.pitch = HOME_CAMERA_PITCH;
   pageCameraSettings.home.zoom = HOME_CAMERA_ZOOM;
-};
-
-const applyPortfolioCameraPreset = () => {
-  pageCameraSettings.portfolio.target.copy(portfolioFocusTarget);
-  pageCameraSettings.portfolio.yaw = PORTFOLIO_CAMERA_YAW;
-  pageCameraSettings.portfolio.pitch = PORTFOLIO_CAMERA_PITCH;
-  pageCameraSettings.portfolio.zoom = PORTFOLIO_CAMERA_ZOOM;
 };
 
 const prioritizePortfolioCoverRendering = (model: Object3D) => {
@@ -1074,10 +1166,13 @@ const setActiveScenePage = (page: ScenePage) => {
   let frameOffset = page === "home" ? HOME_FRAME_OFFSET : 2.6;
   if (page === "turntable" && turntableSceneRoot) {
     frameObjectTarget = turntableSceneRoot;
-  } else if (page === "portfolio" && portfolioSceneRoot) {
-    frameObjectTarget = portfolioSceneRoot;
+  } else if (pageSceneRoots[page]) {
+    frameObjectTarget = pageSceneRoots[page];
   }
   cameraRig.frameObject(frameObjectTarget, frameOffset);
+  if (page === "home") {
+    cameraRig.setLookTarget(defaultCameraTarget, false);
+  }
   cameraRig.setLookTarget(fromSettings.target, false);
   cameraRig.setViewDirection(
     directionFromAngles(fromSettings.yaw, fromSettings.pitch),
@@ -1216,6 +1311,51 @@ let labelOptions: LabelApplicationOptions = {
 const heroGroup = new Group();
 scene.add(heroGroup);
 
+const layoutCircleSegments = 96;
+const layoutCirclePoints = [];
+for (let i = 0; i <= layoutCircleSegments; i += 1) {
+  const angle = (i / layoutCircleSegments) * Math.PI * 2;
+  layoutCirclePoints.push(
+    new Vector3(
+      Math.sin(angle) * HERO_LAYOUT_RADIUS,
+      HERO_LAYOUT_Y,
+      Math.cos(angle) * HERO_LAYOUT_RADIUS,
+    ),
+  );
+}
+const layoutCircleGeometry = new BufferGeometry().setFromPoints(
+  layoutCirclePoints,
+);
+const layoutCircleMaterial = new LineBasicMaterial({
+  color: new Color("#ffeb3b"),
+  transparent: true,
+  opacity: 0.85,
+  linewidth: 3,
+});
+const layoutCircle = new Line(layoutCircleGeometry, layoutCircleMaterial);
+layoutCircle.name = "hero-layout-circle";
+layoutCircle.frustumCulled = false;
+layoutCircle.renderOrder = 1000;
+layoutCircle.material.depthWrite = false;
+layoutCircle.material.depthTest = false;
+scene.add(layoutCircle);
+
+const layoutCircleOutlineMaterial = new LineBasicMaterial({
+  color: new Color("#ff5722"),
+  transparent: true,
+  opacity: 0.35,
+});
+const layoutCircleOutline = new Line(
+  layoutCircleGeometry.clone(),
+  layoutCircleOutlineMaterial,
+);
+layoutCircleOutline.name = "hero-layout-circle-outline";
+layoutCircleOutline.frustumCulled = false;
+layoutCircleOutline.renderOrder = 999;
+layoutCircleOutline.material.depthWrite = false;
+layoutCircleOutline.material.depthTest = false;
+scene.add(layoutCircleOutline);
+
 let zoomFactor = 1;
 cameraRig.setZoomFactor(zoomFactor);
 
@@ -1260,7 +1400,7 @@ let focusVinylState: FocusVinylState | null = null;
 let turntableVinylState: TurntableVinylState | null = null;
 let focusVinylLoadToken = 0;
 let turntableSceneRoot: Object3D | null = null;
-let portfolioSceneRoot: Object3D | null = null;
+const pageSceneRoots: Record<string, Object3D> = {};
 const turntableBounds = new Box3();
 const turntableBoundsSize = new Vector3();
 const turntableBoundsCenter = new Vector3();
@@ -2553,6 +2693,8 @@ loadTurntableModel()
     youtubeReady.then(applyDuration).catch(() => {});
     logMaterialNames(turntable);
 
+    const turntableCirclePos = getHeroCirclePosition("turntable");
+    turntable.position.copy(turntableCirclePos);
     heroGroup.add(turntable);
     turntableSceneRoot = turntable;
     registerHomePageTarget(turntable, "turntable");
@@ -2564,7 +2706,7 @@ loadTurntableModel()
     turntableBounds.getCenter(turntableBoundsCenter);
     turntableFocusTarget.copy(turntableBoundsCenter);
     // Store the actual default camera target (bounding box center)
-    defaultCameraTarget.copy(cameraRig.getTarget());
+    defaultCameraTarget.set(0, 0, 0);
 
     // Initialize camera positions (will be set by updateCameraTargetsForWindowSize)
     updateCameraTargetsForWindowSize();
@@ -2605,23 +2747,25 @@ loadTurntableModel()
     console.error("Failed to load hero models", error);
   });
 
+createPlaceholderScenes();
 loadPortfolioModel()
   .then((portfolioModel) => {
-    portfolioSceneRoot = portfolioModel;
     portfolioModel.visible = true;
     const referenceScale = turntableSceneRoot ? turntableSceneRoot.scale.x : 1;
     portfolioModel.scale.setScalar(referenceScale);
-    portfolioModel.position.set(-80, -5, -40);
+    const circlePos = getHeroCirclePosition("portfolio");
+    portfolioModel.position.copy(circlePos);
     portfolioModel.rotation.set(0, Math.PI * 0.25, 0);
     heroGroup.add(portfolioModel);
+    pageSceneRoots["portfolio"] = portfolioModel;
     registerHomePageTarget(portfolioModel, "portfolio");
     prioritizePortfolioCoverRendering(portfolioModel);
     portfolioBounds.setFromObject(portfolioModel);
     portfolioBounds.getCenter(portfolioBoundsCenter);
-    portfolioFocusTarget
-      .copy(portfolioBoundsCenter)
-      .add(PORTFOLIO_CAMERA_TARGET_OFFSET);
-    applyPortfolioCameraPreset();
+    const offset = circlePos.clone().sub(portfolioBoundsCenter);
+    portfolioModel.position.add(offset);
+    const focusPoint = circlePos.clone().add(PORTFOLIO_CAMERA_TARGET_OFFSET);
+    pageCameraSettings.portfolio.target.copy(focusPoint);
     applyHomeCameraPreset();
     if (activePage === "home" && !pageTransitionState.active) {
       applyPageCameraSettings(pageCameraSettings.home);
