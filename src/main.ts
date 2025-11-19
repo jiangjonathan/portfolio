@@ -1275,6 +1275,20 @@ const setActiveScenePage = (page: ScenePage) => {
     if (yt && !yt.isPlayerCollapsed()) {
       yt.setPlayerCollapsed(true);
     }
+  } else if (!wasTurntable && page === "turntable") {
+    // Returning to turntable page - uncollapse player if vinyl is loaded and tonearm in play area
+    if (
+      yt &&
+      yt.isPlayerCollapsed() &&
+      ON_TURNTABLE &&
+      loadedSelectionVideoId !== null
+    ) {
+      const isTonearmInPlayArea =
+        turntableController?.isTonearmInPlayArea() ?? false;
+      if (isTonearmInPlayArea) {
+        yt.setPlayerCollapsed(false);
+      }
+    }
   }
 };
 
@@ -1963,8 +1977,10 @@ const updateFocusVinylVisibility = () => {
   if (!focusVinylState?.model) {
     return;
   }
+  // Only show focus vinyl if there's a focus card rendered
+  const hasFocusCard = focusCardCoverContainer.childElementCount > 0;
   focusVinylState.model.visible =
-    !isFullscreenMode && !focusVinylManuallyHidden;
+    !isFullscreenMode && !focusVinylManuallyHidden && hasFocusCard;
 };
 
 const clearFocusCoverFallbackTimer = () => {
