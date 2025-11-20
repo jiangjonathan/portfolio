@@ -119,6 +119,7 @@ import {
 } from "./vinylInteractions";
 import { TurntableStateManager } from "./turntableState";
 import { setupDOM } from "./domSetup";
+import { PortfolioPapersManager } from "./portfolioPapers";
 
 declare global {
   interface Window {
@@ -138,6 +139,7 @@ const {
   focusCardCoverContainer,
   focusCardInfoContainer,
   showFocusBtn,
+  portfolioPapersContainer,
   homeOverlay,
   homeNavButton,
   portfolioNavButton,
@@ -566,19 +568,33 @@ const applyHomeCameraPreset = () => {
 
 let portfolioCoverMesh: Mesh | null = null;
 let portfolioCoverOriginalRotation = 0;
+let portfolioPapersManager: PortfolioPapersManager | null = null;
 
 // prioritizePortfolioCoverRendering now imported from sceneObjects.ts
 // Custom wrapper to store cover mesh reference for animation
 const setupPortfolioCover = (model: Object3D) => {
-  prioritizePortfolioCoverRendering(model, (mesh) => {
-    portfolioCoverMesh = mesh;
-    portfolioCoverOriginalRotation = mesh.rotation.z;
-    console.log("[Portfolio Cover] Found cover mesh:", mesh.name);
-    console.log(
-      "[Portfolio Cover] Original Z rotation:",
-      portfolioCoverOriginalRotation,
-    );
-  });
+  prioritizePortfolioCoverRendering(
+    model,
+    (mesh) => {
+      portfolioCoverMesh = mesh;
+      portfolioCoverOriginalRotation = mesh.rotation.z;
+      console.log("[Portfolio Cover] Found cover mesh:", mesh.name);
+      console.log(
+        "[Portfolio Cover] Original Z rotation:",
+        portfolioCoverOriginalRotation,
+      );
+      // Also set as cover mesh for papers manager
+      if (portfolioPapersManager) {
+        portfolioPapersManager.setCoverMesh(mesh);
+      }
+    },
+    (whitepaperMesh) => {
+      console.log("[Portfolio] Found whitepaper mesh:", whitepaperMesh.name);
+      if (portfolioPapersManager) {
+        portfolioPapersManager.setWhitepaperMesh(whitepaperMesh);
+      }
+    },
+  );
 };
 
 const animatePortfolioCoverFlip = (reverse = false) => {
@@ -673,6 +689,114 @@ homeOverlay.addEventListener("click", () => {
   setActiveScenePage("turntable");
 });
 
+// Initialize portfolio papers manager
+portfolioPapersManager = new PortfolioPapersManager(
+  portfolioPapersContainer,
+  renderer,
+);
+
+// Create papers UI
+const createPapersUI = () => {
+  portfolioPapersContainer.innerHTML = "";
+
+  const title = document.createElement("div");
+  title.textContent = "Portfolio Papers";
+  title.style.fontWeight = "bold";
+  title.style.marginBottom = "0.5rem";
+  portfolioPapersContainer.appendChild(title);
+
+  // Navigation arrows
+  const navContainer = document.createElement("div");
+  navContainer.style.cssText = `
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+  `;
+
+  const prevButton = document.createElement("button");
+  prevButton.textContent = "← Previous";
+  prevButton.style.cssText = `
+    flex: 1;
+    padding: 8px 12px;
+    background: rgba(100, 100, 255, 0.3);
+    color: #fff;
+    border: 1px solid #66f;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 13px;
+    transition: background 0.15s;
+  `;
+  prevButton.onmouseover = () => {
+    prevButton.style.background = "rgba(100, 100, 255, 0.5)";
+  };
+  prevButton.onmouseout = () => {
+    prevButton.style.background = "rgba(100, 100, 255, 0.3)";
+  };
+  prevButton.onclick = () => {
+    portfolioPapersManager!.previousPaper();
+  };
+
+  const nextButton = document.createElement("button");
+  nextButton.textContent = "Next →";
+  nextButton.style.cssText = `
+    flex: 1;
+    padding: 8px 12px;
+    background: rgba(100, 100, 255, 0.3);
+    color: #fff;
+    border: 1px solid #66f;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 13px;
+    transition: background 0.15s;
+  `;
+  nextButton.onmouseover = () => {
+    nextButton.style.background = "rgba(100, 100, 255, 0.5)";
+  };
+  nextButton.onmouseout = () => {
+    nextButton.style.background = "rgba(100, 100, 255, 0.3)";
+  };
+  nextButton.onclick = () => {
+    portfolioPapersManager!.nextPaper();
+  };
+
+  navContainer.appendChild(prevButton);
+  navContainer.appendChild(nextButton);
+  portfolioPapersContainer.appendChild(navContainer);
+
+  const papers = portfolioPapersManager!.getPapers();
+  papers.forEach((paper) => {
+    const button = document.createElement("button");
+    button.textContent = paper.name;
+    button.style.cssText = `
+      width: 100%;
+      padding: 8px 12px;
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff;
+      border: 1px solid #666;
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 13px;
+      transition: background 0.15s;
+      text-align: left;
+    `;
+    button.onmouseover = () => {
+      button.style.background = "rgba(255, 255, 255, 0.2)";
+    };
+    button.onmouseout = () => {
+      button.style.background = "rgba(255, 255, 255, 0.1)";
+    };
+    button.onclick = () => {
+      console.log(`[Portfolio] Loading paper: ${paper.name}`);
+      portfolioPapersManager!.hideAllPapers();
+      portfolioPapersManager!.loadPaper(paper.id);
+    };
+    portfolioPapersContainer.appendChild(button);
+  });
+};
+
 // globalControls, homeNavButton, portfolioNavButton, resetTutorialButton now created by setupDOM()
 homeNavButton.addEventListener("click", () => {
   setActiveScenePage("home");
@@ -682,6 +806,12 @@ portfolioNavButton.addEventListener("click", () => {
   console.log("[Portfolio] Button clicked");
   setActiveScenePage("portfolio");
   animatePortfolioCoverFlip();
+
+  // Show papers UI
+  portfolioPapersContainer.style.display = "flex";
+  if (portfolioPapersContainer.children.length === 0) {
+    createPapersUI();
+  }
 });
 
 resetTutorialButton.addEventListener("click", () => {
@@ -699,6 +829,8 @@ const setActiveScenePage = (page: ScenePage) => {
   const previousPage = activePage;
   if (previousPage === "portfolio" && page !== "portfolio") {
     animatePortfolioCoverFlip(true);
+    // Hide papers UI when leaving portfolio
+    portfolioPapersContainer.style.display = "none";
   }
   if (page === BUSINESS_CARD_PAGE) {
     businessCardAnimation.handlePageSelection(page);

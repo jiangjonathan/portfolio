@@ -155,7 +155,7 @@ const drawBusinessCardGrain = (ctx: CanvasRenderingContext2D) => {
 const drawBusinessCardText = (ctx: CanvasRenderingContext2D) => {
   const W = ctx.canvas.width;
   const H = ctx.canvas.height;
-  drawEmbossedText(ctx, "647 408 3030", W * 0.07, H * 0.12, H * 0.048, "left");
+  drawEmbossedText(ctx, "647 408 3030", W * 0.07, H * 0.1, H * 0.048, "left");
   const firstName = "JONATHAN";
   const lastName = "JIANG";
   const firstLetter = firstName[0];
@@ -206,7 +206,7 @@ const drawBusinessCardContacts = (ctx: CanvasRenderingContext2D) => {
   const H = ctx.canvas.height;
   const emailText = "EMAIL jonathanrsjiang@icloud.com";
   const linkedinText = "LINKEDIN jonathanrsjiang";
-  const contactY = H * 0.88;
+  const contactY = H * 0.92;
   const emailFont = H * 0.038;
   const linkedinFont = H * 0.038;
   ctx.font = `${emailFont}px "Garamond", "Times New Roman", serif`;
@@ -410,6 +410,7 @@ export function createPlaceholderMesh(
 export function prioritizePortfolioCoverRendering(
   model: Object3D,
   onCoverFound?: (mesh: Mesh) => void,
+  onWhitepaperFound?: (mesh: Mesh) => void,
 ): void {
   model.traverse((child) => {
     if (!("isMesh" in child) || !(child as Mesh).isMesh) {
@@ -441,6 +442,10 @@ export function prioritizePortfolioCoverRendering(
         PORTFOLIO_PAPER_OFFSET,
         PORTFOLIO_PAPER_UNITS,
       );
+      // Check if this is the whitepaper specifically
+      if (name.includes("whitepaper") && onWhitepaperFound) {
+        onWhitepaperFound(mesh);
+      }
     }
   });
 }

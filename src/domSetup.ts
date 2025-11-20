@@ -23,6 +23,7 @@ export interface DOMElements {
   portfolioNavButton: HTMLButtonElement;
   resetTutorialButton: HTMLButtonElement;
   cameraDebugPanel: HTMLDivElement;
+  portfolioPapersContainer: HTMLDivElement;
 }
 
 export function setupDOM(): DOMElements {
@@ -311,6 +312,28 @@ export function setupDOM(): DOMElements {
   });
   root.appendChild(cameraDebugPanel);
 
+  // Create portfolio papers UI container
+  const portfolioPapersContainer = document.createElement("div");
+  portfolioPapersContainer.id = "portfolio-papers-ui";
+  Object.assign(portfolioPapersContainer.style, {
+    position: "fixed",
+    top: "80px",
+    right: "20px",
+    padding: "1rem",
+    background: "rgba(0, 0, 0, 0.8)",
+    border: "1px solid #666",
+    borderRadius: "8px",
+    color: "#fff",
+    fontSize: "14px",
+    fontFamily: "inherit",
+    zIndex: "1100",
+    display: "none", // Hidden by default, shown on portfolio page
+    flexDirection: "column",
+    gap: "0.5rem",
+    minWidth: "180px",
+  });
+  root.appendChild(portfolioPapersContainer);
+
   // Create canvas
   const canvas = document.createElement("canvas");
   canvas.id = "vinyl-viewer";
@@ -332,5 +355,6 @@ export function setupDOM(): DOMElements {
     portfolioNavButton,
     resetTutorialButton,
     cameraDebugPanel,
+    portfolioPapersContainer,
   };
 }
