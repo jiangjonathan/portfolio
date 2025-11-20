@@ -1262,6 +1262,7 @@ export class VinylLibraryViewer {
                     alt="${this.escapeHtml(songName)}"
                     class="album-cover"
                     loading="lazy"
+                    decoding="async"
                   >
                   ${plasticOverlay}
                   ${genre ? `<div class="album-genre">${this.escapeHtml(genre)}</div>` : ""}
@@ -1285,7 +1286,11 @@ export class VinylLibraryViewer {
           `;
     });
 
-    this.scrollContainer.innerHTML = itemsHtml;
+    // Only update if content actually changed to avoid unnecessary re-renders
+    const currentHTML = this.scrollContainer.innerHTML;
+    if (currentHTML !== itemsHtml) {
+      this.scrollContainer.innerHTML = itemsHtml;
+    }
 
     // Check for text overflow and mark overflowing elements
     this.markOverflowingText();
@@ -2013,6 +2018,8 @@ export class VinylLibraryViewer {
                 songName: entry.songName,
                 aspectRatio: entry.aspectRatio,
                 imageUrl: entry.imageUrl,
+                originalImageUrl: entry.originalImageUrl,
+                releaseId: entry.releaseId,
               },
             }),
           );

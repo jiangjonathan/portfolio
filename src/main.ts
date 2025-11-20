@@ -1258,9 +1258,8 @@ const applySelectionVisualsToVinyl = async (
 
   const updateId = ++selectionVisualUpdateId;
   try {
-    const dominantColor = await extractDominantColor(
-      getSelectionCoverUrl(selection),
-    );
+    const coverUrl = await getSelectionCoverUrl(selection);
+    const dominantColor = await extractDominantColor(coverUrl);
     if (updateId !== selectionVisualUpdateId) {
       return;
     }

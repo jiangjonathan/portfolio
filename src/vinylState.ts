@@ -12,6 +12,8 @@ export interface VinylSelectionDetail {
   songName: string;
   aspectRatio?: number;
   imageUrl?: string;
+  originalImageUrl?: string;
+  releaseId?: string;
 }
 
 export interface FocusVinylState {

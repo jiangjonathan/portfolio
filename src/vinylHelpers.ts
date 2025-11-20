@@ -6,6 +6,7 @@ import { createLabelTextures } from "./labels";
 import { extractDominantColor } from "./colorUtils";
 import { FALLBACK_BACKGROUND_COLOR } from "./config";
 import type { VinylSelectionDetail } from "./vinylState";
+import { getOrCacheAlbumCover } from "./albumCoverCache";
 
 export const FOCUS_VINYL_BASE_SCALE = 0.88;
 export const VINYL_DRAG_THRESHOLD = 38;
@@ -46,11 +47,38 @@ export function rebuildLabelTextures(
   return textures;
 }
 
-export function getSelectionCoverUrl(selection: VinylSelectionDetail): string {
-  return (
-    selection.imageUrl ||
-    `https://img.youtube.com/vi/${selection.videoId}/maxresdefault.jpg`
-  );
+export async function getSelectionCoverUrl(
+  selection: VinylSelectionDetail,
+): Promise<string> {
+  // If we have a releaseId and originalImageUrl, try to get cached blob URL
+  // This avoids CORS issues when extracting dominant color from Cover Art Archive
+  if (selection.releaseId && selection.originalImageUrl) {
+    try {
+      const cachedBlobUrl = await getOrCacheAlbumCover(
+        selection.releaseId,
+        selection.originalImageUrl,
+      );
+      if (cachedBlobUrl) {
+        return cachedBlobUrl;
+      }
+    } catch (error) {
+      console.warn("Failed to get/cache album cover:", error);
+    }
+  }
+
+  // If imageUrl is a stale blob URL (starts with "blob:"), fall back to YouTube thumbnail
+  // Blob URLs are session-specific and become invalid after page reload
+  if (selection.imageUrl && selection.imageUrl.startsWith("blob:")) {
+    return `https://img.youtube.com/vi/${selection.videoId}/maxresdefault.jpg`;
+  }
+
+  // If imageUrl is valid (not a blob URL), use it
+  if (selection.imageUrl) {
+    return selection.imageUrl;
+  }
+
+  // Final fallback to YouTube thumbnail
+  return `https://img.youtube.com/vi/${selection.videoId}/maxresdefault.jpg`;
 }
 
 export async function applySelectionVisualsToVinyl(
@@ -72,9 +100,8 @@ export async function applySelectionVisualsToVinyl(
 
   const updateId = getUpdateId();
   try {
-    const dominantColor = await extractDominantColor(
-      getSelectionCoverUrl(selection),
-    );
+    const coverUrl = await getSelectionCoverUrl(selection);
+    const dominantColor = await extractDominantColor(coverUrl);
     if (updateId !== getUpdateId()) {
       return;
     }

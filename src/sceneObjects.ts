@@ -161,7 +161,7 @@ const drawBusinessCardText = (ctx: CanvasRenderingContext2D) => {
   const firstLetter = firstName[0];
   const restOfFirstName = firstName.slice(1);
   const nameY = H * 0.5;
-  const firstLetterFont = H * 0.067;
+  const firstLetterFont = H * 0.0625;
   const restOfFirstNameFont = H * 0.05;
   const lastNameFont = firstLetterFont;
   ctx.font = `${firstLetterFont}px "Garamond", "Times New Roman", serif`;

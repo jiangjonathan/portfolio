@@ -11,6 +11,8 @@ export type VinylSelectionDetail = {
   songName: string;
   aspectRatio?: number;
   imageUrl?: string;
+  originalImageUrl?: string;
+  releaseId?: string;
 };
 
 export type FocusVinylState = {
