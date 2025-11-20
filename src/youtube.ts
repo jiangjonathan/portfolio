@@ -235,7 +235,7 @@ export function createYouTubePlayer(): YouTubeBridge {
       isHoveringPlayer &&
       isOnTurntablePage;
     const shouldShowWhileCollapsed =
-      hasLoadedVideo && isCollapsed && isOnTurntablePage;
+      hasLoadedVideo && isCollapsed && isTonearmInPlayArea;
     if (shouldShowWithControls || shouldShowWhileCollapsed) {
       buttonContainer.style.opacity = "1";
       buttonContainer.style.pointerEvents = "auto";

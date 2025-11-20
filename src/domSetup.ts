@@ -114,7 +114,8 @@ export function setupDOM(): DOMElements {
         libraryGrid.style.transition = "opacity 0.3s ease";
         libraryGrid.style.opacity = "1";
         if (filterControls) {
-          (filterControls as HTMLElement).style.transition = "opacity 0.3s ease";
+          (filterControls as HTMLElement).style.transition =
+            "opacity 0.3s ease";
           (filterControls as HTMLElement).style.opacity = "1";
         }
       });

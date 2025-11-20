@@ -6,17 +6,9 @@ import {
   SphereGeometry,
   Vector3,
   Euler,
+  SRGBColorSpace,
 } from "three";
 import type { Object3D, WebGLRenderer } from "three";
-
-export const BUSINESS_CARD_PAGE = "business_card";
-export const BUSINESS_CARD_WIDTH = 18;
-export const BUSINESS_CARD_HEIGHT = 10;
-export const BUSINESS_CARD_THICKNESS = 0.15;
-export const BUSINESS_CARD_FOCUS_TARGET = new Vector3(0, 6, 0);
-export const BUSINESS_CARD_CAMERA_YAW = 0;
-export const BUSINESS_CARD_CAMERA_PITCH = 25;
-export const BUSINESS_CARD_CAMERA_ZOOM = 1.6;
 
 export const PLACEHOLDER_SIZE = 10;
 export const PLACEHOLDER_SCENES = [
@@ -57,49 +49,295 @@ export const PORTFOLIO_PAPER_UNITS = -0.6;
 export const PORTFOLIO_TEXT_OFFSET = -2.8;
 export const PORTFOLIO_TEXT_UNITS = -1.6;
 
+export type UVRect = {
+  minU: number;
+  maxU: number;
+  minV: number;
+  maxV: number;
+};
+
+let businessCardEmailUV: UVRect = {
+  minU: 0,
+  maxU: 0,
+  minV: 0,
+  maxV: 0,
+};
+let businessCardLinkedInUV: UVRect = {
+  minU: 0,
+  maxU: 0,
+  minV: 0,
+  maxV: 0,
+};
+export type BusinessCardContact = "email" | "linkedin";
+type ContactLayout = {
+  startX: number;
+  width: number;
+  y: number;
+  font: number;
+};
+let businessCardContactLayouts: Record<
+  BusinessCardContact,
+  ContactLayout
+> | null = null;
+let businessCardBaseImageData: ImageData | null = null;
+let businessCardTextureContext: CanvasRenderingContext2D | null = null;
+let businessCardTexture: CanvasTexture | null = null;
+let businessCardHighlight: BusinessCardContact | null = null;
+
+export const getBusinessCardEmailUV = () => businessCardEmailUV;
+export const getBusinessCardLinkedInUV = () => businessCardLinkedInUV;
+
+export const BUSINESS_CARD_EMAIL_URI = "mailto:jonathanrsjiang@icloud.com";
+export const BUSINESS_CARD_LINKEDIN_URL =
+  "https://www.linkedin.com/in/jonathanrsjiang";
+
+function drawEmbossedText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  fontSize: number,
+  align: CanvasTextAlign = "center",
+  baseline: CanvasTextBaseline = "middle",
+) {
+  const H = ctx.canvas.height;
+  const offset = H * 0.002; // very subtle
+
+  ctx.textAlign = align;
+  ctx.textBaseline = baseline;
+  ctx.font = `${fontSize}px "Garamond", "Times New Roman", serif`;
+
+  // highlight (top-left)
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = "rgba(255, 255, 255, 0.6)";
+  ctx.fillText(text, x - offset, y - offset);
+
+  // shadow (bottom-right)
+  ctx.fillStyle = "rgba(0, 0, 0, 0.25)";
+  ctx.fillText(text, x + offset, y + offset);
+
+  // main ink
+  ctx.fillStyle = "#181515";
+  ctx.fillText(text, x, y);
+
+  // reset
+  ctx.shadowColor = "transparent";
+}
+
+const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
+
+const drawBusinessCardBackground = (ctx: CanvasRenderingContext2D) => {
+  const W = ctx.canvas.width;
+  const H = ctx.canvas.height;
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, "#fffdf8");
+  grad.addColorStop(1, "#fef7ef");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = "rgba(255, 255, 255, 0.12)";
+  ctx.fillRect(0, 0, W, H);
+};
+
+const drawBusinessCardGrain = (ctx: CanvasRenderingContext2D) => {
+  const W = ctx.canvas.width;
+  const H = ctx.canvas.height;
+  const image = ctx.getImageData(0, 0, W, H);
+  const data = image.data;
+  for (let i = 0; i < data.length; i += 4) {
+    const n = (Math.random() - 0.5) * 6;
+    data[i] += n;
+    data[i + 1] += n;
+    data[i + 2] += n;
+  }
+  ctx.putImageData(image, 0, 0);
+};
+
+const drawBusinessCardText = (ctx: CanvasRenderingContext2D) => {
+  const W = ctx.canvas.width;
+  const H = ctx.canvas.height;
+  drawEmbossedText(ctx, "647 408 3030", W * 0.07, H * 0.12, H * 0.048, "left");
+  const firstName = "JONATHAN";
+  const lastName = "JIANG";
+  const firstLetter = firstName[0];
+  const restOfFirstName = firstName.slice(1);
+  const nameY = H * 0.5;
+  const firstLetterFont = H * 0.067;
+  const restOfFirstNameFont = H * 0.05;
+  const lastNameFont = firstLetterFont;
+  ctx.font = `${firstLetterFont}px "Garamond", "Times New Roman", serif`;
+  const firstWidth = ctx.measureText(firstLetter).width;
+  ctx.font = `${restOfFirstNameFont}px "Garamond", "Times New Roman", serif`;
+  const restWidth = ctx.measureText(restOfFirstName).width;
+  ctx.font = `${lastNameFont}px "Garamond", "Times New Roman", serif`;
+  const lastWidth = ctx.measureText(lastName).width;
+  const gap = W * 0.015;
+  const nameStartX = W * 0.5 - (firstWidth + restWidth + lastWidth + gap) / 2;
+  drawEmbossedText(
+    ctx,
+    firstLetter,
+    nameStartX,
+    nameY,
+    firstLetterFont,
+    "left",
+    "alphabetic",
+  );
+  drawEmbossedText(
+    ctx,
+    restOfFirstName,
+    nameStartX + firstWidth,
+    nameY,
+    restOfFirstNameFont,
+    "left",
+    "alphabetic",
+  );
+  drawEmbossedText(
+    ctx,
+    lastName,
+    nameStartX + firstWidth + restWidth + gap,
+    nameY,
+    lastNameFont,
+    "left",
+    "alphabetic",
+  );
+};
+
+const drawBusinessCardContacts = (ctx: CanvasRenderingContext2D) => {
+  const W = ctx.canvas.width;
+  const H = ctx.canvas.height;
+  const emailText = "EMAIL jonathanrsjiang@icloud.com";
+  const linkedinText = "LINKEDIN jonathanrsjiang";
+  const contactY = H * 0.88;
+  const emailFont = H * 0.038;
+  const linkedinFont = H * 0.038;
+  ctx.font = `${emailFont}px "Garamond", "Times New Roman", serif`;
+  const emailWidth = ctx.measureText(emailText).width;
+  ctx.font = `${linkedinFont}px "Garamond", "Times New Roman", serif`;
+  const linkedinWidth = ctx.measureText(linkedinText).width;
+  const contactGap = W * 0.02;
+  const contactStartX = W * 0.5 - (emailWidth + linkedinWidth + contactGap) / 2;
+  drawEmbossedText(
+    ctx,
+    emailText,
+    contactStartX,
+    contactY,
+    emailFont,
+    "left",
+    "alphabetic",
+  );
+  drawEmbossedText(
+    ctx,
+    linkedinText,
+    contactStartX + emailWidth + contactGap,
+    contactY,
+    linkedinFont,
+    "left",
+    "alphabetic",
+  );
+  const emailTopY = contactY - emailFont * 0.6;
+  const emailBottomY = contactY + emailFont * 0.6;
+  businessCardEmailUV = {
+    minU: clamp01(contactStartX / W),
+    maxU: clamp01((contactStartX + emailWidth) / W),
+    minV: clamp01(1 - emailBottomY / H),
+    maxV: clamp01(1 - emailTopY / H),
+  };
+  const linkedinStartX = contactStartX + emailWidth + contactGap;
+  const linkedinTopY = contactY - linkedinFont * 0.6;
+  const linkedinBottomY = contactY + linkedinFont * 0.6;
+  businessCardLinkedInUV = {
+    minU: clamp01(linkedinStartX / W),
+    maxU: clamp01((linkedinStartX + linkedinWidth) / W),
+    minV: clamp01(1 - linkedinBottomY / H),
+    maxV: clamp01(1 - linkedinTopY / H),
+  };
+  businessCardContactLayouts = {
+    email: {
+      startX: contactStartX,
+      width: emailWidth,
+      y: contactY,
+      font: emailFont,
+    },
+    linkedin: {
+      startX: linkedinStartX,
+      width: linkedinWidth,
+      y: contactY,
+      font: linkedinFont,
+    },
+  };
+};
+
+const drawBusinessCardTextureBase = (ctx: CanvasRenderingContext2D) => {
+  drawBusinessCardBackground(ctx);
+  drawBusinessCardGrain(ctx);
+  drawBusinessCardText(ctx);
+  drawBusinessCardContacts(ctx);
+};
+
+/* main texture */
+
 export function createBusinessCardTexture(
   renderer: WebGLRenderer,
 ): CanvasTexture {
   const canvas = document.createElement("canvas");
-  canvas.width = 2048;
+  canvas.width = 1782;
   canvas.height = 1152;
-  const context = canvas.getContext("2d");
-  if (!context) {
-    throw new Error("Failed to acquire canvas context for business card.");
-  }
 
-  context.fillStyle = "#fdf9f3";
-  context.fillRect(0, 0, canvas.width, canvas.height);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Failed to acquire canvas context.");
 
-  context.strokeStyle = "#ded3ca";
-  context.lineWidth = canvas.height * 0.012;
-  context.beginPath();
-  context.moveTo(canvas.width * 0.08, canvas.height * 0.3);
-  context.lineTo(canvas.width * 0.92, canvas.height * 0.3);
-  context.stroke();
-
-  context.fillStyle = "#221f1c";
-  context.textBaseline = "middle";
-  context.font = `600 ${canvas.height * 0.09}px "Space Grotesk", "Inter", sans-serif`;
-  context.textAlign = "left";
-  context.fillText("123 123 1234", canvas.width * 0.08, canvas.height * 0.18);
-
-  context.textAlign = "center";
-  context.font = `700 ${canvas.height * 0.2}px "Space Grotesk", "Inter", sans-serif`;
-  context.fillText("Jonathan JIANG", canvas.width / 2, canvas.height * 0.54);
-
-  context.font = `500 ${canvas.height * 0.09}px "Space Grotesk", "Inter", sans-serif`;
-  context.fillText(
-    "jonathanrsjiang@icloud.com",
-    canvas.width / 2,
-    canvas.height * 0.82,
+  drawBusinessCardTextureBase(ctx);
+  businessCardTextureContext = ctx;
+  businessCardBaseImageData = ctx.getImageData(
+    0,
+    0,
+    canvas.width,
+    canvas.height,
   );
 
   const texture = new CanvasTexture(canvas);
-  texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  texture.anisotropy = renderer.capabilities.getMaxAnisotropy?.() ?? 1;
+  texture.colorSpace = SRGBColorSpace;
   texture.needsUpdate = true;
+  businessCardTexture = texture;
   return texture;
 }
+
+export const setBusinessCardContactHighlight = (
+  highlight: BusinessCardContact | null,
+) => {
+  if (
+    !businessCardTextureContext ||
+    !businessCardBaseImageData ||
+    !businessCardTexture ||
+    businessCardHighlight === highlight
+  ) {
+    return;
+  }
+  businessCardTextureContext.putImageData(businessCardBaseImageData, 0, 0);
+  if (highlight && businessCardContactLayouts) {
+    const layout = businessCardContactLayouts[highlight];
+    const underlineY = layout.y + layout.font * 0.2;
+    const underlineHeight = layout.font * 0.05;
+    businessCardTextureContext.fillStyle = "rgba(20, 20, 20, 0.75)";
+    businessCardTextureContext.fillRect(
+      layout.startX,
+      underlineY,
+      layout.width,
+      underlineHeight,
+    );
+  }
+  businessCardHighlight = highlight;
+  businessCardTexture.needsUpdate = true;
+};
+
+export const BUSINESS_CARD_PAGE = "business_card";
+export const BUSINESS_CARD_WIDTH = 8.5;
+export const BUSINESS_CARD_HEIGHT = 5.5;
+export const BUSINESS_CARD_THICKNESS = 0.1;
+export const BUSINESS_CARD_FOCUS_TARGET = new Vector3(0, 6, 0);
+export const BUSINESS_CARD_CAMERA_YAW = 0;
+export const BUSINESS_CARD_CAMERA_PITCH = 25;
+export const BUSINESS_CARD_CAMERA_ZOOM = 2;
 
 export function createBusinessCardMesh(
   renderer: WebGLRenderer,
@@ -113,9 +351,9 @@ export function createBusinessCardMesh(
   const frontTexture = createBusinessCardTexture(renderer);
   const faceMaterial = new MeshStandardMaterial({
     map: frontTexture,
-    color: 0xffffff,
-    roughness: 0.38,
-    metalness: 0.08,
+    color: 0xfdf7ee,
+    roughness: 0.92,
+    metalness: 0,
   });
   faceMaterial.polygonOffset = true;
   faceMaterial.polygonOffsetFactor = -0.6;
@@ -123,13 +361,13 @@ export function createBusinessCardMesh(
 
   const backMaterial = new MeshStandardMaterial({
     color: 0xf5f0ea,
-    roughness: 0.55,
-    metalness: 0.04,
+    roughness: 0.88,
+    metalness: 0.0,
   });
   const edgeMaterial = new MeshStandardMaterial({
     color: 0xe6ddd4,
     roughness: 0.65,
-    metalness: 0.03,
+    metalness: 0.1,
   });
 
   const materials = [
@@ -147,7 +385,7 @@ export function createBusinessCardMesh(
   cardMesh.name = BUSINESS_CARD_PAGE;
 
   cardMesh.position.copy(circlePosition);
-  cardMesh.rotation.y = Math.PI * -0.19;
+  cardMesh.rotation.y = Math.PI * 0.19;
   cardMesh.rotation.x = Math.PI * 0;
   cardMesh.rotation.z = Math.PI * 0; // Flat on the ground
 

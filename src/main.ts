@@ -66,7 +66,6 @@ import {
   applyPageCameraSettings,
   captureCameraState,
   findPageForObject,
-  calculateYawToFacePosition,
   HOME_CAMERA_YAW,
   HOME_CAMERA_PITCH,
   HOME_CAMERA_ZOOM,
@@ -95,7 +94,13 @@ import {
   BUSINESS_CARD_CAMERA_ZOOM,
   PLACEHOLDER_SCENES,
   PORTFOLIO_CAMERA_TARGET_OFFSET,
+  getBusinessCardEmailUV,
+  getBusinessCardLinkedInUV,
+  BUSINESS_CARD_EMAIL_URI,
+  BUSINESS_CARD_LINKEDIN_URL,
+  setBusinessCardContactHighlight,
 } from "./sceneObjects";
+import type { BusinessCardContact, UVRect } from "./sceneObjects";
 import { createBusinessCardAnimation } from "./businessCardAnimation";
 import {
   getFocusVinylScale,
@@ -443,7 +448,6 @@ const placeholderMeshes: Record<string, Mesh> = {};
 const pageSceneRoots: Record<string, Object3D> = {};
 
 const businessCardAnimation = createBusinessCardAnimation({
-  root,
   getBusinessCardMesh: () =>
     (pageSceneRoots[BUSINESS_CARD_PAGE] as Object3D) ?? null,
 });
@@ -525,6 +529,10 @@ const pageCameraSettings: Record<ScenePage, PageCameraSettings> = {
     zoom: PLACEHOLDER_CAMERA_ZOOM,
   },
 };
+
+let rememberedHomeCameraState: PageCameraSettings | null = cloneCameraSettings(
+  pageCameraSettings.home,
+);
 
 const setHeroPageVisibility = (page: ScenePage | null) => {
   Object.entries(pageSceneRoots).forEach(([pageId, model]) => {
@@ -696,10 +704,15 @@ const setActiveScenePage = (page: ScenePage) => {
     businessCardAnimation.handlePageSelection(page);
   }
   if (previousPage === BUSINESS_CARD_PAGE && page !== BUSINESS_CARD_PAGE) {
+    setBusinessCardContactHighlight(null);
     businessCardAnimation.resetToHome();
   }
-  const toSettings = pageCameraSettings[page];
   const fromSettings = captureCameraState(cameraRig);
+  if (previousPage === "home" && page !== "home") {
+    rememberedHomeCameraState = cloneCameraSettings(fromSettings);
+    pageCameraSettings.home = cloneCameraSettings(rememberedHomeCameraState);
+  }
+  const toSettings = pageCameraSettings[page];
   let frameObjectTarget: Object3D = heroGroup;
   let frameOffset = page === "home" ? HOME_FRAME_OFFSET : 2.6;
   if (page === "turntable" && turntableSceneRoot) {
@@ -1065,11 +1078,41 @@ const cameraPanState = {
   lastY: 0,
 };
 
+const BUSINESS_CARD_ROTATION_SENSITIVITY = 0.006;
+const BUSINESS_CARD_MAX_PITCH = Math.PI / 2 - 0.05;
+const businessCardDragState = {
+  isRotating: false,
+  pointerId: -1,
+  lastX: 0,
+  lastY: 0,
+};
+
 const raycaster = new Raycaster();
 const pointerNDC = new Vector2();
 const dragPlane = new Plane(new Vector3(0, 0, 1), 0); // Plane perpendicular to Z axis (allows X and Y movement)
 const dragIntersectPoint = new Vector3();
 const vinylAnimationState = createVinylAnimationState();
+type BusinessCardLinkConfig = {
+  name: BusinessCardContact;
+  getRect: () => UVRect;
+  action: () => void;
+};
+const businessCardContactLinks: BusinessCardLinkConfig[] = [
+  {
+    name: "email",
+    getRect: getBusinessCardEmailUV,
+    action: () => {
+      window.location.href = BUSINESS_CARD_EMAIL_URI;
+    },
+  },
+  {
+    name: "linkedin",
+    getRect: getBusinessCardLinkedInUV,
+    action: () => {
+      window.open(BUSINESS_CARD_LINKEDIN_URL, "_blank", "noopener");
+    },
+  },
+];
 const cameraForward = new Vector3();
 const cameraRight = new Vector3();
 const cameraUpVector = new Vector3();
@@ -1096,6 +1139,57 @@ const platterSampleWorld = new Vector3();
 const turntableWorldPos = new Vector3();
 const turntableWorldQuat = new Quaternion();
 let turntableController: TurntableController | null = null;
+const isUVWithinRect = (u: number, v: number, rect: UVRect) =>
+  rect.minU < rect.maxU &&
+  rect.minV < rect.maxV &&
+  u >= rect.minU &&
+  u <= rect.maxU &&
+  v >= rect.minV &&
+  v <= rect.maxV;
+
+const findBusinessCardLinkUnderRay = () => {
+  const mesh = pageSceneRoots[BUSINESS_CARD_PAGE] as Mesh | undefined;
+  if (!mesh) {
+    return null;
+  }
+  const hits = raycaster.intersectObject(mesh, true);
+  if (!hits.length) {
+    return null;
+  }
+  for (const hit of hits) {
+    if (!hit.uv || hit.face?.materialIndex !== 2) {
+      continue;
+    }
+    const { x: u, y: v } = hit.uv;
+    for (const link of businessCardContactLinks) {
+      const rect = link.getRect();
+      if (isUVWithinRect(u, v, rect)) {
+        return link;
+      }
+    }
+    break;
+  }
+  return null;
+};
+
+const handleBusinessCardLinkClick = (): boolean => {
+  const link = findBusinessCardLinkUnderRay();
+  if (!link) {
+    return false;
+  }
+  link.action();
+  return true;
+};
+const updateBusinessCardHoverState = () => {
+  const link = findBusinessCardLinkUnderRay();
+  if (!link) {
+    canvas.style.cursor = "";
+    setBusinessCardContactHighlight(null);
+    return;
+  }
+  canvas.style.cursor = "pointer";
+  setBusinessCardContactHighlight(link.name);
+};
 function rebuildLabelTextures() {
   focusLabelTextures.sideA.dispose();
   focusLabelTextures.sideB.dispose();
@@ -1352,7 +1446,7 @@ function prepareFocusVinylPresentation(model: Object3D, token: number) {
     if (token === focusVinylLoadToken && focusVinylState?.model === model) {
       updateFocusVinylVisibility();
     }
-  }, 800);
+  }, 719);
 
   setTimeout(() => {
     if (token === focusVinylLoadToken && focusVinylState?.model === model) {
@@ -1865,26 +1959,30 @@ canvas.addEventListener("pointerdown", (event) => {
     if (pageTransitionState.active || yt.isFullscreen()) {
       return;
     }
-    if (activePage !== "home") {
-      return;
-    }
-    if (heroGroup.children.length) {
-      const heroHits = raycaster.intersectObject(heroGroup, true);
-      if (heroHits.length) {
-        for (const hit of heroHits) {
-          const page = findPageForObject(
-            hit.object as Object3D,
-            homePageTargets,
-          );
-          if (page && page !== "home") {
-            setActiveScenePage(page);
-            if (page === "portfolio") {
-              animatePortfolioCoverFlip();
+    if (activePage === "home") {
+      if (heroGroup.children.length) {
+        const heroHits = raycaster.intersectObject(heroGroup, true);
+        if (heroHits.length) {
+          for (const hit of heroHits) {
+            const page = findPageForObject(
+              hit.object as Object3D,
+              homePageTargets,
+            );
+            if (page && page !== "home") {
+              setActiveScenePage(page);
+              if (page === "portfolio") {
+                animatePortfolioCoverFlip();
+              }
+              break;
             }
-            break;
           }
         }
       }
+    } else if (activePage === BUSINESS_CARD_PAGE) {
+      if (handleBusinessCardLinkClick()) {
+        return;
+      }
+      startBusinessCardRotation(event);
     }
     return;
   }
@@ -1959,6 +2057,19 @@ canvas.addEventListener("pointerdown", (event) => {
 let isTurntableHovered = false;
 
 canvas.addEventListener("pointermove", (event) => {
+  if (
+    activePage === BUSINESS_CARD_PAGE &&
+    updatePointer(event, pointerNDC, canvas)
+  ) {
+    raycaster.setFromCamera(pointerNDC, camera);
+    updateBusinessCardHoverState();
+  } else if (activePage !== BUSINESS_CARD_PAGE) {
+    setBusinessCardContactHighlight(null);
+    canvas.style.cursor = "";
+  }
+  if (handleBusinessCardRotationMove(event)) {
+    return;
+  }
   if (handleCameraPanMove(event)) {
     return;
   }
@@ -2133,6 +2244,13 @@ canvas.addEventListener("pointerleave", endCameraOrbit);
 canvas.addEventListener("pointerup", endCameraPan);
 canvas.addEventListener("pointercancel", endCameraPan);
 canvas.addEventListener("pointerleave", endCameraPan);
+canvas.addEventListener("pointerleave", () => {
+  setBusinessCardContactHighlight(null);
+  canvas.style.cursor = "";
+});
+canvas.addEventListener("pointerup", endBusinessCardRotation);
+canvas.addEventListener("pointercancel", endBusinessCardRotation);
+canvas.addEventListener("pointerleave", endBusinessCardRotation);
 
 loadTurntableModel()
   .then((turntable) => {
@@ -2766,6 +2884,69 @@ function pickPointOnPlane(event: PointerEvent) {
 }
 
 // start/stop + speed slide handled by controller
+
+function startBusinessCardRotation(event: PointerEvent) {
+  if (
+    activePage !== BUSINESS_CARD_PAGE ||
+    pageTransitionState.active ||
+    businessCardDragState.isRotating ||
+    yt.isFullscreen()
+  ) {
+    return;
+  }
+  businessCardDragState.isRotating = true;
+  businessCardDragState.pointerId = event.pointerId;
+  businessCardDragState.lastX = event.clientX;
+  businessCardDragState.lastY = event.clientY;
+  try {
+    canvas.setPointerCapture(event.pointerId);
+  } catch {
+    // ignore if capture is unavailable
+  }
+}
+
+function handleBusinessCardRotationMove(event: PointerEvent) {
+  if (
+    !businessCardDragState.isRotating ||
+    event.pointerId !== businessCardDragState.pointerId ||
+    activePage !== BUSINESS_CARD_PAGE
+  ) {
+    return false;
+  }
+  const cardMesh = pageSceneRoots[BUSINESS_CARD_PAGE];
+  if (!cardMesh) {
+    return false;
+  }
+  const deltaX = event.clientX - businessCardDragState.lastX;
+  const deltaY = event.clientY - businessCardDragState.lastY;
+  businessCardDragState.lastX = event.clientX;
+  businessCardDragState.lastY = event.clientY;
+
+  const sensitivity = BUSINESS_CARD_ROTATION_SENSITIVITY;
+  cardMesh.rotation.y += deltaX * sensitivity;
+  cardMesh.rotation.x += deltaY * sensitivity;
+  cardMesh.rotation.x = Math.max(
+    -BUSINESS_CARD_MAX_PITCH,
+    Math.min(BUSINESS_CARD_MAX_PITCH, cardMesh.rotation.x),
+  );
+  return true;
+}
+
+function endBusinessCardRotation(event: PointerEvent) {
+  if (
+    !businessCardDragState.isRotating ||
+    event.pointerId !== businessCardDragState.pointerId
+  ) {
+    return;
+  }
+  businessCardDragState.isRotating = false;
+  businessCardDragState.pointerId = -1;
+  try {
+    canvas.releasePointerCapture(event.pointerId);
+  } catch {
+    // ignore if pointer capture wasn't held
+  }
+}
 
 function findObjectByName(root: Object3D | null, name: string) {
   if (!root) {
