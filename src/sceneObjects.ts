@@ -282,7 +282,7 @@ export function createBusinessCardTexture(
   canvas.width = 1782;
   canvas.height = 1152;
 
-  const ctx = canvas.getContext("2d");
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx) throw new Error("Failed to acquire canvas context.");
 
   drawBusinessCardTextureBase(ctx);

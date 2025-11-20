@@ -36,7 +36,7 @@ export function extractDominantColor(imageUrl: string): Promise<string> {
         const canvas = document.createElement("canvas");
         canvas.width = 100;
         canvas.height = 100;
-        const ctx = canvas.getContext("2d");
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
         if (!ctx) {
           reject(new Error("Could not get canvas context"));
           return;

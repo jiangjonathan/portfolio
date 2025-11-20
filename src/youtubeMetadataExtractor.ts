@@ -41,6 +41,49 @@ interface AlbumArtCandidate {
   packaging?: string; // Format like "Vinyl", "CD", etc.
 }
 
+/**
+ * Fetch artist genres from MusicBrainz as a fallback
+ */
+async function fetchArtistGenres(
+  artistName: string,
+): Promise<string | undefined> {
+  try {
+    const query = `artist:"${artistName}"`;
+    const url = `https://musicbrainz.org/ws/2/artist/?fmt=json&limit=1&query=${encodeURIComponent(query)}`;
+
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent": "vinyl-library/1.0",
+      },
+    });
+
+    if (!response.ok) return undefined;
+
+    const data = await response.json();
+    const artists = data.artists || [];
+
+    if (artists.length === 0) return undefined;
+
+    const artist = artists[0];
+    const tags = artist.tags || [];
+
+    if (tags.length === 0) return undefined;
+
+    const genre = tags
+      .slice(0, 3)
+      .map((t: any) => t.name)
+      .join(", ");
+
+    console.log(
+      `[Artist Genre Fallback] Found genres for "${artistName}": ${genre}`,
+    );
+    return genre;
+  } catch (error) {
+    console.warn("Error fetching artist genres:", error);
+    return undefined;
+  }
+}
+
 async function fetchCoverArtForRelease(
   releaseId: string,
 ): Promise<string | null> {
@@ -208,6 +251,12 @@ async function searchMusicBrainz(
           const recordingTags = rec.tags || [];
           const combinedTags =
             releaseTags.length > 0 ? releaseTags : recordingTags;
+
+          console.log(
+            `[Genre Extraction] Release ${release.id}:`,
+            `releaseTags=${releaseTags.length}, recordingTags=${recordingTags.length}, combinedTags=${combinedTags.length}`,
+          );
+
           // Store top 3 genres as comma-separated string
           const genre =
             combinedTags.length > 0
@@ -221,6 +270,11 @@ async function searchMusicBrainz(
           const releaseYear = release.date
             ? release.date.split("-")[0]
             : undefined;
+
+          console.log(
+            `[Genre Extraction] Release ${release.id} (${release.title}):`,
+            `genre="${genre}", releaseYear="${releaseYear}", date="${release.date}"`,
+          );
 
           // Extract packaging/media info
           const media = release["media"] || [];
@@ -358,6 +412,12 @@ async function searchMusicBrainz(
             // Priority: release tags > release-group tags
             const releaseTags = release.tags || [];
             const combinedTags = releaseTags.length > 0 ? releaseTags : rgTags;
+
+            console.log(
+              `[Genre Extraction] Release ${release.id}:`,
+              `releaseTags=${releaseTags.length}, rgTags=${rgTags.length}, combinedTags=${combinedTags.length}`,
+            );
+
             // Store top 3 genres as comma-separated string
             const genre =
               combinedTags.length > 0
@@ -370,6 +430,11 @@ async function searchMusicBrainz(
             const releaseYear = release.date
               ? release.date.split("-")[0]
               : undefined;
+
+            console.log(
+              `[Genre Extraction] Release ${release.id} (${release.title}):`,
+              `genre="${genre}", releaseYear="${releaseYear}", date="${release.date}"`,
+            );
 
             // Extract packaging/media info
             const media = release["media"] || [];
@@ -521,6 +586,28 @@ async function searchMusicBrainz(
     console.log(
       `Returning ${topResults.length} results (up to 6 with vinyl priority)`,
     );
+
+    // Apply artist genre fallback for candidates without genres
+    const artistGenreCache = new Map<string, string | undefined>();
+
+    for (const candidate of topResults) {
+      if (!candidate.genre || candidate.genre.trim() === "") {
+        // Check if we already fetched this artist's genre
+        if (!artistGenreCache.has(candidate.artist)) {
+          const artistGenre = await fetchArtistGenres(candidate.artist);
+          artistGenreCache.set(candidate.artist, artistGenre);
+        }
+
+        const artistGenre = artistGenreCache.get(candidate.artist);
+        if (artistGenre) {
+          candidate.genre = artistGenre;
+          console.log(
+            `[Artist Genre Fallback] Applied to "${candidate.title}": ${artistGenre}`,
+          );
+        }
+      }
+    }
+
     return topResults;
   } catch (error) {
     console.error("MusicBrainz error:", error);
@@ -1538,6 +1625,9 @@ export async function extractAndEnrichMetadata(
   };
 
   console.log(`[extractAndEnrichMetadata] Returning metadata:`, result);
+  console.log(
+    `[extractAndEnrichMetadata] Selected candidate genre: ${selectedCandidate?.genre}, date: ${selectedCandidate?.date}`,
+  );
 
   return result;
 }

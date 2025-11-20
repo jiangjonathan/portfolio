@@ -132,7 +132,9 @@ export class VinylLibraryViewer {
    * Recreate blob URLs for all entries that have cached covers
    */
   private async recreateBlobUrls(): Promise<void> {
-    console.log("[recreateBlobUrls] Processing owner library...");
+    console.groupCollapsed(
+      `[recreateBlobUrls] Processing ${this.ownerLibrary.length} owner entries...`,
+    );
 
     // Process entries sequentially with delay to avoid overwhelming Cover Art Archive
     for (const entry of this.ownerLibrary) {
@@ -163,7 +165,10 @@ export class VinylLibraryViewer {
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
 
-    console.log("[recreateBlobUrls] Processing visitor library...");
+    console.groupEnd();
+    console.groupCollapsed(
+      `[recreateBlobUrls] Processing ${this.visitorLibrary.length} visitor entries...`,
+    );
 
     // Process entries sequentially with delay to avoid overwhelming Cover Art Archive
     for (const entry of this.visitorLibrary) {
@@ -194,6 +199,7 @@ export class VinylLibraryViewer {
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
 
+    console.groupEnd();
     console.log("[recreateBlobUrls] Done!");
   }
 

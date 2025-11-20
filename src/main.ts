@@ -2087,7 +2087,18 @@ canvas.addEventListener("pointermove", (event) => {
     raycaster.setFromCamera(pointerNDC, camera);
 
     // Check if hovering over turntable (heroGroup contains turntable and vinyl)
-    const turntableHits = raycaster.intersectObject(heroGroup, true);
+    // Filter to only check visible objects to avoid invisible models triggering hovers
+    const turntableHits = raycaster
+      .intersectObject(heroGroup, true)
+      .filter((hit) => {
+        // Check if this object and all its parents up to heroGroup are visible
+        let obj: Object3D | null = hit.object;
+        while (obj && obj !== heroGroup) {
+          if (!obj.visible) return false;
+          obj = obj.parent;
+        }
+        return true;
+      });
     const wasHovered = isTurntableHovered;
     isTurntableHovered = turntableHits.length > 0;
 
