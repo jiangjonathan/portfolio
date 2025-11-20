@@ -53,6 +53,14 @@ body.focus-cover-click-active #vinyl-focus-card-info-root {
     z-index: 20003 !important;
 }
 
+#vinyl-focus-card-cover-root {
+    cursor: pointer;
+}
+
+#vinyl-focus-card-cover-root:empty {
+    cursor: default;
+}
+
 body.vinyl-drag-active .vinyl-viewer-widget,
 body.vinyl-drag-active .vinyl-viewer-widget * {
     user-select: none;

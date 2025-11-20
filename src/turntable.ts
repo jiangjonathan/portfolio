@@ -193,6 +193,18 @@ export class TurntableController {
     return false;
   }
 
+  isHoveringControls(): boolean {
+    return (
+      this.isHoveringTonearm ||
+      this.hit(this.startStopButton) ||
+      this.hit(this.speedSlide)
+    );
+  }
+
+  isPlaying(): boolean {
+    return this.playingSound;
+  }
+
   handlePointerUp(e: PointerEvent): void {
     if (!this.isDraggingTonearm) return;
     this.isDraggingTonearm = false;
@@ -253,6 +265,16 @@ export class TurntableController {
         inPlayWindow &&
         !this.isDraggingTonearm &&
         this.vinylPresent;
+
+      // Debug logging for needle drop conditions
+      if (
+        this.tonearmBaseRotation <= this.TONEARM_PLAY_YAW_THRESHOLD &&
+        this.tonearmBaseRotation >= this.TONEARM_MIN_YAW
+      ) {
+        console.log(
+          `[Turntable] shouldDropNeedle check: startOn=${this.startOn}, inPlayWindow=${inPlayWindow}, vinylPresent=${this.vinylPresent}, isDraggingTonearm=${this.isDraggingTonearm}, result=${shouldDropNeedle}`,
+        );
+      }
       const advanceMedia =
         this.startOn &&
         this.playingSound &&
@@ -340,9 +362,11 @@ export class TurntableController {
         this.TONEARM_PLAY_EPSILON;
 
       if (shouldDropNeedle && needleDown && !this.playingSound) {
+        console.log(`[Turntable] Needle dropped! Calling onPlay callback`);
         this.playingSound = true;
         this.onPlay?.();
       } else if ((!shouldDropNeedle || !needleDown) && this.playingSound) {
+        console.log(`[Turntable] Needle lifted! Calling onPause callback`);
         this.playingSound = false;
         this.onPause?.();
       }

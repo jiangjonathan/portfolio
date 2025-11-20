@@ -1299,9 +1299,15 @@ const loadVideoForCurrentSelection = async () => {
 
   const selection = pendingVinylSelection;
   const loadPromise = (async () => {
+    console.log(
+      `[loadVideoForCurrentSelection] Starting load for ${selection.artistName} - ${selection.songName}`,
+    );
     turntableStateManager.resetFadeOut();
     turntableController?.returnTonearmHome();
     turntableController?.pausePlayback();
+    console.log(
+      `[loadVideoForCurrentSelection] Clearing loadedSelectionVideoId (was "${loadedSelectionVideoId}")`,
+    );
     loadedSelectionVideoId = null;
 
     if (selection.aspectRatio !== undefined) {
@@ -1353,13 +1359,23 @@ const loadVideoForCurrentSelection = async () => {
       yt.setVolume(100);
     }, 300);
 
-    if (turntableStateManager.isOnTurntable()) {
+    const isOnTurntable = turntableStateManager.isOnTurntable();
+    console.log(
+      `[loadVideoForCurrentSelection] isOnTurntable=${isOnTurntable}`,
+    );
+    if (isOnTurntable) {
       loadedSelectionVideoId = selection.videoId;
       console.log(
         `Loaded for turntable: ${selection.artistName} - ${selection.songName}`,
       );
+      console.log(
+        `[loadVideoForCurrentSelection] Set loadedSelectionVideoId="${loadedSelectionVideoId}"`,
+      );
     } else {
       loadedSelectionVideoId = null;
+      console.log(
+        `[loadVideoForCurrentSelection] Not on turntable, cleared loadedSelectionVideoId`,
+      );
     }
   })();
 
@@ -1383,7 +1399,9 @@ const loadVideoForCurrentSelection = async () => {
 // Listen for song clicks from the viewer
 window.addEventListener("load-vinyl-song", (event) => {
   const detail = (event as CustomEvent<VinylSelectionDetail>).detail;
+  console.log(`[load-vinyl-song] Event received:`, detail);
   if (!detail || !detail.videoId) {
+    console.warn(`[load-vinyl-song] Invalid detail or missing videoId`);
     return;
   }
 
@@ -1392,12 +1410,17 @@ window.addEventListener("load-vinyl-song", (event) => {
 });
 
 async function handleFocusSelection(selection: VinylSelectionDetail) {
+  console.log(
+    `[handleFocusSelection] Starting for ${selection.artistName} - ${selection.songName}`,
+  );
   const loadToken = ++focusVinylLoadToken;
   vinylDragPointerId = null;
   isReturningVinyl = false;
   isReturningToFocusCard = false;
 
+  console.log(`[handleFocusSelection] Applying selection visuals...`);
   await applySelectionVisualsToVinyl(selection);
+  console.log(`[handleFocusSelection] Selection visuals applied`);
   if (turntableVinylState) {
     updateTurntableVinylVisuals(turntableVinylState.labelVisuals);
   }
@@ -1445,7 +1468,7 @@ function prepareFocusVinylPresentation(model: Object3D, token: number) {
     if (token === focusVinylLoadToken && focusVinylState?.model === model) {
       updateFocusVinylVisibility();
     }
-  }, 719);
+  }, 800);
 
   setTimeout(() => {
     if (token === focusVinylLoadToken && focusVinylState?.model === model) {
@@ -2079,6 +2102,50 @@ canvas.addEventListener("pointermove", (event) => {
     return;
   }
 
+  // Check if hovering over clickable home page navigation elements
+  if (activePage === "home" && !pageTransitionState.active) {
+    if (updatePointer(event, pointerNDC, canvas)) {
+      raycaster.setFromCamera(pointerNDC, camera);
+      const heroHits = raycaster.intersectObject(heroGroup, true);
+      let foundClickable = false;
+
+      if (heroHits.length) {
+        for (const hit of heroHits) {
+          const page = findPageForObject(
+            hit.object as Object3D,
+            homePageTargets,
+          );
+          if (page && page !== "home") {
+            foundClickable = true;
+            break;
+          }
+        }
+      }
+
+      canvas.style.cursor = foundClickable ? "pointer" : "";
+    }
+  }
+
+  // Check if hovering over clickable vinyl records or turntable controls on turntable page
+  if (
+    activePage === "turntable" &&
+    !pageTransitionState.active &&
+    !yt.isFullscreen()
+  ) {
+    if (updatePointer(event, pointerNDC, canvas)) {
+      raycaster.setFromCamera(pointerNDC, camera);
+      const vinylPick = pickVinylUnderPointer();
+      const hoveringControls =
+        turntableController?.isHoveringControls() ?? false;
+
+      if (vinylPick || hoveringControls) {
+        canvas.style.cursor = "pointer";
+      } else {
+        canvas.style.cursor = "";
+      }
+    }
+  }
+
   // Check if hovering over turntable in fullscreen mode
   if (yt.isFullscreen() && turntablePositionState === "fullscreen") {
     if (!updatePointer(event, pointerNDC, canvas)) {
@@ -2286,9 +2353,17 @@ loadTurntableModel()
         }
       },
       onPlay: () => {
+        console.log(
+          `[TurntableController] onPlay callback triggered, loadedSelectionVideoId="${loadedSelectionVideoId}"`,
+        );
         // Only play if video is loaded
         if (loadedSelectionVideoId) {
+          console.log(`[TurntableController] Calling yt.play()`);
           yt.play();
+        } else {
+          console.warn(
+            `[TurntableController] onPlay called but no video loaded (loadedSelectionVideoId is null)`,
+          );
         }
       },
       onPause: () => {
