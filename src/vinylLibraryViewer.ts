@@ -1179,7 +1179,7 @@ export class VinylLibraryViewer {
               <div class="sort-option" data-category="year">year</div>
             </div>
           </div>
-          <button id="vinyl-filter-btn" class="filter-btn vinyl-hyperlink">show mine only</button>
+          <button id="vinyl-filter-btn" class="filter-btn vinyl-hyperlink">show personal only</button>
           <button id="vinyl-jump-top-btn" class="filter-btn vinyl-hyperlink">to top</button>
           <button id="vinyl-edit-btn" class="filter-btn vinyl-hyperlink">edit</button>
         </div>
@@ -2073,8 +2073,8 @@ export class VinylLibraryViewer {
       filterBtn.addEventListener("click", () => {
         this.showVisitorOnly = !this.showVisitorOnly;
         filterBtn.textContent = this.showVisitorOnly
-          ? "show combined"
-          : "show mine only";
+          ? "show whole library"
+          : "show personal only";
         filterBtn.classList.toggle("active", this.showVisitorOnly);
         this.mergeLibraries();
         this.updateVisibleItems();
@@ -2668,16 +2668,11 @@ export class VinylLibraryViewer {
     imageUrl: string | null,
     entry?: VisitorEntry,
   ): string {
-    // If imageUrl is a blob URL, try to use originalImageUrl instead
-    if (imageUrl && imageUrl.startsWith("blob:")) {
-      if (
-        entry?.originalImageUrl &&
-        !entry.originalImageUrl.startsWith("blob:")
-      ) {
-        return entry.originalImageUrl;
-      }
-    }
+    // Use the imageUrl directly if it exists (including blob URLs)
+    // Blob URLs created by recreateBlobUrls are fresh and valid
     if (imageUrl) return imageUrl;
+
+    // No imageUrl, return placeholder
     return 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"%3E%3Crect fill="%23333" width="200" height="200"/%3E%3Ctext x="100" y="100" text-anchor="middle" dy=".3em" fill="%23999" font-size="14"%3ENo Image%3C/text%3E%3C/svg%3E';
   }
 

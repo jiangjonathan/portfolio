@@ -254,6 +254,29 @@ export class VinylLibraryManager {
             color: #000;
             border: none;
           }
+
+          .vinyl-widget-enhanced-compact .status-message.loading::after {
+            content: '';
+            animation: loading-dots 2s steps(4, end) infinite;
+          }
+
+          @keyframes loading-dots {
+            0%, 20% {
+              content: '';
+            }
+            21%, 40% {
+              content: '.';
+            }
+            41%, 60% {
+              content: '..';
+            }
+            61%, 80% {
+              content: '...';
+            }
+            81%, 100% {
+              content: '';
+            }
+          }
         </style>
 
         <button class="vinyl-toggle-btn" id="vinyl-toggle-btn">+</button>
@@ -396,6 +419,29 @@ export class VinylLibraryManager {
             background: transparent;
             color: #000;
             border: none;
+          }
+
+          .vinyl-widget-enhanced-full .status-message.loading::after {
+            content: '';
+            animation: loading-dots 2s steps(4, end) infinite;
+          }
+
+          @keyframes loading-dots {
+            0%, 20% {
+              content: '';
+            }
+            21%, 40% {
+              content: '.';
+            }
+            41%, 60% {
+              content: '..';
+            }
+            61%, 80% {
+              content: '...';
+            }
+            81%, 100% {
+              content: '';
+            }
           }
 
           .vinyl-widget-enhanced-full .library-list {
@@ -653,7 +699,7 @@ export class VinylLibraryManager {
     if (addBtn) addBtn.disabled = true;
 
     try {
-      this.showStatus("fetching video information...", "loading");
+      this.showStatus("fetching video information", "loading");
 
       // Step 1: Fetch YouTube metadata
       const ytMetadata = await fetchYouTubeMetadata(youtubeId);
@@ -661,7 +707,7 @@ export class VinylLibraryManager {
         throw new Error("could not fetch youtube metadata");
       }
 
-      this.showStatus("extracting metadata...", "loading");
+      this.showStatus("extracting metadata", "loading");
 
       // Step 2: Extract and enrich metadata (with user prompts if needed)
       const enrichedMetadata = await extractAndEnrichMetadata(
@@ -674,7 +720,7 @@ export class VinylLibraryManager {
         return;
       }
 
-      this.showStatus("saving to your collection...", "loading");
+      this.showStatus("saving to your collection", "loading");
 
       // Step 3: Add to backend (admin) or localStorage (visitor)
       let entry = null;

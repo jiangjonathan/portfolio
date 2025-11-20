@@ -361,35 +361,18 @@ async function searchMusicBrainz(
               `[MusicBrainz] Release group ${rgId}: Found ${releases.length} releases`,
             );
 
-            // Now fetch each release individually with tags
-            const releasesWithTags = await Promise.all(
-              releases.slice(0, 5).map(async (release: any) => {
-                try {
-                  // Add rate limiting delay to avoid 503 errors
-                  await new Promise((resolve) => setTimeout(resolve, 100));
+            // Don't fetch individual release tags due to CORS restrictions
+            // Instead, use release-group tags for all releases in the group
+            // This avoids CORS errors while still providing genre information
+            const releasesWithTags = releases
+              .slice(0, 5)
+              .map((release: any) => {
+                // Use release-group tags as fallback for all releases
+                return { ...release, tags: rg.tags || [] };
+              });
 
-                  const releaseDetailUrl = `https://musicbrainz.org/ws/2/release/${release.id}?fmt=json&inc=tags+artist-credits`;
-                  const detailResponse = await fetch(releaseDetailUrl, {
-                    headers: {
-                      "User-Agent": "vinyl-library/1.0",
-                    },
-                  });
-
-                  if (!detailResponse.ok) {
-                    return { ...release, tags: [] };
-                  }
-
-                  const detailData = await detailResponse.json();
-                  console.log(
-                    `[MusicBrainz] Release ${release.id} (${release.title}): tags =`,
-                    detailData.tags,
-                  );
-                  return { ...release, tags: detailData.tags || [] };
-                } catch (error) {
-                  console.debug("Release detail fetch error:", error);
-                  return { ...release, tags: [] };
-                }
-              }),
+            console.log(
+              `[MusicBrainz] Release group ${rgId}: Applied ${rg.tags?.length || 0} tags to ${releasesWithTags.length} releases`,
             );
 
             return {
@@ -721,7 +704,28 @@ async function showAlbumArtPicker(
             object-fit: cover;
             margin-bottom: 0.5rem;
             border: 1px solid #ddd;
+            background: #f0f0f0;
           `;
+
+          // Handle image load errors (404, CORS, expired blob URLs, etc.)
+          img.addEventListener("error", () => {
+            console.warn(`Failed to load cover art: ${candidate.coverArtUrl}`);
+            // Replace with placeholder showing it failed to load
+            img.style.background = "#f0f0f0";
+            img.style.display = "flex";
+            img.style.alignItems = "center";
+            img.style.justifyContent = "center";
+            img.alt = "Failed to load";
+            // Try to construct fallback URL if we have releaseId
+            if (candidate.releaseId) {
+              const fallbackUrl = `https://coverartarchive.org/release/${candidate.releaseId}/front`;
+              if (fallbackUrl !== candidate.coverArtUrl) {
+                console.log(`Trying fallback URL: ${fallbackUrl}`);
+                img.src = fallbackUrl;
+              }
+            }
+          });
+
           card.appendChild(img);
         }
 
@@ -1604,11 +1608,73 @@ export async function extractAndEnrichMetadata(
     imageUrl = youtubeThumbUrl;
   }
 
-  // Extract genre and year from selected candidate
+  // Aggregate metadata from ALL candidates (rolling query approach)
+  // For genre: use most popular across all candidates
+  // For date: use chronologically earliest
+  // If selected candidate doesn't have metadata, fall back to release group, then artist
   let genre: string | undefined;
   let releaseYear: string | undefined;
 
-  if (selectedCandidate) {
+  if (candidates.length > 0) {
+    // Aggregate genres from all candidates
+    const genreCount = new Map<string, number>();
+    let earliestDate: string | undefined;
+
+    candidates.forEach((candidate) => {
+      // Count genres
+      if (candidate.genre) {
+        const genres = candidate.genre.split(",").map((g) => g.trim());
+        genres.forEach((g) => {
+          genreCount.set(g, (genreCount.get(g) || 0) + 1);
+        });
+      }
+
+      // Track earliest date
+      if (candidate.date) {
+        if (!earliestDate || candidate.date < earliestDate) {
+          earliestDate = candidate.date;
+        }
+      }
+    });
+
+    // Find most popular genre
+    let mostPopularGenre: string | undefined;
+    let maxCount = 0;
+    genreCount.forEach((count, genreName) => {
+      if (count > maxCount) {
+        maxCount = count;
+        mostPopularGenre = genreName;
+      }
+    });
+
+    // Use aggregated data, with fallback hierarchy:
+    // 1. Selected candidate's metadata (if available)
+    // 2. Most popular genre from all candidates
+    // 3. Earliest date from all candidates
+    genre = selectedCandidate?.genre || mostPopularGenre;
+    releaseYear = selectedCandidate?.date
+      ? selectedCandidate.date.split("-")[0]
+      : earliestDate
+        ? earliestDate.split("-")[0]
+        : undefined;
+
+    console.log(
+      `[Metadata Aggregation] Analyzed ${candidates.length} candidates:`,
+    );
+    console.log(
+      `  - Most popular genre: ${mostPopularGenre} (${maxCount} occurrences)`,
+    );
+    console.log(`  - Earliest date: ${earliestDate}`);
+    console.log(
+      `  - Selected candidate genre: ${selectedCandidate?.genre || "none"}`,
+    );
+    console.log(
+      `  - Selected candidate date: ${selectedCandidate?.date || "none"}`,
+    );
+    console.log(`  - Final genre: ${genre}`);
+    console.log(`  - Final year: ${releaseYear}`);
+  } else if (selectedCandidate) {
+    // Fallback to just selected candidate if no other candidates
     genre = selectedCandidate.genre;
     releaseYear = selectedCandidate.date
       ? selectedCandidate.date.split("-")[0]
@@ -1630,9 +1696,6 @@ export async function extractAndEnrichMetadata(
   };
 
   console.log(`[extractAndEnrichMetadata] Returning metadata:`, result);
-  console.log(
-    `[extractAndEnrichMetadata] Selected candidate genre: ${selectedCandidate?.genre}, date: ${selectedCandidate?.date}`,
-  );
 
   return result;
 }

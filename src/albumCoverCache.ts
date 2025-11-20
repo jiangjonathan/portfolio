@@ -386,13 +386,7 @@ export async function recreateBlobUrlIfNeeded(
     console.log(`✓ Detected stale blob URL, attempting to recover...`);
 
     // Blob URLs are session-specific and cannot be reused across page loads
-    // Always prefer fallback URL if available
-    if (fallbackUrl) {
-      console.log(`✓ Using fallback URL for stale blob: ${fallbackUrl}`);
-      return fallbackUrl;
-    }
-
-    // If we have a releaseId, try to get fresh blob URL from cache as second resort
+    // Priority: Try to get fresh blob URL from cache FIRST (best performance)
     if (releaseId) {
       const freshBlobUrl = await getCachedCover(releaseId);
 
@@ -406,6 +400,12 @@ export async function recreateBlobUrlIfNeeded(
           `✗ Could not recreate blob URL for ${releaseId}, blob not in cache`,
         );
       }
+    }
+
+    // Second priority: Use fallback URL if cache didn't have it
+    if (fallbackUrl) {
+      console.log(`✓ Using fallback URL for stale blob: ${fallbackUrl}`);
+      return fallbackUrl;
     }
 
     // Last resort: return the stale blob URL (will fail to load, but better than nothing)
