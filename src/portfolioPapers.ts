@@ -41,13 +41,10 @@ export class PortfolioPapersManager {
   private papers: Map<string, PaperConfig> = new Map();
   private currentPaperId: string | null = null;
   private paperMeshes: Map<string, Mesh> = new Map();
-  private container: HTMLElement;
   private whitepaperMesh: Mesh | null = null;
   private renderer: WebGLRenderer | null = null;
-  private coverMesh: Mesh | null = null;
 
-  constructor(container: HTMLElement, renderer?: WebGLRenderer) {
-    this.container = container;
+  constructor(_container: HTMLElement, renderer?: WebGLRenderer) {
     this.renderer = renderer || null;
 
     // Configure PDF.js worker - use local worker file to avoid CORS issues
@@ -62,11 +59,6 @@ export class PortfolioPapersManager {
   setWhitepaperMesh(mesh: Mesh): void {
     this.whitepaperMesh = mesh;
     console.log("[PortfolioPapers] Whitepaper mesh set:", mesh.name);
-  }
-
-  setCoverMesh(mesh: Mesh): void {
-    this.coverMesh = mesh;
-    console.log("[PortfolioPapers] Cover mesh set:", mesh.name);
   }
 
   async loadPaper(paperId: string): Promise<void> {
@@ -139,7 +131,7 @@ export class PortfolioPapersManager {
       const renderContext = {
         canvasContext: ctx,
         viewport: viewport,
-      };
+      } as any;
 
       await page.render(renderContext).promise;
       console.log(
@@ -291,6 +283,10 @@ export class PortfolioPapersManager {
     this.positionMeshOnWhitepaper(mesh);
 
     mesh.name = `paper_${paperId}`;
+
+    // Set render order so papers appear in front of whitepaper/backpaper but behind cover
+    // whitepaper/backpaper = 200, our papers = 210, cover = 100 (but cover has higher z position)
+    mesh.renderOrder = 210;
 
     // Add to scene
     if (this.whitepaperMesh.parent) {

@@ -578,15 +578,13 @@ const setupPortfolioCover = (model: Object3D) => {
     (mesh) => {
       portfolioCoverMesh = mesh;
       portfolioCoverOriginalRotation = mesh.rotation.z;
+      // Set high render order so cover appears in front of papers
+      mesh.renderOrder = 100;
       console.log("[Portfolio Cover] Found cover mesh:", mesh.name);
       console.log(
         "[Portfolio Cover] Original Z rotation:",
         portfolioCoverOriginalRotation,
       );
-      // Also set as cover mesh for papers manager
-      if (portfolioPapersManager) {
-        portfolioPapersManager.setCoverMesh(mesh);
-      }
     },
     (whitepaperMesh) => {
       console.log("[Portfolio] Found whitepaper mesh:", whitepaperMesh.name);

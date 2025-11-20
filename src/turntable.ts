@@ -388,10 +388,6 @@ export class TurntableController {
     );
   }
 
-  isPlaying() {
-    return this.playingSound;
-  }
-
   liftNeedle() {
     if (!this.playingSound) {
       return;

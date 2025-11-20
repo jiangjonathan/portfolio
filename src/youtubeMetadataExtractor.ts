@@ -91,21 +91,26 @@ async function fetchCoverArtForRelease(
     // Request 500x500 size for balanced quality and loading speed
     const releaseUrl = `https://coverartarchive.org/release/${releaseId}/front-500`;
     const releaseRes = await fetch(releaseUrl, {
-      method: "HEAD",
-      signal: AbortSignal.timeout(5000), // 5 second timeout
+      method: "GET",
+      signal: AbortSignal.timeout(10000), // 10 second timeout
     });
     if (releaseRes.ok) return releaseUrl;
 
     // Fallback to full size if 500 not available
     const fullUrl = `https://coverartarchive.org/release/${releaseId}/front`;
     const fullRes = await fetch(fullUrl, {
-      method: "HEAD",
-      signal: AbortSignal.timeout(5000),
+      method: "GET",
+      signal: AbortSignal.timeout(10000),
     });
     if (fullRes.ok) return fullUrl;
   } catch (error) {
     // Timeout or network error - ignore
-    console.debug("Cover art fetch timeout for release:", releaseId);
+    console.debug(
+      "Cover art fetch for release:",
+      releaseId,
+      "error:",
+      (error as Error)?.message,
+    );
   }
   return null;
 }

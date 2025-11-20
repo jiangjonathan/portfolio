@@ -76,7 +76,11 @@ export function extractDominantColor(imageUrl: string): Promise<string> {
     };
 
     img.onerror = () => {
-      reject(new Error(`Failed to load image from ${imageUrl}`));
+      console.warn(
+        `[extractDominantColor] CORS error loading ${imageUrl}, using fallback color`,
+      );
+      // Return a neutral fallback color instead of rejecting
+      resolve("#b0b0b0");
     };
 
     img.src = imageUrl;

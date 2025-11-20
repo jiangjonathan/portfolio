@@ -69,6 +69,9 @@ export class TurntableStateManager {
           callbacks.scheduleFocusVinylRestore();
           callbacks.setTurntableUIVisible(true);
 
+          // Hide other page models when returning to turntable
+          callbacks.setHeroPageVisibility("turntable");
+
           // Return to bottom-center when exiting fullscreen
           callbacks.setTurntablePositionState("bottom-center");
           cameraRig.setLookTarget(cameraTargets["bottom-center"], true);

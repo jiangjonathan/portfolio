@@ -509,8 +509,8 @@ export class VinylLibraryViewer {
           .focus-card-info-container .album-artist,
           .focus-card-info-container .album-song {
             white-space: nowrap;
-            overflow: hidden;
-            width: 100%;
+            overflow: visible;
+            width: auto;
             position: relative;
           }
 
@@ -689,6 +689,9 @@ export class VinylLibraryViewer {
             margin-top: 0.5rem;
             line-height: 1.1;
             font-style: italic;
+            white-space: nowrap;
+            overflow: visible;
+            width: auto;
           }
 
           .focus-card-info-container .editable-field {
@@ -1601,7 +1604,18 @@ export class VinylLibraryViewer {
     );
     if (albumCoverWrapper) {
       const toggleCoverHover = (isHovered: boolean) => {
-        if (isCoverClickActive || isCoverHoverActive === isHovered) {
+        // Don't allow hover effects if this vinyl is currently playing on turntable
+        const isFocusVinylOnTurntable =
+          this.isVinylOnTurntable &&
+          !!this.focusedEntryVideoId &&
+          !!this.turntableVideoId &&
+          this.focusedEntryVideoId === this.turntableVideoId;
+
+        if (
+          isCoverClickActive ||
+          isCoverHoverActive === isHovered ||
+          isFocusVinylOnTurntable
+        ) {
           return;
         }
         isCoverHoverActive = isHovered;
