@@ -786,10 +786,15 @@ const setTurntableUIVisible = (visible: boolean) => {
   vinylLibraryContainer.style.opacity = effective ? "1" : "0";
   vinylLibraryContainer.style.pointerEvents = effective ? "auto" : "none";
   if (vinylUIFadeTriggered) {
-    tutorialContainer.style.opacity = effective ? "1" : "0";
-    tutorialContainer.style.pointerEvents = effective ? "auto" : "none";
+    const tutorialManager = (window as any).tutorialManager;
+    const isTutorialDismissed = tutorialManager?.isDismissed() ?? false;
+
+    tutorialContainer.style.opacity =
+      effective && !isTutorialDismissed ? "1" : "0";
+    tutorialContainer.style.pointerEvents =
+      effective && !isTutorialDismissed ? "auto" : "none";
     // Only hide display after fade completes
-    if (!effective) {
+    if (!effective || isTutorialDismissed) {
       setTimeout(() => {
         if (tutorialContainer.style.opacity === "0") {
           tutorialContainer.style.display = "none";
@@ -2167,6 +2172,18 @@ turntableStateManager.initialize(cameraRig, CAMERA_TARGETS, {
       lightingAnimator.setTargetState(NORMAL_LIGHTING, false);
     }
   },
+  onEnterFullscreen: () => {
+    // Start cursor hide timer when entering fullscreen
+    scheduleCursorHide();
+  },
+  onExitFullscreen: () => {
+    // Clear timer and show cursor when exiting fullscreen
+    if (mouseInactivityTimer !== null) {
+      clearTimeout(mouseInactivityTimer);
+      mouseInactivityTimer = null;
+    }
+    canvas.style.cursor = "";
+  },
 });
 
 let vinylDragPointerId: number | null = null;
@@ -2536,7 +2553,34 @@ canvas.addEventListener("pointerdown", (event) => {
 
 let isTurntableHovered = false;
 
+// Mouse cursor auto-hide in fullscreen
+let mouseInactivityTimer: number | null = null;
+const MOUSE_HIDE_DELAY = 2000; // Hide after 2 seconds of inactivity
+
+const showCursor = () => {
+  canvas.style.cursor = "";
+  if (mouseInactivityTimer !== null) {
+    clearTimeout(mouseInactivityTimer);
+  }
+};
+
+const scheduleCursorHide = () => {
+  if (mouseInactivityTimer !== null) {
+    clearTimeout(mouseInactivityTimer);
+  }
+  if (yt.isFullscreen()) {
+    mouseInactivityTimer = window.setTimeout(() => {
+      canvas.style.cursor = "none";
+    }, MOUSE_HIDE_DELAY);
+  }
+};
+
 canvas.addEventListener("pointermove", (event) => {
+  // Show cursor on movement and schedule hide in fullscreen
+  if (yt.isFullscreen()) {
+    showCursor();
+    scheduleCursorHide();
+  }
   if (
     activePage === BUSINESS_CARD_PAGE &&
     updatePointer(event, pointerNDC, canvas)

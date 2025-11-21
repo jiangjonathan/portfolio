@@ -278,6 +278,13 @@ export class TutorialManager {
   }
 
   /**
+   * Check if tutorial has been dismissed
+   */
+  public isDismissed(): boolean {
+    return this.state.dismissed;
+  }
+
+  /**
    * Dismiss the tutorial permanently
    */
   private dismiss(): void {

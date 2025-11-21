@@ -42,6 +42,8 @@ export class TurntableStateManager {
       setTurntablePositionState: (state: string) => void;
       setGroundShadowsVisible: (visible: boolean) => void;
       setFullscreenLighting: (enabled: boolean) => void;
+      onEnterFullscreen?: () => void;
+      onExitFullscreen?: () => void;
     },
   ): void {
     // Initially hide the player controls (only show when tonearm is in play area)
@@ -70,6 +72,7 @@ export class TurntableStateManager {
           callbacks.setTurntableUIVisible(false);
           callbacks.setGroundShadowsVisible(false);
           callbacks.setFullscreenLighting(true);
+          callbacks.onEnterFullscreen?.();
 
           // Switch to fullscreen camera position
           callbacks.setTurntablePositionState("fullscreen");
@@ -81,6 +84,7 @@ export class TurntableStateManager {
           callbacks.setTurntableUIVisible(true);
           callbacks.setGroundShadowsVisible(true);
           callbacks.setFullscreenLighting(false);
+          callbacks.onExitFullscreen?.();
 
           // Hide other page models when returning to turntable
           callbacks.setHeroPageVisibility("turntable");

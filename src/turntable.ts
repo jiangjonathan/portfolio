@@ -271,9 +271,9 @@ export class TurntableController {
         this.tonearmBaseRotation <= this.TONEARM_PLAY_YAW_THRESHOLD &&
         this.tonearmBaseRotation >= this.TONEARM_MIN_YAW
       ) {
-        console.log(
-          `[Turntable] shouldDropNeedle check: startOn=${this.startOn}, inPlayWindow=${inPlayWindow}, vinylPresent=${this.vinylPresent}, isDraggingTonearm=${this.isDraggingTonearm}, result=${shouldDropNeedle}`,
-        );
+        // console.log(
+        //   `[Turntable] shouldDropNeedle check: startOn=${this.startOn}, inPlayWindow=${inPlayWindow}, vinylPresent=${this.vinylPresent}, isDraggingTonearm=${this.isDraggingTonearm}, result=${shouldDropNeedle}`,
+        // );
       }
       const advanceMedia =
         this.startOn &&
