@@ -8,11 +8,13 @@ import { FALLBACK_BACKGROUND_COLOR } from "./config";
 import type { VinylSelectionDetail } from "./vinylState";
 import { getOrCacheAlbumCover } from "./albumCoverCache";
 
-export const FOCUS_VINYL_BASE_SCALE = 0.88;
+export const FOCUS_VINYL_BASE_SCALE = 1.0;
 export const VINYL_DRAG_THRESHOLD = 38;
 
 export function getFocusVinylScale(cameraRig: CameraRig): number {
-  return FOCUS_VINYL_BASE_SCALE / cameraRig.getZoomFactor();
+  const baseScale = FOCUS_VINYL_BASE_SCALE / cameraRig.getZoomFactor();
+  const referenceHeight = 900; // Assumed reference viewport height for base scale.
+  return baseScale * (referenceHeight / window.innerHeight);
 }
 
 export function applyFocusVinylScale(
