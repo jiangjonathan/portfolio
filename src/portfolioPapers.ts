@@ -90,7 +90,6 @@ export class PortfolioPapersManager {
     // Higher index = lower in stack = lower Y position
     // Top paper (index 0) gets highest Y
     const totalPapers = PAPERS.length;
-    const heightFromTop = stackIndex * this.PAPER_STACK_HEIGHT_OFFSET;
     return (
       this.BASE_PAPER_HEIGHT +
       (totalPapers - 1 - stackIndex) * this.PAPER_STACK_HEIGHT_OFFSET
@@ -452,35 +451,6 @@ export class PortfolioPapersManager {
     const randomRotation = paperId ? this.paperRotations.get(paperId) || 0 : 0;
     mesh.rotation.set(-Math.PI / 2, 0, randomRotation);
     mesh.scale.set(1, 1, 1);
-  }
-
-  private animatePaperToPosition(
-    mesh: Mesh,
-    targetPosition: Vector3,
-    duration: number = 500,
-  ): Promise<void> {
-    return new Promise((resolve) => {
-      const startPosition = mesh.position.clone();
-      const startTime = performance.now();
-
-      const animate = (currentTime: number) => {
-        const elapsed = currentTime - startTime;
-        const progress = Math.min(elapsed / duration, 1);
-
-        // Ease out cubic
-        const easeProgress = 1 - Math.pow(1 - progress, 3);
-
-        mesh.position.lerpVectors(startPosition, targetPosition, easeProgress);
-
-        if (progress < 1) {
-          requestAnimationFrame(animate);
-        } else {
-          resolve();
-        }
-      };
-
-      requestAnimationFrame(animate);
-    });
   }
 
   private animatePaperTwoStage(

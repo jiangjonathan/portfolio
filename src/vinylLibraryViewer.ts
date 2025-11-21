@@ -1267,7 +1267,7 @@ export class VinylLibraryViewer {
               <div class="album-main">
                 <div class="album-cover-wrapper">
                   <img
-                    src="${this.getImageWithFallback(entry.imageUrl, entry)}"
+                    src="${this.getImageWithFallback(entry.imageUrl)}"
                     alt="${this.escapeHtml(songName)}"
                     class="album-cover"
                     loading="lazy"
@@ -1422,7 +1422,7 @@ export class VinylLibraryViewer {
         <div class="album-cover-container">
           <div class="album-cover-wrapper">
             <img
-              src="${this.getImageWithFallback(entry.imageUrl, entry)}"
+              src="${this.getImageWithFallback(entry.imageUrl)}"
               alt="${this.escapeHtml(songName)}"
               class="album-cover"
             >
@@ -2672,10 +2672,7 @@ export class VinylLibraryViewer {
   /**
    * Get image URL with fallback
    */
-  private getImageWithFallback(
-    imageUrl: string | null,
-    entry?: VisitorEntry,
-  ): string {
+  private getImageWithFallback(imageUrl: string | null): string {
     // Use the imageUrl directly if it exists (including blob URLs)
     // Blob URLs created by recreateBlobUrls are fresh and valid
     if (imageUrl) return imageUrl;

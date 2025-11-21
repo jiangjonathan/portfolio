@@ -22,11 +22,22 @@ export function loadVinylModel(normalTexture: Texture): Promise<Object3D> {
       (gltf) => {
         const model = gltf.scene;
         applyGrooveMaterial(model, normalTexture);
+        enableVinylShadows(model);
         resolve(model);
       },
       undefined,
       (error) => reject(error),
     );
+  });
+}
+
+export function enableVinylShadows(model: Object3D) {
+  model.traverse((child) => {
+    if ("isMesh" in child) {
+      const mesh = child as Mesh;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+    }
   });
 }
 

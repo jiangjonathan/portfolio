@@ -33,6 +33,7 @@ import {
   createLights,
   createRenderer,
   createCameraRig,
+  createGroundPlane,
   loadTextures,
 } from "./scene";
 import {} from // createTonearmRotationDisplay,
@@ -233,6 +234,10 @@ const scene = createScene();
 const { ambientLight, keyLight, fillLight, rimLight } = createLights();
 scene.add(ambientLight, keyLight, fillLight, rimLight);
 
+// Add invisible ground plane to receive shadows
+const groundPlane = createGroundPlane();
+scene.add(groundPlane);
+
 const cameraRig = createCameraRig();
 const { camera } = cameraRig;
 const gltfLoader = new GLTFLoader();
@@ -246,10 +251,26 @@ const loadPortfolioModel = (): Promise<Object3D> =>
     );
   });
 
+// Enable shadow casting and receiving on all meshes in a model
+const enableShadows = (
+  object: Object3D,
+  castShadow = true,
+  receiveShadow = true,
+) => {
+  object.traverse((child) => {
+    if ("isMesh" in child) {
+      const mesh = child as Mesh;
+      mesh.castShadow = castShadow;
+      mesh.receiveShadow = receiveShadow;
+    }
+  });
+};
+
 const createPlaceholderScenes = () => {
   PLACEHOLDER_SCENES.forEach((config) => {
     const circlePos = getHeroCirclePosition(config.id);
     const mesh = createPlaceholderMesh(config, circlePos);
+    enableShadows(mesh);
     heroGroup.add(mesh);
     placeholderMeshes[config.id] = mesh;
     registerHomePageTarget(mesh, config.id);
@@ -2389,7 +2410,7 @@ canvas.addEventListener("pointerdown", (event) => {
       if (handleBusinessCardLinkClick()) {
         return;
       }
-      startBusinessCardRotation(event);
+      startBusinessCardRotation();
     } else if (activePage === "portfolio") {
       // Check if clicking on a portfolio paper mesh
       if (portfolioPapersManager) {
@@ -2822,6 +2843,7 @@ loadTurntableModel()
     applyDuration();
     youtubeReady.then(applyDuration).catch(() => {});
     logMaterialNames(turntable);
+    enableShadows(turntable);
 
     const turntableCirclePos = getHeroCirclePosition("turntable");
     turntable.position.copy(turntableCirclePos);
@@ -2884,6 +2906,7 @@ createBusinessCardScene();
 loadPortfolioModel()
   .then((portfolioModel) => {
     portfolioModel.visible = true;
+    enableShadows(portfolioModel);
     const referenceScale = turntableSceneRoot ? turntableSceneRoot.scale.x : 1;
     portfolioModel.scale.setScalar(referenceScale);
     const circlePos = getHeroCirclePosition("portfolio");
@@ -3417,7 +3440,7 @@ function pickPointOnPlane(event: PointerEvent) {
 
 // start/stop + speed slide handled by controller
 
-function startBusinessCardRotation(event: PointerEvent) {
+function startBusinessCardRotation() {
   // Disable drag-based rotation - use mouse hover tracking instead
   return;
 }
