@@ -31,6 +31,7 @@ export interface SongMetadata {
 
 interface AlbumArtCandidate {
   releaseId: string;
+  releaseGroupId?: string; // MusicBrainz release-group ID for fetching genres
   title: string;
   artist: string;
   date?: string;
@@ -65,11 +66,13 @@ async function fetchArtistGenres(
     if (artists.length === 0) return undefined;
 
     const artist = artists[0];
-    const tags = artist.tags || [];
 
-    if (tags.length === 0) return undefined;
+    // Use official genres first, fallback to tags if genres aren't available
+    const genreList = artist.genres || artist.tags || [];
 
-    const genre = tags
+    if (genreList.length === 0) return undefined;
+
+    const genre = genreList
       .slice(0, 3)
       .map((t: any) => t.name)
       .join(", ");
@@ -81,6 +84,53 @@ async function fetchArtistGenres(
   } catch (error) {
     console.warn("Error fetching artist genres:", error);
     return undefined;
+  }
+}
+
+/**
+ * Fetch release-group genres by ID from MusicBrainz
+ * This is the authoritative source for genre data
+ */
+async function fetchReleaseGroupGenres(
+  releaseGroupId: string,
+): Promise<{ genre: string; tags: any[] } | null> {
+  try {
+    const url = `https://musicbrainz.org/ws/2/release-group/${releaseGroupId}?inc=genres&fmt=json`;
+
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent": "vinyl-library/1.0",
+      },
+    });
+
+    if (!response.ok) return null;
+
+    const data = await response.json();
+    const genres = data.genres || [];
+
+    if (genres.length === 0) return null;
+
+    // Sort by count (popularity) and take top 3
+    const sortedGenres = genres.sort((a: any, b: any) => b.count - a.count);
+    const genreString = sortedGenres
+      .slice(0, 3)
+      .map((g: any) => g.name)
+      .join(", ");
+
+    console.log(
+      `[Release-Group Genres] https://musicbrainz.org/release-group/${releaseGroupId}: ${genreString}`,
+    );
+
+    return {
+      genre: genreString,
+      tags: genres,
+    };
+  } catch (error) {
+    console.warn(
+      `Error fetching release-group genres for ${releaseGroupId}:`,
+      error,
+    );
+    return null;
   }
 }
 
@@ -124,10 +174,11 @@ async function fetchAdditionalReleasesByTitle(
   artistName: string,
   excludeReleaseIds: Set<string>,
   limit: number = 5,
+  releaseGroupGenres?: Map<string, { genre: string; tags: any[] }>,
 ): Promise<AlbumArtCandidate[]> {
   try {
     const query = `release:"${albumTitle}" AND artist:"${artistName}"`;
-    const url = `https://musicbrainz.org/ws/2/release/?fmt=json&limit=50&query=${encodeURIComponent(query)}&inc=tags`;
+    const url = `https://musicbrainz.org/ws/2/release/?fmt=json&limit=50&query=${encodeURIComponent(query)}&inc=release-groups`;
 
     const response = await fetch(url, {
       headers: {
@@ -142,6 +193,30 @@ async function fetchAdditionalReleasesByTitle(
 
     const candidates: AlbumArtCandidate[] = [];
 
+    // Collect unique release-group IDs from additional releases
+    const rgIds = new Set<string>();
+    const releaseToRgMap = new Map<string, string>();
+
+    for (const release of releases) {
+      const rgId = release["release-group"]?.id;
+      if (rgId) {
+        rgIds.add(rgId);
+        releaseToRgMap.set(release.id, rgId);
+      }
+    }
+
+    // Fetch genres for new release-groups if needed
+    if (releaseGroupGenres) {
+      for (const rgId of rgIds) {
+        if (!releaseGroupGenres.has(rgId)) {
+          const genreData = await fetchReleaseGroupGenres(rgId);
+          if (genreData) {
+            releaseGroupGenres.set(rgId, genreData);
+          }
+        }
+      }
+    }
+
     for (const release of releases) {
       // Skip if we already have this release
       if (excludeReleaseIds.has(release.id)) continue;
@@ -153,16 +228,7 @@ async function fetchAdditionalReleasesByTitle(
       // Only include releases where the artist matches
       if (!artistMatches(artist, artistName)) continue;
 
-      const tags = release.tags || [];
-      // Store top 3 genres as comma-separated string
-      const genre =
-        tags.length > 0
-          ? tags
-              .slice(0, 3)
-              .map((t: any) => t.name)
-              .join(", ")
-          : undefined;
-
+      const releaseGroupId = releaseToRgMap.get(release.id);
       const releaseYear = release.date ? release.date.split("-")[0] : undefined;
 
       // Extract packaging/media info
@@ -179,8 +245,20 @@ async function fetchAdditionalReleasesByTitle(
 
       // Only add if it has cover art
       if (coverArtUrl) {
+        // Get genre from release-group if available
+        let genre: string | undefined;
+        let tags: any[] = [];
+        if (releaseGroupId && releaseGroupGenres) {
+          const genreData = releaseGroupGenres.get(releaseGroupId);
+          if (genreData) {
+            genre = genreData.genre;
+            tags = genreData.tags;
+          }
+        }
+
         candidates.push({
           releaseId: release.id,
+          releaseGroupId: releaseGroupId,
           title: release.title,
           artist: artist,
           date: release.date,
@@ -198,6 +276,16 @@ async function fetchAdditionalReleasesByTitle(
     console.log(
       `Fetched ${candidates.length} additional releases for "${albumTitle}" by "${artistName}"`,
     );
+
+    // DEBUG: Log additional releases
+    console.log(`[DEBUG] Additional releases fetched:`);
+    candidates.forEach((c, i) => {
+      console.log(
+        `  ${i + 1}. https://musicbrainz.org/release/${c.releaseId} - "${c.title}"`,
+        `genre="${c.genre}", tags.length=${c.tags?.length || 0}`,
+      );
+    });
+
     return candidates;
   } catch (error) {
     console.error("Error fetching additional releases:", error);
@@ -211,6 +299,13 @@ async function searchMusicBrainz(
   albumName?: string,
 ): Promise<AlbumArtCandidate[]> {
   try {
+    // NEW APPROACH: Store release-group genres separately from releases
+    // This ensures genre comes from release-group, not from which cover art we pick
+    const releaseGroupGenres = new Map<
+      string,
+      { genre: string; tags: any[] }
+    >();
+
     // Collect unique releases
     const releaseMap = new Map<string, AlbumArtCandidate>();
 
@@ -220,7 +315,7 @@ async function searchMusicBrainz(
       if (albumName) {
         query += ` AND release:"${albumName}"`;
       }
-      const url = `https://musicbrainz.org/ws/2/recording/?fmt=json&limit=20&query=${encodeURIComponent(query)}&inc=tags`;
+      const url = `https://musicbrainz.org/ws/2/recording/?fmt=json&limit=20&query=${encodeURIComponent(query)}&inc=releases+release-groups`;
 
       const response = await fetch(url, {
         headers: {
@@ -250,36 +345,13 @@ async function searchMusicBrainz(
           const artist =
             artistCredit?.name || artistCredit?.artist?.name || recordingArtist;
 
-          // Extract genre from tags - check multiple sources
-          // Priority: release tags > recording tags
-          const releaseTags = release.tags || [];
-          const recordingTags = rec.tags || [];
-          const combinedTags =
-            releaseTags.length > 0 ? releaseTags : recordingTags;
-
-          console.log(
-            `[Genre Extraction] Release ${release.id}:`,
-            `releaseTags=${releaseTags.length}, recordingTags=${recordingTags.length}, combinedTags=${combinedTags.length}`,
-          );
-
-          // Store top 3 genres as comma-separated string
-          const genre =
-            combinedTags.length > 0
-              ? combinedTags
-                  .slice(0, 3)
-                  .map((t: any) => t.name)
-                  .join(", ")
-              : undefined;
+          // Extract release-group ID
+          const releaseGroupId = release["release-group"]?.id;
 
           // Extract year from date
           const releaseYear = release.date
             ? release.date.split("-")[0]
             : undefined;
-
-          console.log(
-            `[Genre Extraction] Release ${release.id} (${release.title}):`,
-            `genre="${genre}", releaseYear="${releaseYear}", date="${release.date}"`,
-          );
 
           // Extract packaging/media info
           const media = release["media"] || [];
@@ -292,15 +364,18 @@ async function searchMusicBrainz(
               : format;
           }
 
+          // Recording search: Store release WITH release-group ID but WITHOUT genre
+          // Genre will be fetched by release-group ID later
           releaseMap.set(release.id, {
             releaseId: release.id,
+            releaseGroupId: releaseGroupId,
             title: release.title,
             artist: artist,
             date: release.date,
             coverArtUrl: null, // Will be fetched later
-            genre: genre,
+            genre: undefined, // Will be filled from releaseGroupGenres
             releaseYear: releaseYear,
-            tags: combinedTags,
+            tags: [], // Will be filled from releaseGroupGenres
             packaging: packaging,
           });
 
@@ -318,7 +393,7 @@ async function searchMusicBrainz(
         if (albumName) {
           rgQuery = `releasegroup:"${albumName}" AND artist:"${artist}"`;
         }
-        const rgUrl = `https://musicbrainz.org/ws/2/release-group/?fmt=json&limit=10&query=${encodeURIComponent(rgQuery)}&inc=tags`;
+        const rgUrl = `https://musicbrainz.org/ws/2/release-group/?fmt=json&limit=10&query=${encodeURIComponent(rgQuery)}&inc=genres`;
 
         const rgResponse = await fetch(rgUrl, {
           headers: {
@@ -335,6 +410,7 @@ async function searchMusicBrainz(
           releaseGroups.map((rg: any) => ({
             id: rg.id,
             title: rg.title,
+            genres: rg.genres,
             tags: rg.tags,
           })),
         );
@@ -342,7 +418,7 @@ async function searchMusicBrainz(
         // Fetch releases for all release groups in parallel (OPTIMIZED)
         const releaseGroupPromises = releaseGroups.map(async (rg: any) => {
           const rgId = rg.id;
-          // First fetch the list of releases (without tags, since browse endpoint doesn't support it well)
+          // Fetch the list of releases for this release-group
           const releasesUrl = `https://musicbrainz.org/ws/2/release?release-group=${rgId}&fmt=json&limit=10`;
 
           try {
@@ -352,42 +428,28 @@ async function searchMusicBrainz(
               },
             });
 
-            if (!releasesResponse.ok)
-              return { releases: [], rgTags: rg.tags || [] };
+            if (!releasesResponse.ok) return { releases: [], rgId };
 
             const releasesData = await releasesResponse.json();
             const releases = releasesData.releases || [];
             console.log(
-              `[MusicBrainz] Release group ${rgId}: Found ${releases.length} releases`,
-            );
-
-            // Don't fetch individual release tags due to CORS restrictions
-            // Instead, use release-group tags for all releases in the group
-            // This avoids CORS errors while still providing genre information
-            const releasesWithTags = releases
-              .slice(0, 5)
-              .map((release: any) => {
-                // Use release-group tags as fallback for all releases
-                return { ...release, tags: rg.tags || [] };
-              });
-
-            console.log(
-              `[MusicBrainz] Release group ${rgId}: Applied ${rg.tags?.length || 0} tags to ${releasesWithTags.length} releases`,
+              `[MusicBrainz] Release group https://musicbrainz.org/release-group/${rgId}: Found ${releases.length} releases`,
             );
 
             return {
-              releases: releasesWithTags,
-              rgTags: rg.tags || [],
+              releases: releases.slice(0, 5),
+              rgId,
             };
           } catch (error) {
             console.debug("Release fetch error:", error);
-            return { releases: [], rgTags: rg.tags || [] };
+            return { releases: [], rgId };
           }
         });
 
         const allReleasesData = await Promise.all(releaseGroupPromises);
 
-        for (const { releases, rgTags } of allReleasesData) {
+        // Add releases with release-group ID stored
+        for (const { releases, rgId } of allReleasesData) {
           for (const release of releases) {
             if (releaseMap.has(release.id)) continue;
             if (releaseMap.size >= 30) break;
@@ -396,33 +458,9 @@ async function searchMusicBrainz(
             const artist =
               artistCredit?.name || artistCredit?.artist?.name || "Unknown";
 
-            // Extract genre from tags - check multiple sources
-            // Priority: release tags > release-group tags
-            const releaseTags = release.tags || [];
-            const combinedTags = releaseTags.length > 0 ? releaseTags : rgTags;
-
-            console.log(
-              `[Genre Extraction] Release ${release.id}:`,
-              `releaseTags=${releaseTags.length}, rgTags=${rgTags.length}, combinedTags=${combinedTags.length}`,
-            );
-
-            // Store top 3 genres as comma-separated string
-            const genre =
-              combinedTags.length > 0
-                ? combinedTags
-                    .slice(0, 3)
-                    .map((t: any) => t.name)
-                    .join(", ")
-                : undefined;
-
             const releaseYear = release.date
               ? release.date.split("-")[0]
               : undefined;
-
-            console.log(
-              `[Genre Extraction] Release ${release.id} (${release.title}):`,
-              `genre="${genre}", releaseYear="${releaseYear}", date="${release.date}"`,
-            );
 
             // Extract packaging/media info
             const media = release["media"] || [];
@@ -435,15 +473,18 @@ async function searchMusicBrainz(
                 : format;
             }
 
+            // Store release WITH release-group ID but WITHOUT genre
+            // Genre will be fetched by release-group ID later
             releaseMap.set(release.id, {
               releaseId: release.id,
+              releaseGroupId: rgId,
               title: release.title,
               artist: artist,
               date: release.date,
               coverArtUrl: null,
-              genre: genre,
+              genre: undefined, // Will be filled by fetching release-group genres
               releaseYear: releaseYear,
-              tags: combinedTags,
+              tags: [], // Will be filled by fetching release-group genres
               packaging: packaging,
             });
           }
@@ -457,28 +498,93 @@ async function searchMusicBrainz(
     const artistWithFt = artistName.replace(/feat\./gi, "ft.");
     const artistWithFeat = artistName.replace(/ft\./gi, "feat.");
 
-    const searchPromises = [];
+    // IMPORTANT: Run release-group searches FIRST because they return genres
+    // Recording searches don't return genres for nested releases, so we want
+    // release-group results to populate the releaseMap first
+    const releaseGroupPromises = [];
+    const recordingPromises = [];
 
     // Always search with original artist name
-    searchPromises.push(searchRecordings(artistName));
-    searchPromises.push(searchReleaseGroups(artistName));
+    releaseGroupPromises.push(searchReleaseGroups(artistName));
+    recordingPromises.push(searchRecordings(artistName));
 
     // Add ft. variation if different
     if (artistWithFt !== artistName) {
-      searchPromises.push(searchRecordings(artistWithFt));
-      searchPromises.push(searchReleaseGroups(artistWithFt));
+      releaseGroupPromises.push(searchReleaseGroups(artistWithFt));
+      recordingPromises.push(searchRecordings(artistWithFt));
     }
 
     // Add feat. variation if different from both original and ft.
     if (artistWithFeat !== artistName && artistWithFeat !== artistWithFt) {
-      searchPromises.push(searchRecordings(artistWithFeat));
-      searchPromises.push(searchReleaseGroups(artistWithFeat));
+      releaseGroupPromises.push(searchReleaseGroups(artistWithFeat));
+      recordingPromises.push(searchRecordings(artistWithFeat));
     }
 
-    // Execute all searches in parallel
-    await Promise.all(searchPromises);
+    // Execute release-group searches FIRST, then recording searches
+    // This ensures releases with genres from release-groups are added to releaseMap first
+    await Promise.all(releaseGroupPromises);
+    await Promise.all(recordingPromises);
 
     const candidates = Array.from(releaseMap.values());
+
+    // CRITICAL: Fetch and apply release-group genres by ID
+    // Collect unique release-group IDs
+    const uniqueReleaseGroupIds = new Set<string>();
+    candidates.forEach((c) => {
+      if (c.releaseGroupId) {
+        uniqueReleaseGroupIds.add(c.releaseGroupId);
+      }
+    });
+
+    console.log(
+      `[Fetching Release-Group Genres] Found ${uniqueReleaseGroupIds.size} unique release-groups from ${candidates.length} releases`,
+    );
+
+    // Fetch genres for all unique release-group IDs
+    for (const rgId of uniqueReleaseGroupIds) {
+      if (!releaseGroupGenres.has(rgId)) {
+        const genreData = await fetchReleaseGroupGenres(rgId);
+        if (genreData) {
+          releaseGroupGenres.set(rgId, genreData);
+        }
+      }
+    }
+
+    // Apply genres to all candidates by release-group ID
+    console.log(
+      `[Applying Release-Group Genres] Applying to ${candidates.length} releases...`,
+    );
+    for (const candidate of candidates) {
+      if (candidate.releaseGroupId) {
+        const rgGenreData = releaseGroupGenres.get(candidate.releaseGroupId);
+        if (rgGenreData) {
+          candidate.genre = rgGenreData.genre;
+          candidate.tags = rgGenreData.tags;
+          console.log(
+            `  ✓ https://musicbrainz.org/release/${candidate.releaseId} (RG: ${candidate.releaseGroupId}): ${rgGenreData.genre}`,
+          );
+        } else {
+          console.log(
+            `  ✗ https://musicbrainz.org/release/${candidate.releaseId} (RG: ${candidate.releaseGroupId}): No genres found`,
+          );
+        }
+      } else {
+        console.log(
+          `  ✗ https://musicbrainz.org/release/${candidate.releaseId}: No release-group ID`,
+        );
+      }
+    }
+
+    // DEBUG: Log all candidates after genre application
+    console.log(
+      `[DEBUG] Total candidates from all searches: ${candidates.length}`,
+    );
+    candidates.forEach((c, i) => {
+      console.log(
+        `  ${i + 1}. https://musicbrainz.org/release/${c.releaseId} - "${c.title}"`,
+        `genre="${c.genre}", RG: ${c.releaseGroupId || "none"}`,
+      );
+    });
 
     // Fetch cover art for all candidates in parallel (much faster)
     const coverArtPromises = candidates.map(async (candidate) => {
@@ -512,6 +618,15 @@ async function searchMusicBrainz(
       `${withCoverArt.length} results after artist filtering (searched for: "${artistName}")`,
     );
 
+    // DEBUG: Log candidates after cover art filtering
+    console.log(`[DEBUG] After cover art + artist filtering:`);
+    withCoverArt.forEach((c, i) => {
+      console.log(
+        `  ${i + 1}. https://musicbrainz.org/release/${c.releaseId} - "${c.title}"`,
+        `genre="${c.genre}", packaging="${c.packaging}"`,
+      );
+    });
+
     // Sort by vinyl priority (12" vinyl first, then other vinyl, then others)
     const sortedByVinyl = withCoverArt.sort((a, b) => {
       const aIsVinyl = a.packaging?.toLowerCase().includes("vinyl") ? 1 : 0;
@@ -543,6 +658,15 @@ async function searchMusicBrainz(
 
     const topResults = Array.from(uniqueByTitle.values()).slice(0, 6);
 
+    // DEBUG: Log candidates after deduplication
+    console.log(`[DEBUG] After vinyl sorting + title deduplication (top 6):`);
+    topResults.forEach((c, i) => {
+      console.log(
+        `  ${i + 1}. https://musicbrainz.org/release/${c.releaseId} - "${c.title}"`,
+        `genre="${c.genre}", tags.length=${c.tags?.length || 0}`,
+      );
+    });
+
     // If we have fewer than 6 results, fetch additional releases with the same album title
     if (topResults.length > 0 && topResults.length < 6) {
       const bestOption = topResults[0];
@@ -561,6 +685,7 @@ async function searchMusicBrainz(
         bestOption.artist,
         existingIds,
         neededCount,
+        releaseGroupGenres,
       );
 
       // Add additional releases to fill remaining slots
@@ -575,11 +700,26 @@ async function searchMusicBrainz(
       `Returning ${topResults.length} results (up to 6 with vinyl priority)`,
     );
 
+    // DEBUG: Log all candidates before artist fallback
+    console.log("[DEBUG] Candidates before artist fallback:");
+    topResults.forEach((c, i) => {
+      console.log(
+        `  ${i + 1}. https://musicbrainz.org/release/${c.releaseId} - "${c.title}" by ${c.artist}`,
+        `genre="${c.genre}"`,
+        `tags.length=${c.tags?.length || 0}`,
+      );
+    });
+
     // Apply artist genre fallback for candidates without genres
     const artistGenreCache = new Map<string, string | undefined>();
 
     for (const candidate of topResults) {
-      if (!candidate.genre || candidate.genre.trim() === "") {
+      // Only apply fallback if genre is missing, empty, or "undefined"
+      if (
+        !candidate.genre ||
+        candidate.genre.trim() === "" ||
+        candidate.genre === "undefined"
+      ) {
         // Check if we already fetched this artist's genre
         if (!artistGenreCache.has(candidate.artist)) {
           const artistGenre = await fetchArtistGenres(candidate.artist);
@@ -1608,78 +1748,19 @@ export async function extractAndEnrichMetadata(
     imageUrl = youtubeThumbUrl;
   }
 
-  // Aggregate metadata from ALL candidates (rolling query approach)
-  // For genre: use most popular across all candidates
-  // For date: use chronologically earliest
-  // If selected candidate doesn't have metadata, fall back to release group, then artist
-  let genre: string | undefined;
-  let releaseYear: string | undefined;
+  // Use ONLY the selected candidate's metadata
+  // Genre comes from release-group (already applied), NOT aggregated from candidates
+  let genre: string | undefined = selectedCandidate?.genre;
+  let releaseYear: string | undefined = selectedCandidate?.date
+    ? selectedCandidate.date.split("-")[0]
+    : undefined;
 
-  if (candidates.length > 0) {
-    // Aggregate genres from all candidates
-    const genreCount = new Map<string, number>();
-    let earliestDate: string | undefined;
-
-    candidates.forEach((candidate) => {
-      // Count genres
-      if (candidate.genre) {
-        const genres = candidate.genre.split(",").map((g) => g.trim());
-        genres.forEach((g) => {
-          genreCount.set(g, (genreCount.get(g) || 0) + 1);
-        });
-      }
-
-      // Track earliest date
-      if (candidate.date) {
-        if (!earliestDate || candidate.date < earliestDate) {
-          earliestDate = candidate.date;
-        }
-      }
-    });
-
-    // Find most popular genre
-    let mostPopularGenre: string | undefined;
-    let maxCount = 0;
-    genreCount.forEach((count, genreName) => {
-      if (count > maxCount) {
-        maxCount = count;
-        mostPopularGenre = genreName;
-      }
-    });
-
-    // Use aggregated data, with fallback hierarchy:
-    // 1. Selected candidate's metadata (if available)
-    // 2. Most popular genre from all candidates
-    // 3. Earliest date from all candidates
-    genre = selectedCandidate?.genre || mostPopularGenre;
-    releaseYear = selectedCandidate?.date
-      ? selectedCandidate.date.split("-")[0]
-      : earliestDate
-        ? earliestDate.split("-")[0]
-        : undefined;
-
-    console.log(
-      `[Metadata Aggregation] Analyzed ${candidates.length} candidates:`,
-    );
-    console.log(
-      `  - Most popular genre: ${mostPopularGenre} (${maxCount} occurrences)`,
-    );
-    console.log(`  - Earliest date: ${earliestDate}`);
-    console.log(
-      `  - Selected candidate genre: ${selectedCandidate?.genre || "none"}`,
-    );
-    console.log(
-      `  - Selected candidate date: ${selectedCandidate?.date || "none"}`,
-    );
-    console.log(`  - Final genre: ${genre}`);
-    console.log(`  - Final year: ${releaseYear}`);
-  } else if (selectedCandidate) {
-    // Fallback to just selected candidate if no other candidates
-    genre = selectedCandidate.genre;
-    releaseYear = selectedCandidate.date
-      ? selectedCandidate.date.split("-")[0]
-      : undefined;
-  }
+  console.log(
+    `[Final Metadata] Using selected candidate: https://musicbrainz.org/release/${selectedCandidate?.releaseId}`,
+  );
+  console.log(`  - Genre: ${genre || "none"}`);
+  console.log(`  - Date: ${selectedCandidate?.date || "none"}`);
+  console.log(`  - Year: ${releaseYear || "none"}`);
 
   const result = {
     youtubeId,
