@@ -53,6 +53,13 @@ export class TurntableStateManager {
 
     // Auto-hide library and button in fullscreen player mode
     this.yt.onFullscreenChange((isFullscreen: boolean) => {
+      // Fade hyperlinks in/out with fullscreen
+      const globalControls = document.getElementById("global-controls");
+      if (globalControls) {
+        globalControls.style.opacity = isFullscreen ? "0" : "1";
+        globalControls.style.pointerEvents = isFullscreen ? "none" : "auto";
+      }
+
       callbacks.runWhenTurntableReady(() => {
         callbacks.setHeroPageVisibility(isFullscreen ? "turntable" : null);
         if (isFullscreen) {

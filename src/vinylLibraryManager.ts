@@ -770,6 +770,8 @@ export class VinylLibraryManager {
           note,
           enrichedMetadata.releaseId,
           enrichedMetadata.aspectRatio,
+          enrichedMetadata.genre,
+          enrichedMetadata.releaseYear,
         );
         console.log(`[handleAddSong] localStorage returned entry:`, entry);
       }

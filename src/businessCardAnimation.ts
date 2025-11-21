@@ -17,6 +17,9 @@ export type BusinessCardAnimationOptions = {
 export type BusinessCardAnimationController = {
   handlePageSelection: (page: ScenePage) => void;
   resetToHome: () => void;
+  setMouseReactiveRotation: (enabled: boolean) => void;
+  updateMousePosition: (x: number, y: number) => void;
+  setIsHovered: (hovered: boolean) => void;
 };
 
 export const createBusinessCardAnimation = ({
@@ -36,6 +39,17 @@ export const createBusinessCardAnimation = ({
   let animationFrame: number | null = null;
   let homePosition: Vector3 | null = null;
   let homeQuaternion: Quaternion | null = null;
+
+  // Mouse-reactive rotation
+  let mouseReactiveRotationEnabled = false;
+  let isHovered = false;
+  let mouseX = 0.5;
+  let mouseY = 0.5;
+  const MAX_ROTATION_X = 0.5; // radians (~57.3 degrees)
+  const MAX_ROTATION_Y = 0.5; // radians (~57.3 degrees)
+  const MAX_ROTATION_Z = 0.3; // radians (~17.2 degrees)
+  let rotationAnimationFrame: number | null = null;
+  let baseRotationQuaternion: Quaternion | null = null;
 
   const captureHomeTransform = (mesh: Object3D) => {
     homePosition = mesh.position.clone();
@@ -88,6 +102,12 @@ export const createBusinessCardAnimation = ({
       focusPosition,
       focusQuaternion.clone(),
       FOCUS_ANIMATION_DURATION,
+      () => {
+        // After animation completes, capture the final rotation for mouse tracking
+        if (mouseReactiveRotationEnabled) {
+          baseRotationQuaternion = mesh.quaternion.clone();
+        }
+      },
     );
   };
 
@@ -126,8 +146,88 @@ export const createBusinessCardAnimation = ({
     animateToHome(mesh);
   };
 
+  const applyMouseReactiveRotation = () => {
+    const mesh = getBusinessCardMesh();
+    if (!mesh || !mouseReactiveRotationEnabled || !baseRotationQuaternion) {
+      return;
+    }
+
+    let targetQuaternion: Quaternion;
+
+    // Only apply rotation if hovered
+    if (isHovered) {
+      // Convert mouse position (0-1) to rotation angle
+      // Invert so card faces towards mouse instead of away
+      const rotationX = -(mouseY - 0.5) * 2 * MAX_ROTATION_X;
+      const rotationY = -(mouseX - 0.5) * 2 * MAX_ROTATION_Y;
+      const rotationZ = -(mouseX - 0.5) * 2 * MAX_ROTATION_Z;
+
+      // Create rotation quaternions from world axes
+      const xAxis = new Vector3(1, 0, 0);
+      const yAxis = new Vector3(0, 1, 0);
+      const zAxis = new Vector3(0, 0, 1);
+
+      const quaternionX = new Quaternion().setFromAxisAngle(xAxis, rotationX);
+      const quaternionY = new Quaternion().setFromAxisAngle(yAxis, rotationY);
+      const quaternionZ = new Quaternion().setFromAxisAngle(zAxis, rotationZ);
+
+      // Combine all rotations: Z then Y then X
+      const combinedQuaternion = new Quaternion().multiplyQuaternions(
+        quaternionY,
+        quaternionX,
+      );
+      combinedQuaternion.multiplyQuaternions(quaternionZ, combinedQuaternion);
+
+      // Apply rotations on top of the base rotation (home position)
+      targetQuaternion = new Quaternion().multiplyQuaternions(
+        baseRotationQuaternion,
+        combinedQuaternion,
+      );
+    } else {
+      // When not hovered, smoothly reset to base rotation
+      targetQuaternion = baseRotationQuaternion;
+    }
+
+    // Smoothly interpolate towards target rotation
+    mesh.quaternion.slerp(targetQuaternion, 0.08);
+
+    rotationAnimationFrame = requestAnimationFrame(applyMouseReactiveRotation);
+  };
+
+  const setMouseReactiveRotation = (enabled: boolean) => {
+    mouseReactiveRotationEnabled = enabled;
+    if (enabled) {
+      const mesh = getBusinessCardMesh();
+      if (mesh) {
+        // Wait a bit for animation to complete, then capture the rotation
+        setTimeout(() => {
+          if (mouseReactiveRotationEnabled && mesh) {
+            baseRotationQuaternion = mesh.quaternion.clone();
+            applyMouseReactiveRotation();
+          }
+        }, FOCUS_ANIMATION_DURATION + 50);
+      }
+    } else if (rotationAnimationFrame !== null) {
+      cancelAnimationFrame(rotationAnimationFrame);
+      rotationAnimationFrame = null;
+      baseRotationQuaternion = null;
+    }
+  };
+
+  const updateMousePosition = (x: number, y: number) => {
+    mouseX = x;
+    mouseY = y;
+  };
+
+  const setIsHovered = (hovered: boolean) => {
+    isHovered = hovered;
+  };
+
   return {
     handlePageSelection,
     resetToHome,
+    setMouseReactiveRotation,
+    updateMousePosition,
+    setIsHovered,
   };
 };

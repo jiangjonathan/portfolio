@@ -33,6 +33,7 @@ export interface YouTubeBridge {
   setOverlayEnabled(enabled: boolean): void;
   isOverlayEnabled(): boolean;
   setControlsVisible(visible: boolean): void;
+  areControlsVisible(): boolean;
   onPlaybackProgress(callback: (progress: number) => void): void;
   onPlaybackEnded(callback: () => void): void;
   getAspectRatio(): number;
@@ -971,6 +972,9 @@ export function createYouTubePlayer(): YouTubeBridge {
       }
       controlsAreVisible = visible;
       updateButtonVisibility();
+    },
+    areControlsVisible() {
+      return controlsAreVisible;
     },
     onPlaybackProgress(callback: (progress: number) => void) {
       (this as any).onPlaybackProgressCallback = callback;

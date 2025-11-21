@@ -427,6 +427,10 @@ export class PortfolioPapersManager {
     return Array.from(this.papers.values());
   }
 
+  getPaperMeshes(): Map<string, Mesh> {
+    return this.paperMeshes;
+  }
+
   private positionMeshOnWhitepaper(mesh: Mesh, paperId?: string): void {
     if (!this.whitepaperMesh) {
       return;

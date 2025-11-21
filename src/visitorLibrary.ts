@@ -88,6 +88,9 @@ export function saveVisitorLibrary(entries: VisitorEntry[]): boolean {
  * @param imageUrl Cover art image URL
  * @param note Optional note about the entry
  * @param releaseId Optional MusicBrainz release ID for cached covers
+ * @param aspectRatio Optional video aspect ratio
+ * @param genre Optional genre metadata
+ * @param releaseYear Optional release year metadata
  * @returns The created entry if successful, null otherwise
  */
 export function addVisitorLink(
@@ -98,6 +101,8 @@ export function addVisitorLink(
   note: string = "",
   releaseId?: string,
   aspectRatio?: number,
+  genre?: string,
+  releaseYear?: string,
 ): VisitorEntry | null {
   const youtubeId = extractYouTubeId(youtubeLink);
 
@@ -117,6 +122,8 @@ export function addVisitorLink(
     releaseId,
     aspectRatio,
     originalImageUrl: imageUrl, // Store the original URL as fallback for blob URLs
+    genre,
+    releaseYear,
   };
 
   const library = loadVisitorLibrary();

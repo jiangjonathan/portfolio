@@ -146,7 +146,9 @@ const {
   portfolioNavButton,
   resetTutorialButton,
   contactButton,
-  cameraDebugPanel,
+  // cameraDebugPanel, // Debug UI - disabled
+  portfolioPrevArrow,
+  portfolioNextArrow,
 } = dom;
 
 // Initialize button visibility based on initial page (home)
@@ -263,193 +265,178 @@ const createBusinessCardScene = () => {
 
 const baseTurntableCameraPosition = new Vector3();
 const RAD2DEG = 180 / Math.PI;
-const DEG2RAD = Math.PI / 180;
+// const DEG2RAD = Math.PI / 180; // Debug UI - disabled
 
-const editingInputs: Set<HTMLInputElement> = new Set();
-const registerEditingInput = (input: HTMLInputElement) => {
-  input.addEventListener("focus", () => editingInputs.add(input));
-  input.addEventListener("blur", () => editingInputs.delete(input));
-};
+// const editingInputs: Set<HTMLInputElement> = new Set(); // Debug UI - disabled
+// const registerEditingInput = (input: HTMLInputElement) => { // Debug UI - disabled
+//   input.addEventListener("focus", () => editingInputs.add(input));
+//   input.addEventListener("blur", () => editingInputs.delete(input));
+// };
 
-const createNumberInputControl = (
-  labelText: string,
-  options: {
-    min?: number;
-    max?: number;
-    step?: number;
-    suffix?: string;
-  } = {},
-): {
-  control: HTMLDivElement;
-  input: HTMLInputElement;
-  unit: HTMLSpanElement;
-} => {
-  const { min, max, step, suffix } = options;
-  const control = document.createElement("div");
-  Object.assign(control.style, {
-    display: "flex",
-    alignItems: "center",
-    gap: "0.35rem",
-    width: "100%",
-  });
+// Debug UI function - disabled
+// const createNumberInputControl = (
+//   labelText: string,
+//   options: {
+//     min?: number;
+//     max?: number;
+//     step?: number;
+//     suffix?: string;
+//   } = {},
+// ): {
+//   control: HTMLDivElement;
+//   input: HTMLInputElement;
+//   unit: HTMLSpanElement;
+// } => {
+//   const { min, max, step, suffix } = options;
+//   const control = document.createElement("div");
+//   Object.assign(control.style, {
+//     display: "flex",
+//     alignItems: "center",
+//     gap: "0.35rem",
+//     width: "100%",
+//   });
+//
+//   const label = document.createElement("span");
+//   label.textContent = labelText;
+//   Object.assign(label.style, {
+//     fontSize: "0.75rem",
+//     fontWeight: "600",
+//     minWidth: "46px",
+//   });
+//
+//   const input = document.createElement("input");
+//   input.type = "number";
+//   if (min !== undefined) input.min = min.toString();
+//   if (max !== undefined) input.max = max.toString();
+//   if (step !== undefined) input.step = step.toString();
+//   Object.assign(input.style, {
+//     flexGrow: "1",
+//     cursor: "text",
+//     padding: "0.15rem 0.35rem",
+//     fontSize: "0.8rem",
+//   });
+//   registerEditingInput(input);
+//
+//   const unit = document.createElement("span");
+//   unit.textContent = suffix ?? "";
+//   Object.assign(unit.style, {
+//     fontSize: "0.75rem",
+//     minWidth: "24px",
+//     textAlign: "right",
+//   });
+//
+//   control.append(label, input, unit);
+//   return { control, input, unit };
+// };
 
-  const label = document.createElement("span");
-  label.textContent = labelText;
-  Object.assign(label.style, {
-    fontSize: "0.75rem",
-    fontWeight: "600",
-    minWidth: "46px",
-  });
-
-  const input = document.createElement("input");
-  input.type = "number";
-  if (min !== undefined) input.min = min.toString();
-  if (max !== undefined) input.max = max.toString();
-  if (step !== undefined) input.step = step.toString();
-  Object.assign(input.style, {
-    flexGrow: "1",
-    cursor: "text",
-    padding: "0.15rem 0.35rem",
-    fontSize: "0.8rem",
-  });
-  registerEditingInput(input);
-
-  const unit = document.createElement("span");
-  unit.textContent = suffix ?? "";
-  Object.assign(unit.style, {
-    fontSize: "0.75rem",
-    minWidth: "24px",
-    textAlign: "right",
-  });
-
-  control.append(label, input, unit);
-  return { control, input, unit };
-};
-
+// Camera debug panel setup - disabled
 // cameraDebugPanel is now created by setupDOM()
-cameraDebugPanel.id = "camera-debug-panel";
-Object.assign(cameraDebugPanel.style, {
-  position: "fixed",
-  bottom: "1rem",
-  right: "1rem",
-  width: "260px",
-  padding: "0.6rem 0.85rem",
-  borderRadius: "0.75rem",
-  background: "rgba(0, 0, 0, 0.75)",
-  border: "1px solid rgba(255, 255, 255, 0.4)",
-  color: "#fff",
-  fontSize: "0.75rem",
-  fontFamily: "monospace",
-  zIndex: "1000",
-  display: "flex",
-  flexDirection: "column",
-  gap: "0.4rem",
-});
-
-const cameraDebugInfoRow = document.createElement("div");
-cameraDebugInfoRow.style.display = "flex";
-cameraDebugInfoRow.style.justifyContent = "space-between";
-
-const cameraYawText = document.createElement("span");
-cameraYawText.textContent = "Yaw --°";
-const cameraPitchText = document.createElement("span");
-cameraPitchText.textContent = "Pitch --°";
-cameraDebugInfoRow.append(cameraYawText, cameraPitchText);
-
-const yawControl = createNumberInputControl("Yaw", {
-  min: -180,
-  max: 180,
-  step: 0.5,
-  suffix: "°",
-});
-const pitchControl = createNumberInputControl("Pitch", {
-  min: -89,
-  max: 89,
-  step: 0.5,
-  suffix: "°",
-});
-const zoomControl = createNumberInputControl("Zoom", {
-  min: 0.3,
-  max: 4,
-  step: 0.05,
-});
-
-const cameraXControl = createNumberInputControl("Cam X", { step: 0.1 });
-const cameraYControl = createNumberInputControl("Cam Y", { step: 0.1 });
-const cameraZControl = createNumberInputControl("Cam Z", { step: 0.1 });
-
-const tempDirection = new Vector3();
-
-const applyCameraStyleInputs = () => {
-  const yawDeg = parseFloat(yawControl.input.value);
-  const pitchDeg = parseFloat(pitchControl.input.value);
-  if (Number.isFinite(yawDeg) && Number.isFinite(pitchDeg)) {
-    const yawRad = yawDeg * DEG2RAD;
-    const pitchRad = pitchDeg * DEG2RAD;
-    const cosPitch = Math.cos(pitchRad);
-    tempDirection.set(
-      Math.sin(yawRad) * cosPitch,
-      Math.sin(pitchRad),
-      Math.cos(yawRad) * cosPitch,
-    );
-    tempDirection.normalize();
-    cameraRig.setViewDirection(tempDirection);
-  }
-  const zoomVal = parseFloat(zoomControl.input.value);
-  if (Number.isFinite(zoomVal)) {
-    cameraRig.setZoomFactor(zoomVal);
-  }
-  pageCameraSettings[activePage] = captureCameraState(cameraRig);
-};
-
-const applyCameraPositionInputs = () => {
-  const x = parseFloat(cameraXControl.input.value);
-  const y = parseFloat(cameraYControl.input.value);
-  const z = parseFloat(cameraZControl.input.value);
-  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
-    return;
-  }
-  const desired = new Vector3(x, y, z);
-  const target = cameraRig.getTarget();
-  const offset = desired.sub(target);
-  if (offset.lengthSq() < 1e-8) {
-    return;
-  }
-  const distance = offset.length();
-  cameraRig.setViewDirection(offset.normalize());
-  cameraRig.setCameraDistance(distance);
-  pageCameraSettings[activePage] = captureCameraState(cameraRig);
-};
-
-const cameraStyleInputs = [
-  yawControl.input,
-  pitchControl.input,
-  zoomControl.input,
-];
-cameraStyleInputs.forEach((input) => {
-  input.addEventListener("input", () => {
-    applyCameraStyleInputs();
-  });
-});
-const cameraPositionInputs = [
-  cameraXControl.input,
-  cameraYControl.input,
-  cameraZControl.input,
-];
-cameraPositionInputs.forEach((input) => {
-  input.addEventListener("input", applyCameraPositionInputs);
-});
-
-cameraDebugPanel.append(
-  cameraDebugInfoRow,
-  yawControl.control,
-  pitchControl.control,
-  zoomControl.control,
-  cameraXControl.control,
-  cameraYControl.control,
-  cameraZControl.control,
-);
-root.appendChild(cameraDebugPanel);
+// const cameraDebugPanel = document.getElementById("camera-debug-panel");
+//
+// const cameraDebugInfoRow = document.createElement("div");
+// cameraDebugInfoRow.style.display = "flex";
+// cameraDebugInfoRow.style.justifyContent = "space-between";
+//
+// const cameraYawText = document.createElement("span");
+// cameraYawText.textContent = "Yaw --°";
+// const cameraPitchText = document.createElement("span");
+// cameraPitchText.textContent = "Pitch --°";
+// cameraDebugInfoRow.append(cameraYawText, cameraPitchText);
+//
+// const yawControl = createNumberInputControl("Yaw", {
+//   min: -180,
+//   max: 180,
+//   step: 0.5,
+//   suffix: "°",
+// });
+// const pitchControl = createNumberInputControl("Pitch", {
+//   min: -89,
+//   max: 89,
+//   step: 0.5,
+//   suffix: "°",
+// });
+// const zoomControl = createNumberInputControl("Zoom", {
+//   min: 0.3,
+//   max: 4,
+//   step: 0.05,
+// });
+//
+// const cameraXControl = createNumberInputControl("Cam X", { step: 0.1 });
+// const cameraYControl = createNumberInputControl("Cam Y", { step: 0.1 });
+// const cameraZControl = createNumberInputControl("Cam Z", { step: 0.1 });
+//
+// const tempDirection = new Vector3();
+//
+// const applyCameraStyleInputs = () => {
+//   const yawDeg = parseFloat(yawControl.input.value);
+//   const pitchDeg = parseFloat(pitchControl.input.value);
+//   if (Number.isFinite(yawDeg) && Number.isFinite(pitchDeg)) {
+//     const yawRad = yawDeg * DEG2RAD;
+//     const pitchRad = pitchDeg * DEG2RAD;
+//     const cosPitch = Math.cos(pitchRad);
+//     tempDirection.set(
+//       Math.sin(yawRad) * cosPitch,
+//       Math.sin(pitchRad),
+//       Math.cos(yawRad) * cosPitch,
+//     );
+//     tempDirection.normalize();
+//     cameraRig.setViewDirection(tempDirection);
+//   }
+//   const zoomVal = parseFloat(zoomControl.input.value);
+//   if (Number.isFinite(zoomVal)) {
+//     cameraRig.setZoomFactor(zoomVal);
+//   }
+//   pageCameraSettings[activePage] = captureCameraState(cameraRig);
+// };
+//
+// const applyCameraPositionInputs = () => {
+//   const x = parseFloat(cameraXControl.input.value);
+//   const y = parseFloat(cameraYControl.input.value);
+//   const z = parseFloat(cameraZControl.input.value);
+//   if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
+//     return;
+//   }
+//   const desired = new Vector3(x, y, z);
+//   const target = cameraRig.getTarget();
+//   const offset = desired.sub(target);
+//   if (offset.lengthSq() < 1e-8) {
+//     return;
+//   }
+//   const distance = offset.length();
+//   cameraRig.setViewDirection(offset.normalize());
+//   cameraRig.setCameraDistance(distance);
+//   pageCameraSettings[activePage] = captureCameraState(cameraRig);
+// };
+//
+// const cameraStyleInputs = [
+//   yawControl.input,
+//   pitchControl.input,
+//   zoomControl.input,
+// ];
+// cameraStyleInputs.forEach((input) => {
+//   input.addEventListener("input", () => {
+//     applyCameraStyleInputs();
+//   });
+// });
+// const cameraPositionInputs = [
+//   cameraXControl.input,
+//   cameraYControl.input,
+//   cameraZControl.input,
+// ];
+// cameraPositionInputs.forEach((input) => {
+//   input.addEventListener("input", applyCameraPositionInputs);
+// });
+//
+// cameraDebugPanel.append(
+//   cameraDebugInfoRow,
+//   yawControl.control,
+//   pitchControl.control,
+//   zoomControl.control,
+//   cameraXControl.control,
+//   cameraYControl.control,
+//   cameraZControl.control,
+// );
+// root.appendChild(cameraDebugPanel);
 
 // Types and constants now imported from pageNavigation.ts and sceneObjects.ts
 
@@ -461,6 +448,60 @@ const pageSceneRoots: Record<string, Object3D> = {};
 const businessCardAnimation = createBusinessCardAnimation({
   getBusinessCardMesh: () =>
     (pageSceneRoots[BUSINESS_CARD_PAGE] as Object3D) ?? null,
+});
+
+// Add mouse tracking for business card reactive rotation
+document.addEventListener("mousemove", (event) => {
+  const x = event.clientX / window.innerWidth;
+  const y = event.clientY / window.innerHeight;
+  businessCardAnimation.updateMousePosition(x, y);
+
+  const raycaster = new Raycaster();
+  const pointer = new Vector2();
+  pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
+  pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+
+  // Check if hovering over business card (only when on business card page)
+  let isHoveringBusinessCard = false;
+  if (activePage === BUSINESS_CARD_PAGE && pageSceneRoots[BUSINESS_CARD_PAGE]) {
+    const intersects = raycaster.intersectObject(
+      pageSceneRoots[BUSINESS_CARD_PAGE],
+      true,
+    );
+    isHoveringBusinessCard = intersects.length > 0;
+    businessCardAnimation.setIsHovered(isHoveringBusinessCard);
+  } else {
+    businessCardAnimation.setIsHovered(false);
+  }
+
+  // Check if hovering over portfolio papers (only when on portfolio page)
+  if (activePage === "portfolio" && portfolioPapersManager) {
+    let isHoveringPaper = false;
+    const paperMeshes = portfolioPapersManager.getPaperMeshes();
+    for (const [paperId, mesh] of paperMeshes) {
+      const hits = raycaster.intersectObject(mesh, true);
+      if (hits.length > 0) {
+        // Check if it's a PDF paper
+        const paper = portfolioPapersManager
+          .getPapers()
+          .find((p) => p.id === paperId);
+        if (paper && paper.type === "pdf") {
+          isHoveringPaper = true;
+          break;
+        }
+      }
+    }
+
+    // Only set cursor on portfolio page
+    canvas.style.cursor = isHoveringPaper ? "pointer" : "auto";
+  }
+
+  // Set cursor for business card page - only show pointer on links
+  if (activePage === BUSINESS_CARD_PAGE) {
+    const link = findBusinessCardLinkUnderRay();
+    canvas.style.cursor = link ? "pointer" : "auto";
+  }
 });
 
 type PortfolioSceneConfig = {
@@ -479,7 +520,7 @@ const PORTFOLIO_SCENE_CONFIGS: ReadonlyArray<PortfolioSceneConfig> = [
   },
 ];
 
-const HERO_LAYOUT_RADIUS = 50;
+const HERO_LAYOUT_RADIUS = 45;
 const HERO_LAYOUT_Y = 0;
 const HERO_LAYOUT_START_ANGLE = Math.PI / 8;
 const HERO_LAYOUT_PAGES: Array<string> = [
@@ -839,6 +880,18 @@ contactButton.addEventListener("click", () => {
   setActiveScenePage("business_card");
 });
 
+portfolioPrevArrow.addEventListener("click", () => {
+  if (portfolioPapersManager) {
+    portfolioPapersManager.previousPaper();
+  }
+});
+
+portfolioNextArrow.addEventListener("click", () => {
+  if (portfolioPapersManager) {
+    portfolioPapersManager.nextPaper();
+  }
+});
+
 const setActiveScenePage = (page: ScenePage) => {
   if (page === activePage) {
     return;
@@ -855,10 +908,12 @@ const setActiveScenePage = (page: ScenePage) => {
   }
   if (page === BUSINESS_CARD_PAGE) {
     businessCardAnimation.handlePageSelection(page);
+    businessCardAnimation.setMouseReactiveRotation(true);
   }
   if (previousPage === BUSINESS_CARD_PAGE && page !== BUSINESS_CARD_PAGE) {
     setBusinessCardContactHighlight(null);
     businessCardAnimation.resetToHome();
+    businessCardAnimation.setMouseReactiveRotation(false);
   }
   const fromSettings = captureCameraState(cameraRig);
   if (previousPage === "home" && page !== "home") {
@@ -918,6 +973,15 @@ const setActiveScenePage = (page: ScenePage) => {
   const isPositionChanging =
     (previousPage === "turntable") !== (page === "turntable");
 
+  // Function to update button visibility
+  const updateButtonVisibility = () => {
+    homeNavButton.style.display = page === "home" ? "none" : "block";
+    turntableNavButton.style.display = page === "turntable" ? "none" : "block";
+    portfolioNavButton.style.display = page === "portfolio" ? "none" : "block";
+    contactButton.style.display = page === "business_card" ? "none" : "block";
+    resetTutorialButton.style.display = page === "turntable" ? "block" : "none";
+  };
+
   if (isPositionChanging) {
     // Fade out before repositioning
     if (!globalControls.style.transition) {
@@ -926,6 +990,9 @@ const setActiveScenePage = (page: ScenePage) => {
     globalControls.style.opacity = "0";
 
     setTimeout(() => {
+      // Update button visibility while invisible
+      updateButtonVisibility();
+
       if (page === "turntable") {
         // Move to bottom left, to the right of the + sign (toggle button is ~30px wide at left: 20px)
         globalControls.style.bottom = "23px";
@@ -936,18 +1003,20 @@ const setActiveScenePage = (page: ScenePage) => {
         globalControls.style.alignItems = "center";
       } else {
         // Return to left side center-left
-        globalControls.style.bottom = "50%";
+        globalControls.style.bottom = "65%";
         globalControls.style.left = "20px";
         globalControls.style.transform = "translateY(50%)";
         globalControls.style.flexDirection = "column";
         globalControls.style.gap = "1.5rem";
-        globalControls.style.alignItems = "stretch";
+        globalControls.style.alignItems = "flex-start";
       }
       // Fade back in
       globalControls.style.opacity = "1";
-    }, 150);
+    }, 300);
   } else {
     // No position change, just update styles without fade
+    updateButtonVisibility();
+
     if (page === "turntable") {
       globalControls.style.bottom = "23px";
       globalControls.style.left = "65px";
@@ -956,21 +1025,27 @@ const setActiveScenePage = (page: ScenePage) => {
       globalControls.style.gap = "1rem";
       globalControls.style.alignItems = "center";
     } else {
-      globalControls.style.bottom = "50%";
+      globalControls.style.bottom = "65%";
       globalControls.style.left = "20px";
       globalControls.style.transform = "translateY(50%)";
       globalControls.style.flexDirection = "column";
       globalControls.style.gap = "1.5rem";
-      globalControls.style.alignItems = "stretch";
+      globalControls.style.alignItems = "flex-start";
     }
   }
 
-  // Hide/show navigation buttons based on current page
-  homeNavButton.style.display = page === "home" ? "none" : "block";
-  turntableNavButton.style.display = page === "turntable" ? "none" : "block";
-  portfolioNavButton.style.display = page === "portfolio" ? "none" : "block";
-  contactButton.style.display = page === "business_card" ? "none" : "block";
-  resetTutorialButton.style.display = page === "turntable" ? "block" : "none";
+  // Show/hide portfolio navigation arrows
+  if (page === "portfolio") {
+    portfolioPrevArrow.style.opacity = "1";
+    portfolioPrevArrow.style.pointerEvents = "auto";
+    portfolioNextArrow.style.opacity = "1";
+    portfolioNextArrow.style.pointerEvents = "auto";
+  } else {
+    portfolioPrevArrow.style.opacity = "0";
+    portfolioPrevArrow.style.pointerEvents = "none";
+    portfolioNextArrow.style.opacity = "0";
+    portfolioNextArrow.style.pointerEvents = "none";
+  }
 };
 
 // findPageForObject now imported from pageNavigation.ts
@@ -1009,7 +1084,7 @@ const updateScenePageTransition = () => {
   if (progress >= 1) {
     pageTransitionState.active = false;
     pageCameraSettings[activePage] = cloneCameraSettings(to);
-    updateCameraDebugPanel();
+    // updateCameraDebugPanel();
     if (activePage === "turntable" && pendingTurntableCallbacks.length) {
       const callbacks = pendingTurntableCallbacks.splice(
         0,
@@ -1020,33 +1095,34 @@ const updateScenePageTransition = () => {
   }
 };
 
-const updateCameraDebugPanel = () => {
-  const orbitAngles = cameraRig.getOrbitAngles();
-  const yawDeg = orbitAngles.azimuth * RAD2DEG;
-  const pitchDeg = orbitAngles.polar * RAD2DEG;
-  cameraYawText.textContent = `Yaw ${yawDeg.toFixed(1)}°`;
-  cameraPitchText.textContent = `Pitch ${pitchDeg.toFixed(1)}°`;
-  if (!editingInputs.has(yawControl.input)) {
-    yawControl.input.value = yawDeg.toFixed(1);
-  }
-  if (!editingInputs.has(pitchControl.input)) {
-    pitchControl.input.value = pitchDeg.toFixed(1);
-  }
-  const zoomFactor = cameraRig.getZoomFactor();
-  if (!editingInputs.has(zoomControl.input)) {
-    zoomControl.input.value = zoomFactor.toFixed(2);
-  }
-  const cameraPos = camera.position;
-  if (!editingInputs.has(cameraXControl.input)) {
-    cameraXControl.input.value = cameraPos.x.toFixed(2);
-  }
-  if (!editingInputs.has(cameraYControl.input)) {
-    cameraYControl.input.value = cameraPos.y.toFixed(2);
-  }
-  if (!editingInputs.has(cameraZControl.input)) {
-    cameraZControl.input.value = cameraPos.z.toFixed(2);
-  }
-};
+// Camera debug panel update function - disabled
+// const updateCameraDebugPanel = () => {
+//   const orbitAngles = cameraRig.getOrbitAngles();
+//   const yawDeg = orbitAngles.azimuth * RAD2DEG;
+//   const pitchDeg = orbitAngles.polar * RAD2DEG;
+//   cameraYawText.textContent = `Yaw ${yawDeg.toFixed(1)}°`;
+//   cameraPitchText.textContent = `Pitch ${pitchDeg.toFixed(1)}°`;
+//   if (!editingInputs.has(yawControl.input)) {
+//     yawControl.input.value = yawDeg.toFixed(1);
+//   }
+//   if (!editingInputs.has(pitchControl.input)) {
+//     pitchControl.input.value = pitchDeg.toFixed(1);
+//   }
+//   const zoomFactor = cameraRig.getZoomFactor();
+//   if (!editingInputs.has(zoomControl.input)) {
+//     zoomControl.input.value = zoomFactor.toFixed(2);
+//   }
+//   const cameraPos = camera.position;
+//   if (!editingInputs.has(cameraXControl.input)) {
+//     cameraXControl.input.value = cameraPos.x.toFixed(2);
+//   }
+//   if (!editingInputs.has(cameraYControl.input)) {
+//     cameraYControl.input.value = cameraPos.y.toFixed(2);
+//   }
+//   if (!editingInputs.has(cameraZControl.input)) {
+//     cameraZControl.input.value = cameraPos.z.toFixed(2);
+//   }
+// };
 
 const { vinylNormalTexture } = loadTextures(renderer);
 
@@ -1281,6 +1357,10 @@ const cameraOrbitState = {
   lastX: 0,
   lastY: 0,
   mode: null as ScenePage | null,
+  velocityX: 0,
+  velocityY: 0,
+  lastDeltaX: 0,
+  lastDeltaY: 0,
 };
 
 const cameraPanState = {
@@ -1298,6 +1378,11 @@ const businessCardDragState = {
   lastX: 0,
   lastY: 0,
 };
+
+// Camera orbit momentum deceleration
+const MOMENTUM_FRICTION = 0.94; // Friction coefficient (0-1, lower = faster deceleration)
+const MOMENTUM_MIN_VELOCITY = 0.001; // Minimum velocity threshold to stop momentum
+let isCameraOrbitDecelerating = false;
 
 const raycaster = new Raycaster();
 const pointerNDC = new Vector2();
@@ -2228,6 +2313,27 @@ canvas.addEventListener("pointerdown", (event) => {
         return;
       }
       startBusinessCardRotation(event);
+    } else if (activePage === "portfolio") {
+      // Check if clicking on a portfolio paper mesh
+      if (portfolioPapersManager) {
+        const paperMeshes = portfolioPapersManager.getPaperMeshes();
+        for (const [paperId, mesh] of paperMeshes) {
+          const hits = raycaster.intersectObject(mesh, true);
+          if (hits.length > 0) {
+            // Found a paper click - check if it's a PDF
+            const paper = portfolioPapersManager
+              .getPapers()
+              .find((p) => p.id === paperId);
+            if (paper && paper.type === "pdf") {
+              console.log(
+                `[Portfolio] Opening PDF in new window: ${paper.url}`,
+              );
+              window.open(paper.url, "_blank");
+              return;
+            }
+          }
+        }
+      }
     }
     return;
   }
@@ -2552,6 +2658,26 @@ canvas.addEventListener("pointerup", endBusinessCardRotation);
 canvas.addEventListener("pointercancel", endBusinessCardRotation);
 canvas.addEventListener("pointerleave", endBusinessCardRotation);
 
+// Scroll wheel camera orbit on home page
+canvas.addEventListener(
+  "wheel",
+  (event) => {
+    if (activePage !== "home" || pageTransitionState.active) {
+      return;
+    }
+
+    event.preventDefault();
+
+    const sensitivity = 0.001; // Scroll sensitivity for orbit
+    const deltaY = event.deltaY;
+
+    // Positive deltaY = scroll down = orbit right (positive azimuth)
+    // Negative deltaY = scroll up = orbit left (negative azimuth)
+    cameraRig.orbit(deltaY * sensitivity, 0);
+  },
+  { passive: false },
+);
+
 loadTurntableModel()
   .then((turntable) => {
     const cartridge = findObjectByName(
@@ -2648,7 +2774,7 @@ loadTurntableModel()
       pageCameraSettings.home,
     );
     pageTransitionState.active = false;
-    updateCameraDebugPanel();
+    // updateCameraDebugPanel();
     vinylCameraTrackingEnabled = activePage === "turntable";
 
     setVinylAnchorPosition(turntableAnchorPosition, "turntable");
@@ -2692,11 +2818,11 @@ loadPortfolioModel()
     applyHomeCameraPreset();
     if (activePage === "home" && !pageTransitionState.active) {
       applyPageCameraSettings(pageCameraSettings.home, cameraRig);
-      updateCameraDebugPanel();
+      // updateCameraDebugPanel();
     }
     if (activePage === "portfolio" && !pageTransitionState.active) {
       applyPageCameraSettings(pageCameraSettings.portfolio, cameraRig);
-      updateCameraDebugPanel();
+      // updateCameraDebugPanel();
     }
   })
   .catch((error) => {
@@ -2792,7 +2918,7 @@ const updateCameraTargetsForWindowSize = () => {
   applyHomeCameraPreset();
   if (activePage === "home" && !pageTransitionState.active) {
     applyPageCameraSettings(pageCameraSettings.home, cameraRig);
-    updateCameraDebugPanel();
+    // updateCameraDebugPanel();
   }
 
   // Update focus card position on window resize
@@ -3069,13 +3195,24 @@ const animate = (time: number) => {
   if (vinylModel && renderVisualOffset !== 0) {
     vinylModel.position.x += renderVisualOffset;
   }
+
+  // Update camera orbit momentum deceleration
+  updateCameraOrbitMomentum();
+
   renderer.render(scene, camera);
   if (vinylModel && renderVisualOffset !== 0) {
     vinylModel.position.x -= renderVisualOffset;
   }
   window.PLAYING_SOUND = turntableController?.isPlaying() ?? false;
   updateVideoProgress();
-  updateCameraDebugPanel();
+
+  // Fade name in/out based on player controls visibility
+  const nameElement = document.getElementById("jonathan-jiang-name");
+  if (nameElement) {
+    nameElement.style.opacity = yt.areControlsVisible() ? "0" : "1";
+  }
+
+  // updateCameraDebugPanel();
 
   // Update camera debug display
   // const camPos = camera.position;
@@ -3193,23 +3330,8 @@ function pickPointOnPlane(event: PointerEvent) {
 // start/stop + speed slide handled by controller
 
 function startBusinessCardRotation(event: PointerEvent) {
-  if (
-    activePage !== BUSINESS_CARD_PAGE ||
-    pageTransitionState.active ||
-    businessCardDragState.isRotating ||
-    yt.isFullscreen()
-  ) {
-    return;
-  }
-  businessCardDragState.isRotating = true;
-  businessCardDragState.pointerId = event.pointerId;
-  businessCardDragState.lastX = event.clientX;
-  businessCardDragState.lastY = event.clientY;
-  try {
-    canvas.setPointerCapture(event.pointerId);
-  } catch {
-    // ignore if capture is unavailable
-  }
+  // Disable drag-based rotation - use mouse hover tracking instead
+  return;
 }
 
 function handleBusinessCardRotationMove(event: PointerEvent) {
@@ -3313,6 +3435,50 @@ const updateDragPlaneDepthLocal = (z: number) => {
 
 // rpm helper moved to controller
 
+function startCameraOrbitMomentum() {
+  if (
+    activePage !== "home" ||
+    pageTransitionState.active ||
+    isCameraOrbitDecelerating
+  ) {
+    return;
+  }
+
+  // Only apply momentum if velocity is significant
+  if (
+    Math.abs(cameraOrbitState.velocityX) < MOMENTUM_MIN_VELOCITY &&
+    Math.abs(cameraOrbitState.velocityY) < MOMENTUM_MIN_VELOCITY
+  ) {
+    return;
+  }
+
+  isCameraOrbitDecelerating = true;
+}
+
+function updateCameraOrbitMomentum() {
+  if (!isCameraOrbitDecelerating) {
+    return;
+  }
+
+  // Apply friction to velocity
+  cameraOrbitState.velocityX *= MOMENTUM_FRICTION;
+  cameraOrbitState.velocityY *= MOMENTUM_FRICTION;
+
+  // Stop momentum when velocity becomes negligible
+  if (
+    Math.abs(cameraOrbitState.velocityX) < MOMENTUM_MIN_VELOCITY &&
+    Math.abs(cameraOrbitState.velocityY) < MOMENTUM_MIN_VELOCITY
+  ) {
+    isCameraOrbitDecelerating = false;
+    cameraOrbitState.velocityX = 0;
+    cameraOrbitState.velocityY = 0;
+    return;
+  }
+
+  // Apply the decelerating velocity to camera orbit
+  cameraRig.orbit(cameraOrbitState.velocityX, 0);
+}
+
 function startCameraOrbit(event: PointerEvent) {
   if (
     (activePage !== "turntable" && activePage !== "home") ||
@@ -3346,6 +3512,13 @@ function handleCameraOrbitMove(event: PointerEvent) {
   const deltaY = event.clientY - cameraOrbitState.lastY;
   cameraOrbitState.lastX = event.clientX;
   cameraOrbitState.lastY = event.clientY;
+
+  // Track velocity for momentum deceleration
+  cameraOrbitState.velocityX = deltaX * CAMERA_ORBIT_SENSITIVITY;
+  cameraOrbitState.velocityY = deltaY * CAMERA_ORBIT_SENSITIVITY;
+  cameraOrbitState.lastDeltaX = deltaX;
+  cameraOrbitState.lastDeltaY = deltaY;
+
   const allowPolar = cameraOrbitState.mode === "turntable";
   cameraRig.orbit(
     deltaX * CAMERA_ORBIT_SENSITIVITY,
@@ -3367,6 +3540,9 @@ function endCameraOrbit(event: PointerEvent) {
   if (cameraOrbitState.mode === "turntable") {
     // Restore to saved rotation state with animation
     cameraRig.restoreRotationState();
+  } else if (cameraOrbitState.mode === "home") {
+    // Apply momentum deceleration on home page
+    startCameraOrbitMomentum();
   }
 
   cameraOrbitState.mode = null;

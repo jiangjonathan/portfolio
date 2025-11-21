@@ -25,6 +25,8 @@ export interface DOMElements {
   contactButton: HTMLButtonElement;
   cameraDebugPanel: HTMLDivElement;
   portfolioPapersContainer: HTMLDivElement;
+  portfolioPrevArrow: HTMLButtonElement;
+  portfolioNextArrow: HTMLButtonElement;
 }
 
 export function setupDOM(): DOMElements {
@@ -33,6 +35,27 @@ export function setupDOM(): DOMElements {
     throw new Error("Missing #app container.");
   }
   root.innerHTML = "";
+
+  // Create name text in top left corner
+  const nameText = document.createElement("div");
+  nameText.id = "jonathan-jiang-name";
+  nameText.textContent = "Jonathan Jiang";
+  nameText.style.cssText = `
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    font-size: 0.85rem;
+    font-weight: 400;
+    letter-spacing: 0;
+    text-transform: none;
+    color: #000;
+    z-index: 100;
+    font-family: inherit;
+    opacity: 1;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+  `;
+  root.appendChild(nameText);
 
   // Create vinyl library widget container
   const vinylLibraryContainer = document.createElement("div");
@@ -222,6 +245,9 @@ export function setupDOM(): DOMElements {
 
     #global-controls {
       gap: 1.5rem;
+      opacity: 1;
+      transition: opacity 0.3s ease;
+      pointer-events: auto;
     }
 
     #global-controls button {
@@ -261,13 +287,13 @@ export function setupDOM(): DOMElements {
   globalControls.id = "global-controls";
   Object.assign(globalControls.style, {
     position: "fixed",
-    bottom: "50%",
+    bottom: "65%",
     left: "20px",
     transform: "translateY(50%)",
     display: "flex",
     flexDirection: "column",
     gap: "1.5rem",
-    alignItems: "stretch",
+    alignItems: "flex-start",
     zIndex: HIDE_BUTTON_Z_INDEX,
   });
   root.appendChild(globalControls);
@@ -294,7 +320,7 @@ export function setupDOM(): DOMElements {
   resetTutorialButton.textContent = "reset tutorial";
   globalControls.appendChild(resetTutorialButton);
 
-  // Create camera debug panel
+  // Create camera debug panel (debug - hidden)
   const cameraDebugPanel = document.createElement("div");
   cameraDebugPanel.id = "camera-debug-panel";
   Object.assign(cameraDebugPanel.style, {
@@ -310,13 +336,13 @@ export function setupDOM(): DOMElements {
     fontSize: "0.75rem",
     fontFamily: "monospace",
     zIndex: "1000",
-    display: "flex",
+    display: "none", // Debug UI - hidden
     flexDirection: "column",
     gap: "0.4rem",
   });
-  root.appendChild(cameraDebugPanel);
+  // root.appendChild(cameraDebugPanel); // Debug UI - disabled
 
-  // Create portfolio papers UI container
+  // Create portfolio papers UI container (debug - hidden)
   const portfolioPapersContainer = document.createElement("div");
   portfolioPapersContainer.id = "portfolio-papers-ui";
   Object.assign(portfolioPapersContainer.style, {
@@ -331,12 +357,70 @@ export function setupDOM(): DOMElements {
     fontSize: "14px",
     fontFamily: "inherit",
     zIndex: "1100",
-    display: "none", // Hidden by default, shown on portfolio page
+    display: "none", // Always hidden (debug UI)
     flexDirection: "column",
     gap: "0.5rem",
     minWidth: "180px",
   });
-  root.appendChild(portfolioPapersContainer);
+  // root.appendChild(portfolioPapersContainer); // Debug UI - disabled
+
+  // Create portfolio navigation arrows
+  const portfolioPrevArrow = document.createElement("button");
+  portfolioPrevArrow.textContent = "‹";
+  Object.assign(portfolioPrevArrow.style, {
+    position: "fixed",
+    left: "50px",
+    top: "50%",
+    transform: "translateY(-50%)",
+    fontSize: "4rem",
+    background: "transparent",
+    border: "none",
+    color: "#000",
+    cursor: "pointer",
+    padding: "0.5rem",
+    zIndex: "1050",
+    opacity: "0",
+    pointerEvents: "none",
+    transition: "all 0.3s ease",
+    textShadow: "-0.5px 0 #ff0000, 0.5px 0 #0000ff",
+  });
+  portfolioPrevArrow.addEventListener("mouseover", () => {
+    portfolioPrevArrow.style.fontSize = "4.5rem";
+  });
+  portfolioPrevArrow.addEventListener("mouseout", () => {
+    portfolioPrevArrow.style.fontSize = "4rem";
+  });
+  root.appendChild(portfolioPrevArrow);
+
+  const portfolioNextArrow = document.createElement("button");
+  portfolioNextArrow.textContent = "›";
+  Object.assign(portfolioNextArrow.style, {
+    position: "fixed",
+    right: "50px",
+    top: "50%",
+    transform: "translateY(-50%)",
+    fontSize: "4rem",
+    background: "transparent",
+    border: "none",
+    color: "#000",
+    cursor: "pointer",
+    padding: "0.5rem",
+    zIndex: "1050",
+    opacity: "0",
+    pointerEvents: "none",
+    transition: "all 0.3s ease",
+    textShadow: "-0.5px 0 #ff0000, 0.5px 0 #0000ff",
+  });
+  portfolioNextArrow.addEventListener("mouseover", () => {
+    portfolioNextArrow.style.fontSize = "4.5rem";
+  });
+  portfolioNextArrow.addEventListener("mouseout", () => {
+    portfolioNextArrow.style.fontSize = "4rem";
+  });
+  root.appendChild(portfolioNextArrow);
+
+  // Append camera debug panel to DOM (hidden by default)
+  root.appendChild(cameraDebugPanel);
 
   // Create canvas
   const canvas = document.createElement("canvas");
@@ -361,5 +445,7 @@ export function setupDOM(): DOMElements {
     contactButton,
     cameraDebugPanel,
     portfolioPapersContainer,
+    portfolioPrevArrow,
+    portfolioNextArrow,
   };
 }

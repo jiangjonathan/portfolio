@@ -1047,7 +1047,7 @@ export class VinylLibraryViewer {
             position: relative;
             display: inline-block;
             vertical-align: baseline;
-            top: -1px;
+            top: -1.5px;
           }
 
           .vinyl-viewer-widget .sort-container .filter-btn {
@@ -2070,12 +2070,20 @@ export class VinylLibraryViewer {
   private attachFilterListener(): void {
     const filterBtn = document.getElementById("vinyl-filter-btn");
     if (filterBtn) {
-      filterBtn.addEventListener("click", () => {
+      filterBtn.addEventListener("click", (e) => {
+        e.preventDefault();
         this.showVisitorOnly = !this.showVisitorOnly;
         filterBtn.textContent = this.showVisitorOnly
           ? "show whole library"
           : "show personal only";
-        filterBtn.classList.toggle("active", this.showVisitorOnly);
+
+        // Ensure the active class is properly set
+        if (this.showVisitorOnly) {
+          filterBtn.classList.add("active");
+        } else {
+          filterBtn.classList.remove("active");
+        }
+
         this.mergeLibraries();
         this.updateVisibleItems();
         this.attachCardListeners();

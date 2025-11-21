@@ -28,7 +28,7 @@ const DEG2RAD = Math.PI / 180;
 
 export const HOME_CAMERA_YAW = 7;
 export const HOME_CAMERA_PITCH = 32;
-export const HOME_CAMERA_ZOOM = 1;
+export const HOME_CAMERA_ZOOM = 1.5;
 export const PORTFOLIO_CAMERA_YAW = -58;
 export const PORTFOLIO_CAMERA_PITCH = 30;
 export const PORTFOLIO_CAMERA_ZOOM = 4.56;
