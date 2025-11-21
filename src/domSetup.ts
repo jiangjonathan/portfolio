@@ -27,6 +27,8 @@ export interface DOMElements {
   portfolioPapersContainer: HTMLDivElement;
   portfolioPrevArrow: HTMLButtonElement;
   portfolioNextArrow: HTMLButtonElement;
+  placeholderAInfo: HTMLDivElement;
+  placeholderBInfo: HTMLDivElement;
 }
 
 export function setupDOM(): DOMElements {
@@ -422,6 +424,42 @@ export function setupDOM(): DOMElements {
   // Append camera debug panel to DOM (hidden by default)
   root.appendChild(cameraDebugPanel);
 
+  // Create placeholder A info
+  const placeholderAInfo = document.createElement("div");
+  placeholderAInfo.id = "placeholder-a-info";
+  placeholderAInfo.style.cssText = `
+    position: fixed;
+    right: 20px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 1000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+    display: none;
+    font-size: 0.85rem;
+  `;
+  placeholderAInfo.textContent = `placeholder \nunder construction`;
+  root.appendChild(placeholderAInfo);
+
+  // Create placeholder B info
+  const placeholderBInfo = document.createElement("div");
+  placeholderBInfo.id = "placeholder-b-info";
+  placeholderBInfo.style.cssText = `
+    position: fixed;
+    right: 20px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 1000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+    display: none;
+    font-size: 0.85rem;
+  `;
+  placeholderBInfo.textContent = `placeholder \n under construction`;
+  root.appendChild(placeholderBInfo);
+
   // Create canvas
   const canvas = document.createElement("canvas");
   canvas.id = "vinyl-viewer";
@@ -447,5 +485,7 @@ export function setupDOM(): DOMElements {
     portfolioPapersContainer,
     portfolioPrevArrow,
     portfolioNextArrow,
+    placeholderAInfo,
+    placeholderBInfo,
   };
 }

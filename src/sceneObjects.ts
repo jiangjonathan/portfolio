@@ -68,7 +68,13 @@ let businessCardLinkedInUV: UVRect = {
   minV: 0,
   maxV: 0,
 };
-export type BusinessCardContact = "email" | "linkedin";
+let businessCardGitHubUV: UVRect = {
+  minU: 0,
+  maxU: 0,
+  minV: 0,
+  maxV: 0,
+};
+export type BusinessCardContact = "email" | "linkedin" | "github";
 type ContactLayout = {
   startX: number;
   width: number;
@@ -86,10 +92,12 @@ let businessCardHighlight: BusinessCardContact | null = null;
 
 export const getBusinessCardEmailUV = () => businessCardEmailUV;
 export const getBusinessCardLinkedInUV = () => businessCardLinkedInUV;
+export const getBusinessCardGitHubUV = () => businessCardGitHubUV;
 
 export const BUSINESS_CARD_EMAIL_URI = "mailto:jonathanrsjiang@icloud.com";
 export const BUSINESS_CARD_LINKEDIN_URL =
   "https://www.linkedin.com/in/jonathanrsjiang";
+export const BUSINESS_CARD_GITHUB_URL = "https://github.com/jiangjonathan";
 
 function drawEmbossedText(
   ctx: CanvasRenderingContext2D,
@@ -206,15 +214,20 @@ const drawBusinessCardContacts = (ctx: CanvasRenderingContext2D) => {
   const H = ctx.canvas.height;
   const emailText = "EMAIL jonathanrsjiang@icloud.com";
   const linkedinText = "LINKEDIN jonathanrsjiang";
+  const githubText = "GITHUB jiangjonathan";
   const contactY = H * 0.92;
   const emailFont = H * 0.038;
   const linkedinFont = H * 0.038;
+  const githubFont = H * 0.038;
   ctx.font = `${emailFont}px "Garamond", "Times New Roman", serif`;
   const emailWidth = ctx.measureText(emailText).width;
   ctx.font = `${linkedinFont}px "Garamond", "Times New Roman", serif`;
   const linkedinWidth = ctx.measureText(linkedinText).width;
+  ctx.font = `${githubFont}px "Garamond", "Times New Roman", serif`;
+  const githubWidth = ctx.measureText(githubText).width;
   const contactGap = W * 0.02;
-  const contactStartX = W * 0.5 - (emailWidth + linkedinWidth + contactGap) / 2;
+  const contactStartX =
+    W * 0.5 - (emailWidth + linkedinWidth + githubWidth + contactGap * 2) / 2;
   drawEmbossedText(
     ctx,
     emailText,
@@ -230,6 +243,15 @@ const drawBusinessCardContacts = (ctx: CanvasRenderingContext2D) => {
     contactStartX + emailWidth + contactGap,
     contactY,
     linkedinFont,
+    "left",
+    "alphabetic",
+  );
+  drawEmbossedText(
+    ctx,
+    githubText,
+    contactStartX + emailWidth + linkedinWidth + contactGap * 2,
+    contactY,
+    githubFont,
     "left",
     "alphabetic",
   );
@@ -250,6 +272,16 @@ const drawBusinessCardContacts = (ctx: CanvasRenderingContext2D) => {
     minV: clamp01(1 - linkedinBottomY / H),
     maxV: clamp01(1 - linkedinTopY / H),
   };
+  const githubStartX =
+    contactStartX + emailWidth + linkedinWidth + contactGap * 2;
+  const githubTopY = contactY - githubFont * 0.6;
+  const githubBottomY = contactY + githubFont * 0.6;
+  businessCardGitHubUV = {
+    minU: clamp01(githubStartX / W),
+    maxU: clamp01((githubStartX + githubWidth) / W),
+    minV: clamp01(1 - githubBottomY / H),
+    maxV: clamp01(1 - githubTopY / H),
+  };
   businessCardContactLayouts = {
     email: {
       startX: contactStartX,
@@ -262,6 +294,12 @@ const drawBusinessCardContacts = (ctx: CanvasRenderingContext2D) => {
       width: linkedinWidth,
       y: contactY,
       font: linkedinFont,
+    },
+    github: {
+      startX: githubStartX,
+      width: githubWidth,
+      y: contactY,
+      font: githubFont,
     },
   };
 };
@@ -403,6 +441,10 @@ export function createPlaceholderMesh(
   const material = new MeshStandardMaterial({ color: config.color });
   const mesh = new Mesh(geometry, material);
   mesh.position.copy(circlePosition);
+  // Raise placeholder so its center is not inside the ground (y=0)
+  // For box: raise by half the height (PLACEHOLDER_SIZE / 2)
+  // For sphere: raise by radius (PLACEHOLDER_SIZE / 2)
+  mesh.position.y += PLACEHOLDER_SIZE / 2;
   mesh.name = config.id;
   return mesh;
 }

@@ -93,11 +93,14 @@ import {
   BUSINESS_CARD_CAMERA_PITCH,
   BUSINESS_CARD_CAMERA_ZOOM,
   PLACEHOLDER_SCENES,
+  PLACEHOLDER_SIZE,
   PORTFOLIO_CAMERA_TARGET_OFFSET,
   getBusinessCardEmailUV,
   getBusinessCardLinkedInUV,
+  getBusinessCardGitHubUV,
   BUSINESS_CARD_EMAIL_URI,
   BUSINESS_CARD_LINKEDIN_URL,
+  BUSINESS_CARD_GITHUB_URL,
   setBusinessCardContactHighlight,
 } from "./sceneObjects";
 import type { BusinessCardContact, UVRect } from "./sceneObjects";
@@ -149,6 +152,8 @@ const {
   // cameraDebugPanel, // Debug UI - disabled
   portfolioPrevArrow,
   portfolioNextArrow,
+  placeholderAInfo,
+  placeholderBInfo,
 } = dom;
 
 // Initialize button visibility based on initial page (home)
@@ -462,6 +467,21 @@ document.addEventListener("mousemove", (event) => {
   pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
   raycaster.setFromCamera(pointer, camera);
 
+  // Check if hovering over models on home page
+  if (activePage === "home") {
+    let isHoveringAnyModel = false;
+    for (const { model } of homePageTargets) {
+      const intersects = raycaster.intersectObject(model, true);
+      if (intersects.length > 0) {
+        isHoveringAnyModel = true;
+        break;
+      }
+    }
+    cameraOrbitState.isHoveringModel = isHoveringAnyModel;
+  } else {
+    cameraOrbitState.isHoveringModel = false;
+  }
+
   // Check if hovering over business card (only when on business card page)
   let isHoveringBusinessCard = false;
   if (activePage === BUSINESS_CARD_PAGE && pageSceneRoots[BUSINESS_CARD_PAGE]) {
@@ -569,13 +589,21 @@ const pageCameraSettings: Record<ScenePage, PageCameraSettings> = {
     zoom: BUSINESS_CARD_CAMERA_ZOOM,
   },
   placeholder_A: {
-    target: getHeroCirclePosition("placeholder_A"),
+    target: (() => {
+      const pos = getHeroCirclePosition("placeholder_A");
+      pos.y += PLACEHOLDER_SIZE / 2; // Adjust for raised placeholder center
+      return pos;
+    })(),
     yaw: PLACEHOLDER_CAMERA_YAW,
     pitch: PLACEHOLDER_CAMERA_PITCH,
     zoom: PLACEHOLDER_CAMERA_ZOOM,
   },
   placeholder_B: {
-    target: getHeroCirclePosition("placeholder_B"),
+    target: (() => {
+      const pos = getHeroCirclePosition("placeholder_B");
+      pos.y += PLACEHOLDER_SIZE / 2; // Adjust for raised placeholder center
+      return pos;
+    })(),
     yaw: PLACEHOLDER_CAMERA_YAW,
     pitch: PLACEHOLDER_CAMERA_PITCH,
     zoom: PLACEHOLDER_CAMERA_ZOOM,
@@ -945,6 +973,14 @@ const setActiveScenePage = (page: ScenePage) => {
   const wasTurntable = previousPage === "turntable";
   activePage = page;
   turntableStateManager.setActivePage(page);
+
+  // Start auto-orbit if moving to home page
+  if (page === "home") {
+    startAutoOrbit();
+  } else {
+    cameraOrbitState.isAutoOrbiting = false;
+  }
+
   youtubeBridge?.setFKeyListenerEnabled(page === "turntable");
   const shouldShowFocusVinyl = page === "turntable";
   focusVinylManuallyHidden = !shouldShowFocusVinyl;
@@ -1046,6 +1082,27 @@ const setActiveScenePage = (page: ScenePage) => {
     portfolioNextArrow.style.opacity = "0";
     portfolioNextArrow.style.pointerEvents = "none";
   }
+
+  // Show/hide placeholder info
+  if (page === "placeholder_A") {
+    placeholderAInfo.style.display = "block";
+    placeholderAInfo.style.opacity = "1";
+    placeholderAInfo.style.pointerEvents = "auto";
+  } else {
+    placeholderAInfo.style.display = "none";
+    placeholderAInfo.style.opacity = "0";
+    placeholderAInfo.style.pointerEvents = "none";
+  }
+
+  if (page === "placeholder_B") {
+    placeholderBInfo.style.display = "block";
+    placeholderBInfo.style.opacity = "1";
+    placeholderBInfo.style.pointerEvents = "auto";
+  } else {
+    placeholderBInfo.style.display = "none";
+    placeholderBInfo.style.opacity = "0";
+    placeholderBInfo.style.pointerEvents = "none";
+  }
 };
 
 // findPageForObject now imported from pageNavigation.ts
@@ -1091,6 +1148,10 @@ const updateScenePageTransition = () => {
         pendingTurntableCallbacks.length,
       );
       callbacks.forEach((fn) => fn());
+    }
+    // Start auto-orbit after transition completes when returning to home page
+    if (activePage === "home") {
+      startAutoOrbit();
     }
   }
 };
@@ -1361,6 +1422,8 @@ const cameraOrbitState = {
   velocityY: 0,
   lastDeltaX: 0,
   lastDeltaY: 0,
+  isAutoOrbiting: false,
+  isHoveringModel: false,
 };
 
 const cameraPanState = {
@@ -1383,6 +1446,13 @@ const businessCardDragState = {
 const MOMENTUM_FRICTION = 0.94; // Friction coefficient (0-1, lower = faster deceleration)
 const MOMENTUM_MIN_VELOCITY = 0.001; // Minimum velocity threshold to stop momentum
 let isCameraOrbitDecelerating = false;
+
+// Camera auto-orbit on home page
+const AUTO_ORBIT_SPEED = 0.001; // Radians per frame when auto-orbiting (slow rotation)
+const AUTO_ORBIT_DECEL_RATE = 0.967; // Deceleration rate when hovering (0-1, lower = faster stop)
+let autoOrbitStartTime = 0;
+let autoOrbitDirection = 1; // 1 for positive (right), -1 for negative (left)
+let autoOrbitSpeedMultiplier = 1.0; // Multiplier for gradual deceleration (1.0 = full speed, 0.0 = stopped)
 
 const raycaster = new Raycaster();
 const pointerNDC = new Vector2();
@@ -1407,6 +1477,13 @@ const businessCardContactLinks: BusinessCardLinkConfig[] = [
     getRect: getBusinessCardLinkedInUV,
     action: () => {
       window.open(BUSINESS_CARD_LINKEDIN_URL, "_blank", "noopener");
+    },
+  },
+  {
+    name: "github",
+    getRect: getBusinessCardGitHubUV,
+    action: () => {
+      window.open(BUSINESS_CARD_GITHUB_URL, "_blank", "noopener");
     },
   },
 ];
@@ -2671,6 +2748,13 @@ canvas.addEventListener(
     const sensitivity = 0.001; // Scroll sensitivity for orbit
     const deltaY = event.deltaY;
 
+    // Update auto-orbit direction based on scroll direction
+    if (Math.abs(deltaY) > 5) {
+      autoOrbitDirection = deltaY > 0 ? 1 : -1;
+      // Reset speed multiplier to full when user manually interacts
+      autoOrbitSpeedMultiplier = 1.0;
+    }
+
     // Positive deltaY = scroll down = orbit right (positive azimuth)
     // Negative deltaY = scroll up = orbit left (negative azimuth)
     cameraRig.orbit(deltaY * sensitivity, 0);
@@ -3196,7 +3280,8 @@ const animate = (time: number) => {
     vinylModel.position.x += renderVisualOffset;
   }
 
-  // Update camera orbit momentum deceleration
+  // Update auto-orbit and momentum
+  updateAutoOrbit();
   updateCameraOrbitMomentum();
 
   renderer.render(scene, camera);
@@ -3249,6 +3334,9 @@ const animate = (time: number) => {
   //   Zoom: ${zoomFactor.toFixed(3)}
   // `;
 };
+
+// Start auto-orbit on initial page (home)
+startAutoOrbit();
 
 requestAnimationFrame(animate);
 
@@ -3435,6 +3523,54 @@ const updateDragPlaneDepthLocal = (z: number) => {
 
 // rpm helper moved to controller
 
+function startAutoOrbit() {
+  if (activePage !== "home" || pageTransitionState.active) {
+    cameraOrbitState.isAutoOrbiting = false;
+    return;
+  }
+
+  // Start auto-orbit on home page (will be paused if hovering)
+  cameraOrbitState.isAutoOrbiting = true;
+  // Reset speed multiplier to full when starting/resuming auto-orbit
+  autoOrbitSpeedMultiplier = 1.0;
+  if (autoOrbitStartTime === 0) {
+    autoOrbitStartTime = performance.now();
+  }
+}
+
+function updateAutoOrbit() {
+  if (
+    !cameraOrbitState.isAutoOrbiting ||
+    activePage !== "home" ||
+    cameraOrbitState.isOrbiting ||
+    pageTransitionState.active
+  ) {
+    return;
+  }
+
+  // Gradual deceleration when hovering, acceleration when not hovering
+  if (cameraOrbitState.isHoveringModel) {
+    // Decelerate when hovering over a model
+    autoOrbitSpeedMultiplier *= AUTO_ORBIT_DECEL_RATE;
+    if (autoOrbitSpeedMultiplier < 0.01) {
+      autoOrbitSpeedMultiplier = 0;
+    }
+  } else {
+    // Accelerate back to full speed when not hovering
+    autoOrbitSpeedMultiplier += (1.0 - autoOrbitSpeedMultiplier) * 0.08;
+    if (autoOrbitSpeedMultiplier > 0.99) {
+      autoOrbitSpeedMultiplier = 1.0;
+    }
+  }
+
+  // Apply auto-orbit rotation with speed multiplier
+  const effectiveSpeed =
+    AUTO_ORBIT_SPEED * autoOrbitDirection * autoOrbitSpeedMultiplier;
+  if (Math.abs(effectiveSpeed) > 0.00001) {
+    cameraRig.orbit(effectiveSpeed, 0);
+  }
+}
+
 function startCameraOrbitMomentum() {
   if (
     activePage !== "home" ||
@@ -3519,6 +3655,13 @@ function handleCameraOrbitMove(event: PointerEvent) {
   cameraOrbitState.lastDeltaX = deltaX;
   cameraOrbitState.lastDeltaY = deltaY;
 
+  // Update auto-orbit direction based on current movement (for home page)
+  if (cameraOrbitState.mode === "home" && Math.abs(deltaX) > 0.5) {
+    autoOrbitDirection = deltaX > 0 ? 1 : -1;
+    // Reset speed multiplier to full when user manually interacts
+    autoOrbitSpeedMultiplier = 1.0;
+  }
+
   const allowPolar = cameraOrbitState.mode === "turntable";
   cameraRig.orbit(
     deltaX * CAMERA_ORBIT_SENSITIVITY,
@@ -3541,6 +3684,10 @@ function endCameraOrbit(event: PointerEvent) {
     // Restore to saved rotation state with animation
     cameraRig.restoreRotationState();
   } else if (cameraOrbitState.mode === "home") {
+    // Capture the direction of the last movement for auto-orbit
+    if (Math.abs(cameraOrbitState.velocityX) > 0.0001) {
+      autoOrbitDirection = cameraOrbitState.velocityX > 0 ? 1 : -1;
+    }
     // Apply momentum deceleration on home page
     startCameraOrbitMomentum();
   }
