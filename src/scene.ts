@@ -8,11 +8,88 @@ import {
   PlaneGeometry,
   PointLight,
   Scene,
+  ShadowMaterial,
   SRGBColorSpace,
   TextureLoader,
   WebGLRenderer,
 } from "three";
 import { CameraRig } from "./cameraRig";
+
+// Lighting state for fullscreen transitions
+type LightingState = {
+  ambientIntensity: number;
+  keyIntensity: number;
+  fillIntensity: number;
+};
+
+const NORMAL_LIGHTING: LightingState = {
+  ambientIntensity: 0.5,
+  keyIntensity: 1.5,
+  fillIntensity: 0.7,
+};
+
+const FULLSCREEN_LIGHTING: LightingState = {
+  ambientIntensity: 0,
+  keyIntensity: 0.3,
+  fillIntensity: 0,
+};
+
+const FULLSCREEN_HOVER_LIGHTING: LightingState = {
+  ambientIntensity: 1,
+  keyIntensity: 1,
+  fillIntensity: 0,
+};
+
+class LightingAnimator {
+  private currentState: LightingState;
+  private targetState: LightingState;
+  private transitionSpeed: number;
+  private ambientLight: AmbientLight;
+  private keyLight: DirectionalLight;
+  private fillLight: DirectionalLight;
+
+  constructor(
+    ambientLight: AmbientLight,
+    keyLight: DirectionalLight,
+    fillLight: DirectionalLight,
+  ) {
+    this.ambientLight = ambientLight;
+    this.keyLight = keyLight;
+    this.fillLight = fillLight;
+    this.currentState = { ...NORMAL_LIGHTING };
+    this.targetState = { ...NORMAL_LIGHTING };
+    this.transitionSpeed = 0.05; // Default transition speed
+  }
+
+  setTargetState(state: LightingState, fast: boolean = false): void {
+    this.targetState = { ...state };
+    this.transitionSpeed = fast ? 0.15 : 0.05;
+  }
+
+  update(): void {
+    const speed = this.transitionSpeed;
+
+    this.currentState.ambientIntensity +=
+      (this.targetState.ambientIntensity - this.currentState.ambientIntensity) *
+      speed;
+    this.currentState.keyIntensity +=
+      (this.targetState.keyIntensity - this.currentState.keyIntensity) * speed;
+    this.currentState.fillIntensity +=
+      (this.targetState.fillIntensity - this.currentState.fillIntensity) *
+      speed;
+
+    this.ambientLight.intensity = this.currentState.ambientIntensity;
+    this.keyLight.intensity = this.currentState.keyIntensity;
+    this.fillLight.intensity = this.currentState.fillIntensity;
+  }
+}
+
+export {
+  LightingAnimator,
+  NORMAL_LIGHTING,
+  FULLSCREEN_LIGHTING,
+  FULLSCREEN_HOVER_LIGHTING,
+};
 
 export function createScene() {
   const scene = new Scene();
@@ -21,45 +98,27 @@ export function createScene() {
 }
 
 export function createLights() {
-  const ambientLight = new AmbientLight(0xffffff, 0.6);
+  const ambientLight = new AmbientLight(0xffffff, 0.5);
 
   const keyLight = new DirectionalLight(0xffffff, 1.5);
-  keyLight.position.set(5, 8, 5);
+  keyLight.position.set(-19, 38, 7);
   keyLight.castShadow = true;
   keyLight.shadow.mapSize.width = 4096;
   keyLight.shadow.mapSize.height = 4096;
-  keyLight.shadow.camera.left = -70;
-  keyLight.shadow.camera.right = 70;
-  keyLight.shadow.camera.top = 70;
-  keyLight.shadow.camera.bottom = -70;
+  keyLight.shadow.camera.left = -80;
+  keyLight.shadow.camera.right = 80;
+  keyLight.shadow.camera.top = 80;
+  keyLight.shadow.camera.bottom = -80;
   keyLight.shadow.camera.near = 0.5;
-  keyLight.shadow.camera.far = 100;
-  keyLight.shadow.bias = -0.0005;
-  keyLight.shadow.normalBias = 0.01;
+  keyLight.shadow.camera.far = 150;
+  keyLight.shadow.bias = -0.001;
+  keyLight.shadow.normalBias = 0.02;
 
-  const fillLight = new DirectionalLight(0xb4c7e7, 0.7);
-  fillLight.position.set(-8, 4, -4);
-  fillLight.castShadow = true;
-  fillLight.shadow.mapSize.width = 2048;
-  fillLight.shadow.mapSize.height = 2048;
-  fillLight.shadow.camera.left = -70;
-  fillLight.shadow.camera.right = 70;
-  fillLight.shadow.camera.top = 70;
-  fillLight.shadow.camera.bottom = -70;
-  fillLight.shadow.camera.near = 0.5;
-  fillLight.shadow.camera.far = 100;
-  fillLight.shadow.bias = -0.0005;
+  const fillLight = new DirectionalLight(0xffffff, 0.7);
+  fillLight.position.set(7, 20, -19);
+  fillLight.castShadow = false;
 
-  const rimLight = new PointLight(0xfff5dc, 1.2, 15);
-  rimLight.position.set(0, 3, 5);
-  rimLight.castShadow = true;
-  rimLight.shadow.mapSize.width = 1024;
-  rimLight.shadow.mapSize.height = 1024;
-  rimLight.shadow.camera.near = 0.1;
-  rimLight.shadow.camera.far = 20;
-  rimLight.shadow.bias = -0.0005;
-
-  return { ambientLight, keyLight, fillLight, rimLight };
+  return { ambientLight, keyLight, fillLight };
 }
 
 export function createRenderer(canvas: HTMLCanvasElement) {
@@ -68,7 +127,7 @@ export function createRenderer(canvas: HTMLCanvasElement) {
   renderer.toneMapping = ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.1;
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = 1; // PCFShadowMap for soft shadows
+  renderer.shadowMap.type = 1; // PCFSoftShadowMap
   return renderer;
 }
 
@@ -79,10 +138,8 @@ export function createCameraRig() {
 export function createGroundPlane() {
   // Create an invisible ground plane that receives shadows
   const groundGeometry = new PlaneGeometry(200, 200);
-  const groundMaterial = new MeshBasicMaterial({
-    transparent: true,
-    opacity: 0,
-  });
+  const groundMaterial = new ShadowMaterial();
+  groundMaterial.opacity = 0.3;
   const groundPlane = new Mesh(groundGeometry, groundMaterial);
   groundPlane.rotation.x = -Math.PI / 2; // Rotate to be horizontal
   groundPlane.position.y = 0;

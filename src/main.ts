@@ -35,6 +35,10 @@ import {
   createCameraRig,
   createGroundPlane,
   loadTextures,
+  LightingAnimator,
+  NORMAL_LIGHTING,
+  FULLSCREEN_LIGHTING,
+  FULLSCREEN_HOVER_LIGHTING,
 } from "./scene";
 import {} from // createTonearmRotationDisplay,
 // createCameraInfoDisplay,
@@ -58,6 +62,7 @@ import { extractDominantColor } from "./colorUtils";
 import { initializeCache } from "./albumCoverCache";
 import type { VideoMetadata } from "./youtube";
 import { TutorialManager } from "./tutorialManager";
+import { createLightControlPanel } from "./lightControls";
 
 // New modular imports
 import {
@@ -231,12 +236,26 @@ const CAMERA_TARGETS: Record<TurntablePosition, Vector3> = {
 
 const renderer = createRenderer(canvas);
 const scene = createScene();
-const { ambientLight, keyLight, fillLight, rimLight } = createLights();
-scene.add(ambientLight, keyLight, fillLight, rimLight);
+const { ambientLight, keyLight, fillLight } = createLights();
+scene.add(ambientLight, keyLight, fillLight);
 
 // Add invisible ground plane to receive shadows
 const groundPlane = createGroundPlane();
 scene.add(groundPlane);
+
+// Create lighting animator for fullscreen transitions
+const lightingAnimator = new LightingAnimator(
+  ambientLight,
+  keyLight,
+  fillLight,
+);
+
+// Create light control panel (press 'L' to toggle)
+// const lightControlPanel = createLightControlPanel({
+//   ambientLight,
+//   keyLight,
+//   fillLight,
+// });
 
 const cameraRig = createCameraRig();
 const { camera } = cameraRig;
@@ -679,6 +698,8 @@ const setupPortfolioCover = (model: Object3D) => {
       portfolioCoverOriginalRotation = mesh.rotation.z;
       // Set high render order so cover appears in front of papers
       mesh.renderOrder = 100;
+      // Disable shadow receiving on cover to prevent z-fighting
+      mesh.receiveShadow = false;
       console.log("[Portfolio Cover] Found cover mesh:", mesh.name);
       console.log(
         "[Portfolio Cover] Original Z rotation:",
@@ -1060,11 +1081,11 @@ const setActiveScenePage = (page: ScenePage) => {
         globalControls.style.alignItems = "center";
       } else {
         // Return to left side center-left
-        globalControls.style.bottom = "65%";
+        globalControls.style.bottom = "70%";
         globalControls.style.left = "20px";
         globalControls.style.transform = "translateY(50%)";
         globalControls.style.flexDirection = "column";
-        globalControls.style.gap = "1.5rem";
+        globalControls.style.gap = "2rem";
         globalControls.style.alignItems = "flex-start";
       }
       // Fade back in
@@ -1082,11 +1103,11 @@ const setActiveScenePage = (page: ScenePage) => {
       globalControls.style.gap = "1rem";
       globalControls.style.alignItems = "center";
     } else {
-      globalControls.style.bottom = "65%";
+      globalControls.style.bottom = "70%";
       globalControls.style.left = "20px";
       globalControls.style.transform = "translateY(50%)";
       globalControls.style.flexDirection = "column";
-      globalControls.style.gap = "1.5rem";
+      globalControls.style.gap = "2rem";
       globalControls.style.alignItems = "flex-start";
     }
   }
@@ -2136,6 +2157,16 @@ turntableStateManager.initialize(cameraRig, CAMERA_TARGETS, {
   setTurntablePositionState: (state: string) => {
     turntablePositionState = state as TurntablePosition;
   },
+  setGroundShadowsVisible: (visible: boolean) => {
+    groundPlane.visible = visible;
+  },
+  setFullscreenLighting: (enabled: boolean) => {
+    if (enabled) {
+      lightingAnimator.setTargetState(FULLSCREEN_LIGHTING, false);
+    } else {
+      lightingAnimator.setTargetState(NORMAL_LIGHTING, false);
+    }
+  },
 });
 
 let vinylDragPointerId: number | null = null;
@@ -2606,10 +2637,14 @@ canvas.addEventListener("pointermove", (event) => {
         turntableFocusTarget.z - 23.4,
       );
       cameraRig.setLookTarget(hoveredTarget, true);
+      // Boost lighting when hovering in fullscreen
+      lightingAnimator.setTargetState(FULLSCREEN_HOVER_LIGHTING, true);
     } else if (!isTurntableHovered && wasHovered) {
       cameraRig.setPolarAngle(2, true);
       // Restore fullscreen Z position when unhovered
       cameraRig.setLookTarget(CAMERA_TARGETS["fullscreen"], true);
+      // Restore fullscreen lighting when unhovered
+      lightingAnimator.setTargetState(FULLSCREEN_LIGHTING, true);
     }
   }
 
@@ -3061,6 +3096,9 @@ const animate = (time: number) => {
   // Update camera animation
   cameraRig.updateAnimation(delta);
   updateScenePageTransition();
+
+  // Update lighting animations
+  lightingAnimator.update();
   // const isTonearmPlaying = turntableController?.isPlaying() ?? false;
 
   if (vinylModel) {

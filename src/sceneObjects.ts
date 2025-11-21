@@ -446,6 +446,8 @@ export function createPlaceholderMesh(
   // For sphere: raise by radius (PLACEHOLDER_SIZE / 2)
   mesh.position.y += PLACEHOLDER_SIZE / 2;
   mesh.name = config.id;
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
   return mesh;
 }
 
@@ -484,6 +486,8 @@ export function prioritizePortfolioCoverRendering(
         PORTFOLIO_PAPER_OFFSET,
         PORTFOLIO_PAPER_UNITS,
       );
+      // Disable shadow receiving on papers to prevent z-fighting
+      mesh.receiveShadow = false;
       // Check if this is the whitepaper specifically
       if (name.includes("whitepaper") && onWhitepaperFound) {
         onWhitepaperFound(mesh);

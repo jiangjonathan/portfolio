@@ -40,6 +40,8 @@ export class TurntableStateManager {
       scheduleFocusVinylRestore: () => void;
       setTurntableUIVisible: (visible: boolean) => void;
       setTurntablePositionState: (state: string) => void;
+      setGroundShadowsVisible: (visible: boolean) => void;
+      setFullscreenLighting: (enabled: boolean) => void;
     },
   ): void {
     // Initially hide the player controls (only show when tonearm is in play area)
@@ -66,6 +68,8 @@ export class TurntableStateManager {
           this.isFullscreenMode = true;
           callbacks.hideFocusVinylForFullscreen();
           callbacks.setTurntableUIVisible(false);
+          callbacks.setGroundShadowsVisible(false);
+          callbacks.setFullscreenLighting(true);
 
           // Switch to fullscreen camera position
           callbacks.setTurntablePositionState("fullscreen");
@@ -75,6 +79,8 @@ export class TurntableStateManager {
           this.isFullscreenMode = false;
           callbacks.scheduleFocusVinylRestore();
           callbacks.setTurntableUIVisible(true);
+          callbacks.setGroundShadowsVisible(true);
+          callbacks.setFullscreenLighting(false);
 
           // Hide other page models when returning to turntable
           callbacks.setHeroPageVisibility("turntable");

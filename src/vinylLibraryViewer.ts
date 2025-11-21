@@ -439,14 +439,6 @@ export class VinylLibraryViewer {
             z-index: -1;
           }
 
-          .focus-card-info-container.cover-hovered .album-info-container {
-            transform: translateX(50px);
-          }
-
-          .focus-card-info-container.cover-clicked .album-info-container {
-            transform: none;
-          }
-
           .focus-card-info-container .album-info-container {
             transition: transform 0.3s ease;
             position: relative;
@@ -457,6 +449,14 @@ export class VinylLibraryViewer {
             align-items: center;
             min-height: 250px;
             z-index: 10000;
+          }
+
+          .focus-card-info-container.cover-hovered .album-info-container:not(.shift-disabled) {
+            transform: translateX(50px);
+          }
+
+          .focus-card-info-container.cover-clicked .album-info-container {
+            transform: none;
           }
 
           .focus-card-info-container .album-info-container.shift-disabled {

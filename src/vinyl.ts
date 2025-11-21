@@ -12,7 +12,7 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 const vinylLoader = new GLTFLoader();
 const VINYL_RENDER_ORDER = 400;
-const VINYL_POLYGON_OFFSET_FACTOR = -1.2;
+const VINYL_POLYGON_OFFSET_FACTOR = 0;
 const VINYL_POLYGON_OFFSET_UNITS = 0;
 
 export function loadVinylModel(normalTexture: Texture): Promise<Object3D> {
@@ -66,11 +66,7 @@ export function applyGrooveMaterial(model: Object3D, texture: Texture) {
 
 function applyVinylRenderBias(mesh: Mesh) {
   mesh.renderOrder = Math.max(mesh.renderOrder, VINYL_RENDER_ORDER);
-  applyPolygonOffsetToMaterials(
-    mesh,
-    VINYL_POLYGON_OFFSET_FACTOR,
-    VINYL_POLYGON_OFFSET_UNITS,
-  );
+  // Polygon offset disabled - let labels handle depth sorting
 }
 
 function applyPolygonOffsetToMaterials(

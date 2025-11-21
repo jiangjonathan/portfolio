@@ -289,12 +289,12 @@ export function setupDOM(): DOMElements {
   globalControls.id = "global-controls";
   Object.assign(globalControls.style, {
     position: "fixed",
-    bottom: "65%",
+    bottom: "70%",
     left: "20px",
     transform: "translateY(50%)",
     display: "flex",
     flexDirection: "column",
-    gap: "1.5rem",
+    gap: "2rem",
     alignItems: "flex-start",
     zIndex: HIDE_BUTTON_Z_INDEX,
   });
