@@ -2,11 +2,14 @@ import type { WebGLRenderer } from "three";
 import {
   Mesh,
   PlaneGeometry,
-  MeshBasicMaterial,
+  MeshStandardMaterial,
   CanvasTexture,
   LinearFilter,
   Vector3,
   SRGBColorSpace,
+  EdgesGeometry,
+  LineSegments,
+  LineBasicMaterial,
 } from "three";
 import * as pdfjsLib from "pdfjs-dist";
 
@@ -35,14 +38,28 @@ export const PAPERS: PaperConfig[] = [
     url: "",
     description: "Simple hello world example",
   },
+  {
+    id: "placeholder-c",
+    name: "Placeholder C",
+    type: "html",
+    url: "",
+    description: "Placeholder C example",
+  },
 ];
 
 export class PortfolioPapersManager {
   private papers: Map<string, PaperConfig> = new Map();
   private currentPaperId: string | null = null;
   private paperMeshes: Map<string, Mesh> = new Map();
+  private paperRotations: Map<string, number> = new Map(); // Random Z rotation per paper (in radians)
   private whitepaperMesh: Mesh | null = null;
   private renderer: WebGLRenderer | null = null;
+  private isAnimating = false; // Prevent overlapping animations
+  private readonly PAPER_STACK_HEIGHT_OFFSET = 0.02; // Height between stacked papers
+  private readonly BASE_PAPER_HEIGHT = 0.05; // Base height above whitepaper
+  private readonly LEFT_STACK_X_OFFSET = -23.5; // X offset for left stack
+  private readonly MAX_RANDOM_ROTATION = (2.5 * Math.PI) / 180; // ±2.5 degrees in radians
+  private leftStackPapers: string[] = []; // Papers that have been moved to left stack (in order moved)
 
   constructor(_container: HTMLElement, renderer?: WebGLRenderer) {
     this.renderer = renderer || null;
@@ -61,6 +78,43 @@ export class PortfolioPapersManager {
     console.log("[PortfolioPapers] Whitepaper mesh set:", mesh.name);
   }
 
+  private getPaperStackIndex(paperId: string): number {
+    // Returns the index in the paper order (0 = top of stack)
+    // PAPERS array order defines the stack, first item is on top
+    const index = PAPERS.findIndex((p) => p.id === paperId);
+    return index >= 0 ? index : PAPERS.length;
+  }
+
+  private getStackHeightForPaper(paperId: string): number {
+    const stackIndex = this.getPaperStackIndex(paperId);
+    // Higher index = lower in stack = lower Y position
+    // Top paper (index 0) gets highest Y
+    const totalPapers = PAPERS.length;
+    const heightFromTop = stackIndex * this.PAPER_STACK_HEIGHT_OFFSET;
+    return (
+      this.BASE_PAPER_HEIGHT +
+      (totalPapers - 1 - stackIndex) * this.PAPER_STACK_HEIGHT_OFFSET
+    );
+  }
+
+  private getLeftStackHeightForPaper(paperId: string): number {
+    // Left stack grows upward as papers are added, significantly higher than right stack
+    // to avoid z-fighting. Papers are added to the top, so earlier papers are lower.
+    const BASE_LEFT_STACK_HEIGHT = 0.1; // Much higher base for left stack to avoid z-fighting
+    const LEFT_STACK_HEIGHT_OFFSET = 0.04; // Larger spacing between papers on left stack
+
+    const indexInLeftStack = this.leftStackPapers.indexOf(paperId);
+    if (indexInLeftStack === -1) {
+      // Not in left stack yet, will be added to top
+      return (
+        BASE_LEFT_STACK_HEIGHT +
+        this.leftStackPapers.length * LEFT_STACK_HEIGHT_OFFSET
+      );
+    }
+    // Height increases with position in left stack
+    return BASE_LEFT_STACK_HEIGHT + indexInLeftStack * LEFT_STACK_HEIGHT_OFFSET;
+  }
+
   async loadPaper(paperId: string): Promise<void> {
     const paper = this.papers.get(paperId);
     if (!paper) {
@@ -76,7 +130,7 @@ export class PortfolioPapersManager {
       console.log(
         `[PortfolioPapers] Reusing persisted mesh for: ${paper.name}`,
       );
-      this.positionMeshOnWhitepaper(existingMesh);
+      this.positionMeshOnWhitepaper(existingMesh, paperId);
       existingMesh.visible = true;
       return;
     }
@@ -91,6 +145,18 @@ export class PortfolioPapersManager {
       case "report":
         await this.loadReport(paper);
         break;
+    }
+  }
+
+  async loadAllPapers(): Promise<void> {
+    console.log("[PortfolioPapers] Loading all papers");
+    const papersList = this.getPapers();
+    for (const paper of papersList) {
+      await this.loadPaper(paper.id);
+    }
+    // Set the first paper as current
+    if (papersList.length > 0) {
+      this.currentPaperId = papersList[0].id;
     }
   }
 
@@ -186,6 +252,12 @@ export class PortfolioPapersManager {
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText("Hello World!", canvas.width / 2, canvas.height / 2);
+    } else if (paper.id === "placeholder-c") {
+      ctx.fillStyle = "#000000";
+      ctx.font = "bold 120px Arial";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("Placeholder C", canvas.width / 2, canvas.height / 2);
     } else {
       // Generic HTML rendering
       ctx.fillStyle = "#000000";
@@ -237,6 +309,16 @@ export class PortfolioPapersManager {
       this.whitepaperMesh.scale,
     );
 
+    // Generate random rotation for this paper if not already set
+    if (!this.paperRotations.has(paperId)) {
+      const randomRotation =
+        (Math.random() - 0.5) * 2 * this.MAX_RANDOM_ROTATION;
+      this.paperRotations.set(paperId, randomRotation);
+      console.log(
+        `[PortfolioPapers] Generated random rotation for ${paperId}: ${(randomRotation * 180) / Math.PI}°`,
+      );
+    }
+
     // Remove existing paper mesh if any
     const existingMesh = this.paperMeshes.get(paperId);
     if (existingMesh && existingMesh.parent) {
@@ -261,9 +343,11 @@ export class PortfolioPapersManager {
 
     texture.needsUpdate = true;
 
-    // Create material with PDF texture
-    const material = new MeshBasicMaterial({
+    // Create material with PDF texture - use MeshStandardMaterial for better lighting and depth
+    const material = new MeshStandardMaterial({
       map: texture,
+      roughness: 0.7, // Paper-like roughness
+      metalness: 0, // Not metallic
       side: 2, // DoubleSide
     });
 
@@ -279,8 +363,19 @@ export class PortfolioPapersManager {
     const geometry = new PlaneGeometry(paperWidth, paperHeight);
     const mesh = new Mesh(geometry, material);
 
-    // Position above whitepaper
-    this.positionMeshOnWhitepaper(mesh);
+    // Add edge visualization for better paper distinction
+    const edges = new EdgesGeometry(geometry);
+    const line = new LineSegments(
+      edges,
+      new LineBasicMaterial({
+        color: 0x888888, // Gray edge color
+        linewidth: 1,
+      }),
+    );
+    mesh.add(line);
+
+    // Position above whitepaper with proper stack height
+    this.positionMeshOnWhitepaper(mesh, paperId);
 
     mesh.name = `paper_${paperId}`;
 
@@ -332,13 +427,26 @@ export class PortfolioPapersManager {
     return Array.from(this.papers.values());
   }
 
-  private positionMeshOnWhitepaper(mesh: Mesh): void {
+  private positionMeshOnWhitepaper(mesh: Mesh, paperId?: string): void {
     if (!this.whitepaperMesh) {
       return;
     }
     mesh.position.copy(this.whitepaperMesh.position);
-    mesh.position.y += 0.05;
-    mesh.rotation.set(-Math.PI / 2, 0, 0);
+
+    // Calculate stack height based on paper order
+    if (paperId) {
+      const stackHeight = this.getStackHeightForPaper(paperId);
+      mesh.position.y += stackHeight;
+      console.log(
+        `[PortfolioPapers] Positioning ${paperId} at stack height: ${stackHeight}`,
+      );
+    } else {
+      mesh.position.y += this.BASE_PAPER_HEIGHT;
+    }
+
+    // Apply rotation: -90 degrees on X-axis (to lay flat) + random Z rotation
+    const randomRotation = paperId ? this.paperRotations.get(paperId) || 0 : 0;
+    mesh.rotation.set(-Math.PI / 2, 0, randomRotation);
     mesh.scale.set(1, 1, 1);
   }
 
@@ -371,74 +479,322 @@ export class PortfolioPapersManager {
     });
   }
 
+  private animatePaperTwoStage(
+    mesh: Mesh,
+    targetPosition: Vector3,
+    duration: number = 500,
+  ): Promise<void> {
+    return new Promise((resolve) => {
+      const startPosition = mesh.position.clone();
+      const startRotationZ = mesh.rotation.z;
+      const rotationLimit = this.MAX_RANDOM_ROTATION; // ±2 degrees hard limit
+      // Random rotation within the limit
+      const randomRotation = (Math.random() - 0.5) * 2 * rotationLimit;
+      const targetRotationZ = randomRotation;
+      const riseHeight = targetPosition.y; // Rise to target Y first
+      const stageDuration = duration / 2; // Split time between stages
+
+      // Stage 1: Rise in Y
+      const stage1Start = performance.now();
+      const stage1End = stage1Start + stageDuration;
+
+      const animateStage1 = (currentTime: number) => {
+        const elapsed = currentTime - stage1Start;
+        const progress = Math.min(elapsed / stageDuration, 1);
+
+        // Ease out cubic for smooth rise
+        const easeProgress = 1 - Math.pow(1 - progress, 3);
+
+        mesh.position.y =
+          startPosition.y + (riseHeight - startPosition.y) * easeProgress;
+
+        if (currentTime < stage1End) {
+          requestAnimationFrame(animateStage1);
+        } else {
+          // Stage 2: Move in X and rotate simultaneously
+          const stage2Start = performance.now();
+          const stage2End = stage2Start + stageDuration;
+          const yAtPeak = mesh.position.y;
+
+          const animateStage2 = (currentTime: number) => {
+            const elapsed = currentTime - stage2Start;
+            const progress = Math.min(elapsed / stageDuration, 1);
+
+            // Ease out cubic for smooth horizontal movement
+            const easeProgress = 1 - Math.pow(1 - progress, 3);
+
+            mesh.position.x =
+              startPosition.x +
+              (targetPosition.x - startPosition.x) * easeProgress;
+            mesh.position.z =
+              startPosition.z +
+              (targetPosition.z - startPosition.z) * easeProgress;
+            // Keep Y at peak height during X movement
+            mesh.position.y = yAtPeak;
+            // Rotate simultaneously with X movement
+            mesh.rotation.z =
+              startRotationZ +
+              (targetRotationZ - startRotationZ) * easeProgress;
+
+            if (currentTime < stage2End) {
+              requestAnimationFrame(animateStage2);
+            } else {
+              mesh.position.copy(targetPosition);
+              mesh.rotation.z = targetRotationZ;
+              resolve();
+            }
+          };
+
+          requestAnimationFrame(animateStage2);
+        }
+      };
+
+      requestAnimationFrame(animateStage1);
+    });
+  }
+
   async nextPaper(): Promise<void> {
+    // Prevent overlapping animations
+    if (this.isAnimating) {
+      console.log("[PortfolioPapers] Animation in progress, ignoring next");
+      return;
+    }
+
     const papersList = this.getPapers();
     if (papersList.length === 0) return;
 
     const currentIndex = papersList.findIndex(
       (p) => p.id === this.currentPaperId,
     );
-    const nextIndex = (currentIndex + 1) % papersList.length;
-    const nextPaper = papersList[nextIndex];
 
-    // Animate current paper to the left
-    const currentMesh = this.currentPaperId
-      ? this.paperMeshes.get(this.currentPaperId)
-      : null;
-    if (currentMesh) {
-      const moveAmount = 23.5;
-      const targetPosition = currentMesh.position.clone();
-      targetPosition.x -= moveAmount;
-      targetPosition.y = currentMesh.position.y + 0.4;
-      targetPosition.z = currentMesh.position.z;
-      console.log(
-        `[PortfolioPapers] Animating paper left by ${moveAmount} units from (${currentMesh.position.x.toFixed(
-          2,
-        )}, ${currentMesh.position.y.toFixed(
-          2,
-        )}, ${currentMesh.position.z.toFixed(2)}) to (${targetPosition.x.toFixed(
-          2,
-        )}, ${targetPosition.y.toFixed(2)}, ${targetPosition.z.toFixed(2)})`,
-      );
-      await this.animatePaperToPosition(currentMesh, targetPosition);
+    // Don't do anything if we're at the last paper
+    if (currentIndex >= papersList.length - 1) {
+      console.log("[PortfolioPapers] Already at last paper, next does nothing");
+      return;
     }
 
-    this.loadPaper(nextPaper.id);
+    this.isAnimating = true;
+
+    try {
+      const nextIndex = currentIndex + 1;
+      const nextPaper = papersList[nextIndex];
+
+      // Animate current paper (top of right stack) to left stack top
+      const currentMesh = this.currentPaperId
+        ? this.paperMeshes.get(this.currentPaperId)
+        : null;
+
+      if (currentMesh && this.whitepaperMesh && this.currentPaperId) {
+        // Calculate proper left stack height
+        const leftStackHeight = this.getLeftStackHeightForPaper(
+          this.currentPaperId,
+        );
+        const targetPosition = this.whitepaperMesh.position.clone();
+        targetPosition.x += this.LEFT_STACK_X_OFFSET;
+        targetPosition.y += leftStackHeight;
+        targetPosition.z = this.whitepaperMesh.position.z;
+
+        console.log(
+          `[PortfolioPapers] Moving ${this.currentPaperId} to left stack at Y=${targetPosition.y.toFixed(2)}`,
+        );
+
+        // Add to left stack tracking
+        this.leftStackPapers.push(this.currentPaperId);
+
+        // Use two-stage animation: rise first, then move horizontally
+        await this.animatePaperTwoStage(currentMesh, targetPosition);
+      }
+
+      // Update current paper
+      this.currentPaperId = nextPaper.id;
+    } finally {
+      this.isAnimating = false;
+    }
+  }
+
+  async resetPapersToOriginalStack(): Promise<void> {
+    if (!this.whitepaperMesh || this.leftStackPapers.length === 0) {
+      return;
+    }
+
+    console.log(
+      "[PortfolioPapers] Resetting papers to original stack with cascade",
+    );
+
+    // Animate papers from left stack back to right stack in reverse order (top to bottom)
+    // This creates a cascading effect
+    const papersToReset = [...this.leftStackPapers].reverse();
+    const CASCADE_DELAY = 150; // milliseconds between each paper animation
+
+    for (let i = 0; i < papersToReset.length; i++) {
+      const paperId = papersToReset[i];
+      const mesh = this.paperMeshes.get(paperId);
+
+      if (mesh) {
+        // Calculate original position
+        const targetPosition = this.whitepaperMesh.position.clone();
+        const stackHeight = this.getStackHeightForPaper(paperId);
+        targetPosition.y += stackHeight;
+        targetPosition.x = this.whitepaperMesh.position.x;
+        targetPosition.z = this.whitepaperMesh.position.z;
+
+        console.log(
+          `[PortfolioPapers] Cascading ${paperId} back to original position`,
+        );
+
+        // Start two-stage animation (don't await, we want them to cascade)
+        this.animatePaperTwoStage(mesh, targetPosition, 400);
+
+        // Wait before starting next animation
+        if (i < papersToReset.length - 1) {
+          await new Promise((resolve) => setTimeout(resolve, CASCADE_DELAY));
+        }
+      }
+    }
+
+    // Clear the left stack tracking
+    this.leftStackPapers = [];
+
+    // Reset to first paper
+    const papersList = this.getPapers();
+    if (papersList.length > 0) {
+      this.currentPaperId = papersList[0].id;
+    }
+  }
+
+  private animatePaperXThenY(
+    mesh: Mesh,
+    targetPosition: Vector3,
+    duration: number = 500,
+  ): Promise<void> {
+    return new Promise((resolve) => {
+      const startPosition = mesh.position.clone();
+      const startRotationZ = mesh.rotation.z;
+      const rotationLimit = this.MAX_RANDOM_ROTATION; // ±2 degrees hard limit
+      // Random rotation within the limit
+      const randomRotation = (Math.random() - 0.5) * 2 * rotationLimit;
+      const targetRotationZ = randomRotation;
+      const stageDuration = duration / 2; // Split time between stages
+
+      // Stage 1: Move in X
+      const stage1Start = performance.now();
+      const stage1End = stage1Start + stageDuration;
+
+      const animateStage1 = (currentTime: number) => {
+        const elapsed = currentTime - stage1Start;
+        const progress = Math.min(elapsed / stageDuration, 1);
+
+        // Ease out cubic for smooth movement
+        const easeProgress = 1 - Math.pow(1 - progress, 3);
+
+        mesh.position.x =
+          startPosition.x + (targetPosition.x - startPosition.x) * easeProgress;
+        mesh.position.z =
+          startPosition.z + (targetPosition.z - startPosition.z) * easeProgress;
+        // Rotate simultaneously with X movement
+        mesh.rotation.z =
+          startRotationZ + (targetRotationZ - startRotationZ) * easeProgress;
+
+        if (currentTime < stage1End) {
+          requestAnimationFrame(animateStage1);
+        } else {
+          // Stage 2: Move in Y (descend)
+          const stage2Start = performance.now();
+          const stage2End = stage2Start + stageDuration;
+          const xAtEnd = mesh.position.x;
+          const zAtEnd = mesh.position.z;
+          const rotationAtEnd = mesh.rotation.z;
+
+          const animateStage2 = (currentTime: number) => {
+            const elapsed = currentTime - stage2Start;
+            const progress = Math.min(elapsed / stageDuration, 1);
+
+            // Ease out cubic for smooth descent
+            const easeProgress = 1 - Math.pow(1 - progress, 3);
+
+            // Keep X/Z steady during Y movement
+            mesh.position.x = xAtEnd;
+            mesh.position.z = zAtEnd;
+            mesh.position.y =
+              startPosition.y +
+              (targetPosition.y - startPosition.y) * easeProgress;
+            // Keep rotation steady during stage 2
+            mesh.rotation.z = rotationAtEnd;
+
+            if (currentTime < stage2End) {
+              requestAnimationFrame(animateStage2);
+            } else {
+              mesh.position.copy(targetPosition);
+              mesh.rotation.z = targetRotationZ;
+              resolve();
+            }
+          };
+
+          requestAnimationFrame(animateStage2);
+        }
+      };
+
+      requestAnimationFrame(animateStage1);
+    });
   }
 
   async previousPaper(): Promise<void> {
+    // Prevent overlapping animations
+    if (this.isAnimating) {
+      console.log("[PortfolioPapers] Animation in progress, ignoring previous");
+      return;
+    }
+
     const papersList = this.getPapers();
     if (papersList.length === 0) return;
 
     const currentIndex = papersList.findIndex(
       (p) => p.id === this.currentPaperId,
     );
-    const prevIndex =
-      currentIndex <= 0 ? papersList.length - 1 : currentIndex - 1;
-    const prevPaper = papersList[prevIndex];
 
-    // Animate current paper to the left
-    const currentMesh = this.currentPaperId
-      ? this.paperMeshes.get(this.currentPaperId)
-      : null;
-    if (currentMesh) {
-      const moveAmount = 0;
-      const targetPosition = currentMesh.position.clone();
-      targetPosition.x -= moveAmount;
-      targetPosition.y = currentMesh.position.y + 0.4;
-      targetPosition.z = currentMesh.position.z;
+    // Don't do anything if we're at the first paper
+    if (currentIndex <= 0) {
       console.log(
-        `[PortfolioPapers] Animating paper left by ${moveAmount} units from (${currentMesh.position.x.toFixed(
-          2,
-        )}, ${currentMesh.position.y.toFixed(
-          2,
-        )}, ${currentMesh.position.z.toFixed(2)}) to (${targetPosition.x.toFixed(
-          2,
-        )}, ${targetPosition.y.toFixed(2)}, ${targetPosition.z.toFixed(2)})`,
+        "[PortfolioPapers] Already at first paper, previous does nothing",
       );
-      await this.animatePaperToPosition(currentMesh, targetPosition);
+      return;
     }
 
-    this.loadPaper(prevPaper.id);
+    this.isAnimating = true;
+
+    try {
+      const prevIndex = currentIndex - 1;
+      const prevPaper = papersList[prevIndex];
+
+      // Animate previous paper (top of left stack) back to right stack top
+      const prevMesh = this.paperMeshes.get(prevPaper.id);
+
+      if (prevMesh && this.whitepaperMesh) {
+        // Calculate where it should be on the right stack (back to its original position)
+        const targetPosition = this.whitepaperMesh.position.clone();
+        const stackHeight = this.getStackHeightForPaper(prevPaper.id);
+        targetPosition.y += stackHeight;
+        targetPosition.x = this.whitepaperMesh.position.x;
+        targetPosition.z = this.whitepaperMesh.position.z;
+
+        console.log(
+          `[PortfolioPapers] Moving ${prevPaper.id} back to right stack at Y=${targetPosition.y.toFixed(2)}`,
+        );
+
+        // Remove from left stack tracking
+        const leftStackIndex = this.leftStackPapers.indexOf(prevPaper.id);
+        if (leftStackIndex !== -1) {
+          this.leftStackPapers.splice(leftStackIndex, 1);
+        }
+
+        // Use two-stage animation: move X first, then Y
+        await this.animatePaperXThenY(prevMesh, targetPosition);
+      }
+
+      // Update current paper
+      this.currentPaperId = prevPaper.id;
+    } finally {
+      this.isAnimating = false;
+    }
   }
 }

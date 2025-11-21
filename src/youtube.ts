@@ -1125,6 +1125,7 @@ export interface VideoControls {
   container: HTMLDivElement;
   setProgress: (current: number, duration: number) => void;
   setVolume: (value: number) => void;
+  getVolume: () => number;
 }
 
 export interface YouTubeExperience {
@@ -1501,6 +1502,9 @@ export function createVideoControls(
     },
     setVolume: (value: number) => {
       handleVolumeChange(value);
+    },
+    getVolume: () => {
+      return parseInt(volumeSlider.value, 10) || 0;
     },
   };
 }

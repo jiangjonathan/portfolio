@@ -126,7 +126,13 @@ export class VinylLibraryManager {
           }
 
           .vinyl-widget-enhanced-compact.collapsed .vinyl-widget-content {
-            display: none;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+          }
+
+          .vinyl-widget-enhanced-compact .vinyl-widget-content {
+            transition: opacity 0.3s ease;
           }
 
           .vinyl-widget-enhanced-compact .vinyl-toggle-btn {
@@ -144,9 +150,10 @@ export class VinylLibraryManager {
             transition: transform 0.2s ease;
             flex-shrink: 0;
             position: fixed;
-            bottom: 20px;
+            bottom: 15px;
             left: 20px;
             z-index: 1000;
+            text-shadow: -0.3px 0 #ff0000, -0.3px 0 #0000ff;
           }
 
           .vinyl-widget-enhanced-compact .vinyl-toggle-btn:hover {

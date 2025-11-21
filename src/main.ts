@@ -140,12 +140,21 @@ const {
   focusCardInfoContainer,
   showFocusBtn,
   portfolioPapersContainer,
-  homeOverlay,
+  globalControls,
   homeNavButton,
+  turntableNavButton,
   portfolioNavButton,
   resetTutorialButton,
+  contactButton,
   cameraDebugPanel,
 } = dom;
+
+// Initialize button visibility based on initial page (home)
+homeNavButton.style.display = "none";
+turntableNavButton.style.display = "block";
+portfolioNavButton.style.display = "block";
+contactButton.style.display = "block";
+resetTutorialButton.style.display = "none";
 
 // Initialize IndexedDB cache for album covers
 initializeCache().catch((error) => {
@@ -645,14 +654,6 @@ const animatePortfolioCoverFlip = (reverse = false) => {
 
 // setMeshRenderPriority and applyPolygonOffsetToMaterials now in sceneObjects.ts
 
-// homeOverlay is now created by setupDOM()
-homeOverlay.textContent = "home view — click a model to explore";
-
-const updateHomeOverlayVisibility = () => {
-  const isHome = activePage === "home";
-  homeOverlay.style.opacity = isHome ? "1" : "0";
-  homeOverlay.style.pointerEvents = isHome ? "auto" : "none";
-};
 const setTurntableUIVisible = (visible: boolean) => {
   const effective =
     visible &&
@@ -674,18 +675,23 @@ const setTurntableUIVisible = (visible: boolean) => {
   vinylLibraryContainer.style.opacity = effective ? "1" : "0";
   vinylLibraryContainer.style.pointerEvents = effective ? "auto" : "none";
   if (vinylUIFadeTriggered) {
-    tutorialContainer.style.display = effective ? "block" : "none";
     tutorialContainer.style.opacity = effective ? "1" : "0";
     tutorialContainer.style.pointerEvents = effective ? "auto" : "none";
+    // Only hide display after fade completes
+    if (!effective) {
+      setTimeout(() => {
+        if (tutorialContainer.style.opacity === "0") {
+          tutorialContainer.style.display = "none";
+        }
+      }, 450);
+    } else {
+      tutorialContainer.style.display = "block";
+    }
   } else {
     tutorialContainer.style.display = "none";
   }
 };
-updateHomeOverlayVisibility();
 setTurntableUIVisible(false);
-homeOverlay.addEventListener("click", () => {
-  setActiveScenePage("turntable");
-});
 
 // Initialize portfolio papers manager
 portfolioPapersManager = new PortfolioPapersManager(
@@ -800,6 +806,10 @@ homeNavButton.addEventListener("click", () => {
   setActiveScenePage("home");
 });
 
+turntableNavButton.addEventListener("click", () => {
+  setActiveScenePage("turntable");
+});
+
 portfolioNavButton.addEventListener("click", () => {
   console.log("[Portfolio] Button clicked");
   setActiveScenePage("portfolio");
@@ -809,6 +819,11 @@ portfolioNavButton.addEventListener("click", () => {
   portfolioPapersContainer.style.display = "flex";
   if (portfolioPapersContainer.children.length === 0) {
     createPapersUI();
+  }
+
+  // Load all papers on first view
+  if (portfolioPapersManager) {
+    portfolioPapersManager.loadAllPapers();
   }
 });
 
@@ -820,6 +835,10 @@ resetTutorialButton.addEventListener("click", () => {
   }
 });
 
+contactButton.addEventListener("click", () => {
+  setActiveScenePage("business_card");
+});
+
 const setActiveScenePage = (page: ScenePage) => {
   if (page === activePage) {
     return;
@@ -827,6 +846,10 @@ const setActiveScenePage = (page: ScenePage) => {
   const previousPage = activePage;
   if (previousPage === "portfolio" && page !== "portfolio") {
     animatePortfolioCoverFlip(true);
+    // Reset papers to original stack with cascading animation
+    if (portfolioPapersManager) {
+      portfolioPapersManager.resetPapersToOriginalStack();
+    }
     // Hide papers UI when leaving portfolio
     portfolioPapersContainer.style.display = "none";
   }
@@ -876,7 +899,6 @@ const setActiveScenePage = (page: ScenePage) => {
   }
   updateFocusVinylVisibility();
   vinylCameraTrackingEnabled = page === "turntable";
-  updateHomeOverlayVisibility();
   setTurntableUIVisible(activePage === "turntable");
   if (page === "turntable") {
     setHeroPageVisibility("turntable");
@@ -891,6 +913,64 @@ const setActiveScenePage = (page: ScenePage) => {
       yt.setPlayerCollapsed(true);
     }
   }
+
+  // Reposition buttons based on page
+  const isPositionChanging =
+    (previousPage === "turntable") !== (page === "turntable");
+
+  if (isPositionChanging) {
+    // Fade out before repositioning
+    if (!globalControls.style.transition) {
+      globalControls.style.transition = "opacity 0.3s ease";
+    }
+    globalControls.style.opacity = "0";
+
+    setTimeout(() => {
+      if (page === "turntable") {
+        // Move to bottom left, to the right of the + sign (toggle button is ~30px wide at left: 20px)
+        globalControls.style.bottom = "23px";
+        globalControls.style.left = "65px";
+        globalControls.style.transform = "none";
+        globalControls.style.flexDirection = "row";
+        globalControls.style.gap = "1rem";
+        globalControls.style.alignItems = "center";
+      } else {
+        // Return to left side center-left
+        globalControls.style.bottom = "50%";
+        globalControls.style.left = "20px";
+        globalControls.style.transform = "translateY(50%)";
+        globalControls.style.flexDirection = "column";
+        globalControls.style.gap = "1.5rem";
+        globalControls.style.alignItems = "stretch";
+      }
+      // Fade back in
+      globalControls.style.opacity = "1";
+    }, 150);
+  } else {
+    // No position change, just update styles without fade
+    if (page === "turntable") {
+      globalControls.style.bottom = "23px";
+      globalControls.style.left = "65px";
+      globalControls.style.transform = "none";
+      globalControls.style.flexDirection = "row";
+      globalControls.style.gap = "1rem";
+      globalControls.style.alignItems = "center";
+    } else {
+      globalControls.style.bottom = "50%";
+      globalControls.style.left = "20px";
+      globalControls.style.transform = "translateY(50%)";
+      globalControls.style.flexDirection = "column";
+      globalControls.style.gap = "1.5rem";
+      globalControls.style.alignItems = "stretch";
+    }
+  }
+
+  // Hide/show navigation buttons based on current page
+  homeNavButton.style.display = page === "home" ? "none" : "block";
+  turntableNavButton.style.display = page === "turntable" ? "none" : "block";
+  portfolioNavButton.style.display = page === "portfolio" ? "none" : "block";
+  contactButton.style.display = page === "business_card" ? "none" : "block";
+  resetTutorialButton.style.display = page === "turntable" ? "block" : "none";
 };
 
 // findPageForObject now imported from pageNavigation.ts
@@ -1023,6 +1103,7 @@ layoutCircle.frustumCulled = false;
 layoutCircle.renderOrder = 1000;
 layoutCircle.material.depthWrite = false;
 layoutCircle.material.depthTest = false;
+layoutCircle.visible = false; // Hidden
 scene.add(layoutCircle);
 
 const layoutCircleOutlineMaterial = new LineBasicMaterial({
@@ -1039,6 +1120,7 @@ layoutCircleOutline.frustumCulled = false;
 layoutCircleOutline.renderOrder = 999;
 layoutCircleOutline.material.depthWrite = false;
 layoutCircleOutline.material.depthTest = false;
+layoutCircleOutline.visible = false; // Hidden
 scene.add(layoutCircleOutline);
 
 let zoomFactor = 1;
@@ -1481,12 +1563,14 @@ const loadVideoForCurrentSelection = async () => {
     }
     videoControls.setProgress(0, duration);
 
+    // Preserve the current volume setting when loading a new video
+    const currentVolume = videoControls.getVolume();
     yt.setVolume(0);
     yt.play();
     setTimeout(() => {
       yt.pause();
       yt.seek(0);
-      yt.setVolume(100);
+      yt.setVolume(currentVolume);
     }, 300);
 
     const isOnTurntable = turntableStateManager.isOnTurntable();
@@ -2124,6 +2208,15 @@ canvas.addEventListener("pointerdown", (event) => {
               setActiveScenePage(page);
               if (page === "portfolio") {
                 animatePortfolioCoverFlip();
+                // Show papers UI
+                portfolioPapersContainer.style.display = "flex";
+                if (portfolioPapersContainer.children.length === 0) {
+                  createPapersUI();
+                }
+                // Load all papers
+                if (portfolioPapersManager) {
+                  portfolioPapersManager.loadAllPapers();
+                }
               }
               break;
             }
@@ -2556,7 +2649,6 @@ loadTurntableModel()
     );
     pageTransitionState.active = false;
     updateCameraDebugPanel();
-    updateHomeOverlayVisibility();
     vinylCameraTrackingEnabled = activePage === "turntable";
 
     setVinylAnchorPosition(turntableAnchorPosition, "turntable");

@@ -17,11 +17,12 @@ export interface DOMElements {
   focusCardCoverContainer: HTMLDivElement;
   focusCardInfoContainer: HTMLDivElement;
   showFocusBtn: HTMLButtonElement;
-  homeOverlay: HTMLDivElement;
   globalControls: HTMLDivElement;
   homeNavButton: HTMLButtonElement;
+  turntableNavButton: HTMLButtonElement;
   portfolioNavButton: HTMLButtonElement;
   resetTutorialButton: HTMLButtonElement;
+  contactButton: HTMLButtonElement;
   cameraDebugPanel: HTMLDivElement;
   portfolioPapersContainer: HTMLDivElement;
 }
@@ -51,7 +52,7 @@ export function setupDOM(): DOMElements {
   tutorialContainer.id = "vinyl-tutorial";
   tutorialContainer.style.cssText = `
     position: fixed;
-    bottom: 250px;
+    bottom: 180px;
     left: 20px;
     max-width: 350px;
     z-index: ${UI_Z_INDEX};
@@ -219,71 +220,74 @@ export function setupDOM(): DOMElements {
       cursor: not-allowed;
     }
 
+    #global-controls {
+      gap: 1.5rem;
+    }
+
     #global-controls button {
-      padding: 8px 16px;
-      background: rgba(0, 0, 0, 0.7);
-      color: #fff;
-      border: 1px solid #666;
-      border-radius: 4px;
+      padding: 0;
+      background: transparent;
+      color: var(--vinyl-link-color);
+      border: none;
+      border-radius: 0;
+      font-weight: normal;
       cursor: pointer;
+      font-size: var(--vinyl-link-font-size);
+      transition: color 0.15s;
+      letter-spacing: 0;
+      text-transform: none;
+      text-decoration: underline;
       font-family: inherit;
-      font-size: 14px;
-      transition: background 0.15s;
       -webkit-font-smoothing: none;
       -moz-osx-font-smoothing: grayscale;
+      text-shadow: var(--vinyl-link-text-shadow);
     }
 
     #global-controls button:hover {
-      background: rgba(0, 0, 0, 0.9);
+      background: transparent;
+      color: var(--vinyl-link-hover-color);
+    }
+
+    #global-controls button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
     }
   `;
   document.head.appendChild(style);
   root.appendChild(vinylViewerContainer);
-
-  // Create home overlay
-  const homeOverlay = document.createElement("div");
-  homeOverlay.id = "home-overlay";
-  homeOverlay.textContent = "home view — click a model to explore";
-  Object.assign(homeOverlay.style, {
-    position: "fixed",
-    top: "1.5rem",
-    left: "50%",
-    transform: "translateX(-50%)",
-    padding: "0.75rem 1.5rem",
-    borderRadius: "999px",
-    background: "rgba(0, 0, 0, 0.75)",
-    color: "#fff",
-    fontSize: "0.85rem",
-    letterSpacing: "0.05em",
-    textTransform: "uppercase",
-    pointerEvents: "auto",
-    opacity: "1",
-    transition: "opacity 0.4s ease",
-    zIndex: "1200",
-  });
-  root.appendChild(homeOverlay);
 
   // Create global controls
   const globalControls = document.createElement("div");
   globalControls.id = "global-controls";
   Object.assign(globalControls.style, {
     position: "fixed",
-    bottom: "20px",
-    left: "50%",
-    transform: "translateX(-50%)",
+    bottom: "50%",
+    left: "20px",
+    transform: "translateY(50%)",
     display: "flex",
-    gap: "0.75rem",
+    flexDirection: "column",
+    gap: "1.5rem",
+    alignItems: "stretch",
     zIndex: HIDE_BUTTON_Z_INDEX,
   });
   root.appendChild(globalControls);
 
   const homeNavButton = document.createElement("button");
-  homeNavButton.textContent = "home view";
+  homeNavButton.textContent = "home";
   globalControls.appendChild(homeNavButton);
 
+  const turntableNavButton = document.createElement("button");
+  turntableNavButton.textContent = "turntable";
+  globalControls.appendChild(turntableNavButton);
+
   const portfolioNavButton = document.createElement("button");
-  portfolioNavButton.textContent = "portfolio view";
+  portfolioNavButton.textContent = "portfolio";
   globalControls.appendChild(portfolioNavButton);
+
+  const contactButton = document.createElement("button");
+  contactButton.id = "contact-button";
+  contactButton.textContent = "contact";
+  globalControls.appendChild(contactButton);
 
   const resetTutorialButton = document.createElement("button");
   resetTutorialButton.id = "reset-tutorial-button";
@@ -349,11 +353,12 @@ export function setupDOM(): DOMElements {
     focusCardCoverContainer,
     focusCardInfoContainer,
     showFocusBtn,
-    homeOverlay,
     globalControls,
     homeNavButton,
+    turntableNavButton,
     portfolioNavButton,
     resetTutorialButton,
+    contactButton,
     cameraDebugPanel,
     portfolioPapersContainer,
   };

@@ -53,31 +53,31 @@ export class TutorialManager {
     const instructions = [
       {
         action: "click-song" as TutorialAction,
-        text: "click on a song to focus it",
+        text: "- click on a song to focus it",
       },
       {
         action: "click-album-cover" as TutorialAction,
-        text: "click the album cover of the focused song to open the vinyl",
+        text: "- click the album cover of the focused song to open the vinyl",
       },
       {
         action: "drag-vinyl" as TutorialAction,
-        text: "drag the vinyl near the turntable and let go",
+        text: "- drag the vinyl near the turntable and let go",
       },
       {
         action: "start-player" as TutorialAction,
-        text: "click the start button or press [space] to start/stop the turntable",
+        text: "- click the start button or press [space] to start/stop the turntable",
       },
       {
         action: "drag-tonearm" as TutorialAction,
-        text: "drag the tonearm onto the vinyl to start playing / scrub media",
+        text: "- drag the tonearm onto the vinyl to start playing / scrub media",
       },
       {
         action: "toggle-fullscreen" as TutorialAction,
-        text: "when player is active, [F] to toggle fullscreen",
+        text: "- when player is active, [F] to toggle fullscreen",
       },
       {
         action: "press-add-button" as TutorialAction,
-        text: "press the + sign below to add a song",
+        text: "- press the + sign below to add a song",
       },
       { action: null, text: "enjoy" },
     ];
