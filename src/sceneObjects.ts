@@ -36,18 +36,26 @@ export const PORTFOLIO_SCENE_CONFIGS = [
 ] as const;
 
 export const PORTFOLIO_CAMERA_TARGET_OFFSET = new Vector3(0, 12, 0);
-export const PORTFOLIO_COVER_ORDER = 250;
+// Render order hierarchy (from back to front):
+// Portfolio base (no special order) < Whitepaper (100) < Papers (200) < Cover (300) < Text (400)
+export const PORTFOLIO_WHITEPAPER_ORDER = 100;
 export const PORTFOLIO_PAPER_ORDER = 200;
-export const PORTFOLIO_TEXT_ORDER = 300;
+export const PORTFOLIO_COVER_ORDER = 300;
+export const PORTFOLIO_TEXT_ORDER = 400;
 export const PORTFOLIO_COVER_KEYS = ["cover"];
-export const PORTFOLIO_PAPER_KEYS = ["whitepaper", "backpaper"];
+export const PORTFOLIO_PAPER_KEYS = ["whitepaper"];
 export const PORTFOLIO_TEXT_KEYS = ["text"];
-export const PORTFOLIO_COVER_OFFSET = -2;
-export const PORTFOLIO_COVER_UNITS = -1.2;
-export const PORTFOLIO_PAPER_OFFSET = -1;
-export const PORTFOLIO_PAPER_UNITS = -0.6;
-export const PORTFOLIO_TEXT_OFFSET = -2.8;
-export const PORTFOLIO_TEXT_UNITS = -1.6;
+// Polygon offset values (higher = further back into the surface)
+// Portfolio base: no offset (0, 0) - rendered first
+// Whitepaper: -1, -1 - slightly offset
+// Papers: -2, -2 - more offset than whitepaper
+// Cover: -3, -3 - most offset to sit on top
+export const PORTFOLIO_WHITEPAPER_OFFSET = -1;
+export const PORTFOLIO_WHITEPAPER_UNITS = -1;
+export const PORTFOLIO_PAPER_OFFSET = -2;
+export const PORTFOLIO_PAPER_UNITS = -2;
+export const PORTFOLIO_COVER_OFFSET = -3;
+export const PORTFOLIO_COVER_UNITS = -3;
 
 export type UVRect = {
   minU: number;
@@ -476,21 +484,25 @@ export function prioritizePortfolioCoverRendering(
         PORTFOLIO_COVER_OFFSET,
         PORTFOLIO_COVER_UNITS,
       );
+      // Disable shadow receiving on cover to prevent z-fighting
+      mesh.receiveShadow = false;
       if (onCoverFound) {
         onCoverFound(mesh);
       }
     } else if (PORTFOLIO_PAPER_KEYS.some((key) => name.includes(key))) {
-      setMeshRenderPriority(
-        mesh,
-        PORTFOLIO_PAPER_ORDER,
-        PORTFOLIO_PAPER_OFFSET,
-        PORTFOLIO_PAPER_UNITS,
-      );
-      // Disable shadow receiving on papers to prevent z-fighting
-      mesh.receiveShadow = false;
       // Check if this is the whitepaper specifically
-      if (name.includes("whitepaper") && onWhitepaperFound) {
-        onWhitepaperFound(mesh);
+      if (name.includes("whitepaper")) {
+        setMeshRenderPriority(
+          mesh,
+          PORTFOLIO_WHITEPAPER_ORDER,
+          PORTFOLIO_WHITEPAPER_OFFSET,
+          PORTFOLIO_WHITEPAPER_UNITS,
+        );
+        // Disable shadow receiving on whitepaper to prevent z-fighting
+        mesh.receiveShadow = false;
+        if (onWhitepaperFound) {
+          onWhitepaperFound(mesh);
+        }
       }
     }
   });

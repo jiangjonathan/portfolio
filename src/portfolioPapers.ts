@@ -123,7 +123,7 @@ export class PortfolioPapersManager {
   private getLeftStackHeightForPaper(paperId: string): number {
     // Left stack grows upward as papers are added, significantly higher than right stack
     // to avoid z-fighting. Papers are added to the top, so earlier papers are lower.
-    const BASE_LEFT_STACK_HEIGHT = 0.1; // Much higher base for left stack to avoid z-fighting
+    const BASE_LEFT_STACK_HEIGHT = 0.2; // Much higher base for left stack to avoid z-fighting
     const LEFT_STACK_HEIGHT_OFFSET = 0.04; // Larger spacing between papers on left stack
 
     const indexInLeftStack = this.leftStackPapers.indexOf(paperId);
@@ -989,6 +989,9 @@ export class PortfolioPapersManager {
       roughness: 0.7, // Paper-like roughness
       metalness: 0, // Not metallic
       side: 2, // DoubleSide
+      polygonOffset: true,
+      polygonOffsetFactor: -2, // Position between whitepaper (-1) and cover (-3)
+      polygonOffsetUnits: -2,
     });
 
     // Use proper paper aspect ratio (8.5 x 11 inches = 1 x 1.294)
@@ -1015,9 +1018,9 @@ export class PortfolioPapersManager {
 
     mesh.name = `paper_${paperId}`;
 
-    // Set render order so papers appear in front of whitepaper/backpaper but behind cover
-    // whitepaper/backpaper = 200, our papers = 210, cover = 100 (but cover has higher z position)
-    mesh.renderOrder = 210;
+    // Set render order so papers appear in front of whitepaper (100) but behind cover (300)
+    // Render order: Portfolio (base) < Whitepaper (100) < Papers (200) < Cover (300) < Text (400)
+    mesh.renderOrder = 200;
 
     // Add to scene
     if (this.whitepaperMesh.parent) {
@@ -1178,7 +1181,7 @@ export class PortfolioPapersManager {
   hideAllPapersExceptTest(): void {
     this.paperMeshes.forEach((mesh, paperId) => {
       // Keep test.pdf visible, hide all others
-      if (paperId !== "test") {
+      if (paperId !== "test-pdf") {
         mesh.visible = false;
       }
     });
@@ -1228,8 +1231,8 @@ export class PortfolioPapersManager {
       // Random rotation within the limit
       const randomRotation = (Math.random() - 0.5) * 2 * rotationLimit;
       const targetRotationZ = randomRotation;
-      const riseHeight = targetPosition.y; // Rise to target Y first
-      const stageDuration = duration / 2; // Split time between stages
+      const peakHeight = startPosition.y + 2; // Rise up 2 units
+      const stageDuration = duration / 3; // Split time into three stages
 
       // Stage 1: Rise in Y
       const stage1Start = performance.now();
@@ -1243,15 +1246,14 @@ export class PortfolioPapersManager {
         const easeProgress = 1 - Math.pow(1 - progress, 3);
 
         mesh.position.y =
-          startPosition.y + (riseHeight - startPosition.y) * easeProgress;
+          startPosition.y + (peakHeight - startPosition.y) * easeProgress;
 
         if (currentTime < stage1End) {
           requestAnimationFrame(animateStage1);
         } else {
-          // Stage 2: Move in X and rotate simultaneously
+          // Stage 2: Move in X/Z while at peak height
           const stage2Start = performance.now();
           const stage2End = stage2Start + stageDuration;
-          const yAtPeak = mesh.position.y;
 
           const animateStage2 = (currentTime: number) => {
             const elapsed = currentTime - stage2Start;
@@ -1266,8 +1268,8 @@ export class PortfolioPapersManager {
             mesh.position.z =
               startPosition.z +
               (targetPosition.z - startPosition.z) * easeProgress;
-            // Keep Y at peak height during X movement
-            mesh.position.y = yAtPeak;
+            // Keep Y at peak height during X/Z movement
+            mesh.position.y = peakHeight;
             // Rotate simultaneously with X movement
             mesh.rotation.z =
               startRotationZ +
@@ -1276,9 +1278,30 @@ export class PortfolioPapersManager {
             if (currentTime < stage2End) {
               requestAnimationFrame(animateStage2);
             } else {
-              mesh.position.copy(targetPosition);
-              mesh.rotation.z = targetRotationZ;
-              resolve();
+              // Stage 3: Fall down in Y to target position
+              const stage3Start = performance.now();
+              const stage3End = stage3Start + stageDuration;
+
+              const animateStage3 = (currentTime: number) => {
+                const elapsed = currentTime - stage3Start;
+                const progress = Math.min(elapsed / stageDuration, 1);
+
+                // Ease out cubic for smooth fall
+                const easeProgress = 1 - Math.pow(1 - progress, 3);
+
+                mesh.position.y =
+                  peakHeight + (targetPosition.y - peakHeight) * easeProgress;
+
+                if (currentTime < stage3End) {
+                  requestAnimationFrame(animateStage3);
+                } else {
+                  mesh.position.copy(targetPosition);
+                  mesh.rotation.z = targetRotationZ;
+                  resolve();
+                }
+              };
+
+              requestAnimationFrame(animateStage3);
             }
           };
 
@@ -1372,6 +1395,9 @@ export class PortfolioPapersManager {
       const mesh = this.paperMeshes.get(paperId);
 
       if (mesh) {
+        // Boost render priority during reset animation to ensure it renders above whitepaper and cover
+        mesh.renderOrder = 250;
+
         // Calculate original position
         const targetPosition = this.whitepaperMesh.position.clone();
         const stackHeight = this.getStackHeightForPaper(paperId);
@@ -1397,6 +1423,14 @@ export class PortfolioPapersManager {
 
     if (animationPromises.length > 0) {
       await Promise.all(animationPromises);
+    }
+
+    // Restore normal render priority after animation completes
+    for (const paperId of papersToReset) {
+      const mesh = this.paperMeshes.get(paperId);
+      if (mesh) {
+        mesh.renderOrder = 200;
+      }
     }
 
     // Clear the left stack tracking

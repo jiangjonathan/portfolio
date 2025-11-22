@@ -736,8 +736,8 @@ const setupPortfolioCover = (model: Object3D) => {
     (mesh) => {
       portfolioCoverMesh = mesh;
       portfolioCoverOriginalRotation = mesh.rotation.z;
-      // Set high render order so cover appears in front of papers
-      mesh.renderOrder = 100;
+      // Set high render order so cover appears in front of papers (papers are 210)
+      mesh.renderOrder = 220;
       // Disable shadow receiving on cover to prevent z-fighting
       mesh.receiveShadow = false;
 

@@ -150,7 +150,7 @@ export class VinylLibraryManager {
             transition: transform 0.2s ease;
             flex-shrink: 0;
             position: fixed;
-            bottom: 15px;
+            bottom: 16px;
             left: 20px;
             z-index: 1000;
             text-shadow: -0.3px 0 #ff0000, -0.3px 0 #0000ff;
