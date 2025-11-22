@@ -749,6 +749,7 @@ const setupPortfolioCover = (model: Object3D) => {
     },
     (whitepaperMesh) => {
       console.log("[Portfolio] Found whitepaper mesh:", whitepaperMesh.name);
+      whitepaperMesh.visible = false;
       if (portfolioPapersManager) {
         portfolioPapersManager.setWhitepaperMesh(whitepaperMesh);
       }
@@ -855,6 +856,11 @@ portfolioPapersManager = new PortfolioPapersManager(
   portfolioPapersContainer,
   renderer,
 );
+
+// Load all paper meshes on startup regardless of which page is active
+portfolioPapersManager.loadAllPapers().catch((error) => {
+  console.error("[Portfolio] Error loading papers on startup:", error);
+});
 
 // Create papers UI
 const createPapersUI = () => {
@@ -1019,7 +1025,7 @@ const setActiveScenePage = (page: ScenePage) => {
 
     // Hide all paper meshes except test.pdf
     if (portfolioPapersManager) {
-      portfolioPapersManager.hideAllPapersExceptTest();
+      portfolioPapersManager.hideLowerPapers();
     }
 
     (async () => {

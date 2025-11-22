@@ -77,7 +77,7 @@ export class PortfolioPapersManager {
   private whitepaperMesh: Mesh | null = null;
   private renderer: WebGLRenderer | null = null;
   private isAnimating = false; // Prevent overlapping animations
-  private readonly PAPER_STACK_HEIGHT_OFFSET = 0.02; // Height between stacked papers
+  private readonly PAPER_STACK_HEIGHT_OFFSET = 0.04; // Height between stacked papers
   private readonly BASE_PAPER_HEIGHT = 0.05; // Base height above whitepaper
   private readonly LEFT_STACK_X_OFFSET = -23.5; // X offset for left stack
   private readonly MAX_RANDOM_ROTATION = (2.5 * Math.PI) / 180; // ±2.5 degrees in radians
@@ -1178,10 +1178,27 @@ export class PortfolioPapersManager {
     });
   }
 
-  hideAllPapersExceptTest(): void {
+  showAllPapers(): void {
+    this.paperMeshes.forEach((mesh) => {
+      mesh.visible = true;
+    });
+  }
+
+  hideLowerPapers(): void {
+    const papersList = this.getPapers();
+    const firstPaperId = papersList.length > 0 ? papersList[0].id : null;
+    const lastPaperId =
+      papersList.length > 0 ? papersList[papersList.length - 1].id : null;
+
     this.paperMeshes.forEach((mesh, paperId) => {
-      // Keep test.pdf visible, hide all others
-      if (paperId !== "test-pdf") {
+      // Show only first paper and currently open paper, hide all others
+      if (paperId === firstPaperId || paperId === this.currentPaperId) {
+        mesh.visible = true;
+        // Move current paper down 0.3 units in Y (but not if it's the last paper)
+        if (paperId === this.currentPaperId && paperId !== lastPaperId) {
+          mesh.position.y -= 0.07;
+        }
+      } else {
         mesh.visible = false;
       }
     });
@@ -1231,7 +1248,7 @@ export class PortfolioPapersManager {
       // Random rotation within the limit
       const randomRotation = (Math.random() - 0.5) * 2 * rotationLimit;
       const targetRotationZ = randomRotation;
-      const peakHeight = startPosition.y + 2; // Rise up 2 units
+      const peakHeight = startPosition.y + 1; // Rise up 1 units
       const stageDuration = duration / 3; // Split time into three stages
 
       // Stage 1: Rise in Y
