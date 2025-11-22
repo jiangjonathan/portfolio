@@ -253,10 +253,14 @@ export class PortfolioPapersManager {
       ctx.fillText("Hello World!", canvas.width / 2, canvas.height / 2);
     } else if (paper.id === "placeholder-c") {
       ctx.fillStyle = "#000000";
-      ctx.font = "bold 120px Arial";
+      ctx.font = "bold 48px Arial";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText("Placeholder C", canvas.width / 2, canvas.height / 2);
+      ctx.fillText(
+        "placeholder under construction",
+        canvas.width / 2,
+        canvas.height / 2,
+      );
     } else {
       // Generic HTML rendering
       ctx.fillStyle = "#000000";
@@ -599,6 +603,7 @@ export class PortfolioPapersManager {
     // This creates a cascading effect
     const papersToReset = [...this.leftStackPapers].reverse();
     const CASCADE_DELAY = 150; // milliseconds between each paper animation
+    const animationPromises: Promise<void>[] = [];
 
     for (let i = 0; i < papersToReset.length; i++) {
       const paperId = papersToReset[i];
@@ -616,14 +621,20 @@ export class PortfolioPapersManager {
           `[PortfolioPapers] Cascading ${paperId} back to original position`,
         );
 
-        // Start two-stage animation (don't await, we want them to cascade)
-        this.animatePaperTwoStage(mesh, targetPosition, 400);
+        // Start the two-stage animation and retain the promise so we can wait for completion after the cascade.
+        animationPromises.push(
+          this.animatePaperTwoStage(mesh, targetPosition, 400),
+        );
 
         // Wait before starting next animation
         if (i < papersToReset.length - 1) {
           await new Promise((resolve) => setTimeout(resolve, CASCADE_DELAY));
         }
       }
+    }
+
+    if (animationPromises.length > 0) {
+      await Promise.all(animationPromises);
     }
 
     // Clear the left stack tracking

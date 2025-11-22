@@ -580,7 +580,7 @@ const PORTFOLIO_SCENE_CONFIGS: ReadonlyArray<PortfolioSceneConfig> = [
   },
 ];
 
-const HERO_LAYOUT_RADIUS = 45;
+const HERO_LAYOUT_RADIUS = 48;
 const HERO_LAYOUT_Y = 0;
 const HERO_LAYOUT_START_ANGLE = Math.PI / 8;
 const HERO_LAYOUT_PAGES: Array<string> = [
@@ -973,13 +973,23 @@ const setActiveScenePage = (page: ScenePage) => {
   }
   const previousPage = activePage;
   if (previousPage === "portfolio" && page !== "portfolio") {
-    animatePortfolioCoverFlip(true);
-    // Reset papers to original stack with cascading animation
-    if (portfolioPapersManager) {
-      portfolioPapersManager.resetPapersToOriginalStack();
-    }
-    // Hide papers UI when leaving portfolio
+    // Hide papers UI immediately for the new scene.
     portfolioPapersContainer.style.display = "none";
+
+    (async () => {
+      try {
+        if (portfolioPapersManager) {
+          await portfolioPapersManager.resetPapersToOriginalStack();
+        }
+      } catch (error) {
+        console.error(
+          "[Portfolio] Error resetting papers before closing cover:",
+          error,
+        );
+      } finally {
+        animatePortfolioCoverFlip(true);
+      }
+    })();
   }
   if (page === BUSINESS_CARD_PAGE) {
     businessCardAnimation.handlePageSelection(page);
