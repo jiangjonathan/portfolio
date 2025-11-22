@@ -5,7 +5,7 @@ export function clampValue(value: number, min: number, max: number) {
 }
 
 export function updatePointer(
-  event: PointerEvent,
+  event: MouseEvent | PointerEvent | WheelEvent,
   pointerNDC: Vector2,
   canvas: HTMLCanvasElement,
 ) {

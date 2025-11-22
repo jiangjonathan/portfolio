@@ -23,6 +23,17 @@ export interface PaperConfig {
   description?: string;
 }
 
+type PendingScrollState = {
+  fullCanvas: HTMLCanvasElement;
+  displayCanvas: HTMLCanvasElement;
+  scrollOffset: number;
+  maxScroll: number;
+};
+
+type ScrollablePaperState = PendingScrollState & {
+  texture: CanvasTexture;
+};
+
 export const PAPERS: PaperConfig[] = [
   {
     id: "test-pdf",
@@ -33,10 +44,10 @@ export const PAPERS: PaperConfig[] = [
   },
   {
     id: "hello-world",
-    name: "Hello World",
+    name: "Portfolio Overview",
     type: "html",
-    url: "",
-    description: "Simple hello world example",
+    url: "/papers/portfolio.md",
+    description: "Portfolio markdown rendered onto canvas",
   },
   {
     id: "placeholder-c",
@@ -60,6 +71,8 @@ export class PortfolioPapersManager {
   private readonly LEFT_STACK_X_OFFSET = -23.5; // X offset for left stack
   private readonly MAX_RANDOM_ROTATION = (2.5 * Math.PI) / 180; // ±2.5 degrees in radians
   private leftStackPapers: string[] = []; // Papers that have been moved to left stack (in order moved)
+  private scrollablePaperStates: Map<string, ScrollablePaperState> = new Map();
+  private hoveredScrollablePaperId: string | null = null;
 
   constructor(_container: HTMLElement, renderer?: WebGLRenderer) {
     this.renderer = renderer || null;
@@ -228,7 +241,19 @@ export class PortfolioPapersManager {
   private async loadHTML(paper: PaperConfig): Promise<void> {
     console.log(`[PortfolioPapers] Loading HTML: ${paper.url}`);
 
-    // Create canvas for rendering HTML content
+    if (paper.id === "hello-world") {
+      const markdownContent = await this.fetchMarkdownContent(paper);
+      const scrollState = this.buildScrollableMarkdownPaper(
+        markdownContent,
+        paper.url,
+      );
+      if (scrollState) {
+        this.createPaperMesh(paper.id, scrollState.displayCanvas, scrollState);
+        return;
+      }
+    }
+
+    // Fallback rendering for other HTML papers
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d", {
       alpha: false,
@@ -236,22 +261,13 @@ export class PortfolioPapersManager {
     });
     if (!ctx) return;
 
-    // High resolution canvas
     canvas.width = 2048;
-    canvas.height = 2048 * 1.294; // Letter aspect ratio
+    canvas.height = Math.floor(2048 * 1.294);
 
-    // White background
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Render hello world content
-    if (paper.id === "hello-world") {
-      ctx.fillStyle = "#000000";
-      ctx.font = "bold 120px Arial";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText("Hello World!", canvas.width / 2, canvas.height / 2);
-    } else if (paper.id === "placeholder-c") {
+    if (paper.id === "placeholder-c") {
       ctx.fillStyle = "#000000";
       ctx.font = "bold 48px Arial";
       ctx.textAlign = "center";
@@ -262,13 +278,389 @@ export class PortfolioPapersManager {
         canvas.height / 2,
       );
     } else {
-      // Generic HTML rendering
       ctx.fillStyle = "#000000";
       ctx.font = "40px Arial";
       ctx.fillText("HTML: " + paper.name, 100, 100);
     }
 
     this.createPaperMesh(paper.id, canvas);
+  }
+
+  private async fetchMarkdownContent(paper: PaperConfig): Promise<string> {
+    if (!paper.url) {
+      return "Content unavailable: markdown URL missing.";
+    }
+
+    try {
+      const response = await fetch(paper.url);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch markdown: ${response.status}`);
+      }
+      return await response.text();
+    } catch (error) {
+      console.error(
+        "[PortfolioPapers] Failed to fetch markdown content:",
+        error,
+      );
+      return "Content unavailable: unable to load markdown file.";
+    }
+  }
+
+  private wrapTextForMarkdown(
+    ctx: CanvasRenderingContext2D,
+    text: string,
+    maxWidth: number,
+  ): string[] {
+    const words = text.split(" ");
+    const lines: string[] = [];
+    let currentLine = "";
+
+    words.forEach((word) => {
+      const testLine = currentLine ? `${currentLine} ${word}` : word;
+      const metrics = ctx.measureText(testLine);
+      if (metrics.width > maxWidth && currentLine) {
+        lines.push(currentLine);
+        currentLine = word;
+      } else {
+        currentLine = testLine;
+      }
+    });
+
+    if (currentLine) {
+      lines.push(currentLine);
+    }
+
+    return lines;
+  }
+
+  private buildScrollableMarkdownPaper(
+    markdown: string,
+    baseUrl: string,
+  ): PendingScrollState | null {
+    const VIEW_WIDTH = 2048;
+    const VIEW_HEIGHT = Math.floor(VIEW_WIDTH * 1.294);
+    const displayCanvas = document.createElement("canvas");
+    const fullCanvas = document.createElement("canvas");
+    displayCanvas.width = VIEW_WIDTH;
+    displayCanvas.height = VIEW_HEIGHT;
+    fullCanvas.width = VIEW_WIDTH;
+
+    const measuringCtx = displayCanvas.getContext("2d");
+    if (!measuringCtx) return null;
+
+    const marginX = Math.floor(VIEW_WIDTH * 0.08);
+    const marginTop = Math.floor(VIEW_HEIGHT * 0.08);
+    const marginBottom = Math.floor(VIEW_HEIGHT * 0.12);
+    const usableWidth = VIEW_WIDTH - marginX * 2;
+    const lines = markdown.split(/\r?\n/);
+
+    type RenderSegment = {
+      text: string;
+      x: number;
+      y: number;
+      font: string;
+      color: string;
+      isBold?: boolean;
+      isItalic?: boolean;
+    };
+
+    type RenderImage = {
+      img: HTMLImageElement;
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    };
+
+    const segments: RenderSegment[] = [];
+    const images: RenderImage[] = [];
+    const rules: number[] = [];
+    let cursorY = marginTop;
+    const fontFamily =
+      '"Inter", "Helvetica Neue", "Segoe UI", Arial, sans-serif';
+    const headingColor = "#0d0f12";
+    const bodyColor = "#1f2328";
+
+    // Process inline markdown formatting (bold, italic)
+    const parseInlineMarkdown = (
+      text: string,
+    ): Array<{ text: string; bold: boolean; italic: boolean }> => {
+      const parts: Array<{ text: string; bold: boolean; italic: boolean }> = [];
+      let remaining = text;
+
+      // Match **bold**, *italic*, or plain text
+      const regex = /(\*\*([^*]+)\*\*)|(\*([^*]+)\*)|([^*]+)/g;
+      let match;
+
+      while ((match = regex.exec(remaining)) !== null) {
+        if (match[2]) {
+          // Bold text (**text**)
+          parts.push({ text: match[2], bold: true, italic: false });
+        } else if (match[4]) {
+          // Italic text (*text*)
+          parts.push({ text: match[4], bold: false, italic: true });
+        } else if (match[5]) {
+          // Plain text
+          parts.push({ text: match[5], bold: false, italic: false });
+        }
+      }
+
+      return parts.length > 0 ? parts : [{ text, bold: false, italic: false }];
+    };
+
+    const processLine = (
+      line: string,
+      fontSize: number,
+      baseFontWeight: string,
+      indent: number,
+      color: string,
+      extraSpacing: number,
+    ) => {
+      const inlineParts = parseInlineMarkdown(line);
+      let currentX = marginX + indent;
+
+      inlineParts.forEach((part) => {
+        const fontWeight = part.bold ? "700" : baseFontWeight;
+        const fontStyle = part.italic ? "italic " : "";
+        const font = `${fontStyle}${fontWeight} ${fontSize}px ${fontFamily}`;
+        measuringCtx.font = font;
+
+        const wrapped = this.wrapTextForMarkdown(
+          measuringCtx,
+          part.text,
+          usableWidth - (currentX - marginX),
+        );
+
+        const lineHeight = Math.round(fontSize * 1.28);
+        wrapped.forEach((wrappedLine, idx) => {
+          segments.push({
+            text: wrappedLine,
+            x: idx === 0 ? currentX : marginX + indent,
+            y: cursorY,
+            font,
+            color,
+          });
+
+          if (idx < wrapped.length - 1) {
+            cursorY += lineHeight;
+            currentX = marginX + indent;
+          } else {
+            currentX += measuringCtx.measureText(wrappedLine).width;
+          }
+        });
+      });
+
+      cursorY += Math.round(fontSize * 1.28);
+      cursorY += extraSpacing;
+    };
+
+    // Track image load promises
+    const imageLoadPromises: Promise<void>[] = [];
+
+    lines.forEach((rawLine) => {
+      const line = rawLine.trimEnd();
+      const trimmed = line.trim();
+
+      if (trimmed === "") {
+        cursorY += 20;
+        return;
+      }
+
+      if (/^---+$/.test(trimmed)) {
+        rules.push(cursorY);
+        cursorY += 28;
+        return;
+      }
+
+      // Check for image: ![alt text](url)
+      const imageMatch = trimmed.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
+      if (imageMatch) {
+        const imagePath = imageMatch[2];
+        const img = new Image();
+
+        // Resolve relative URLs - baseUrl is like "/papers/portfolio.md"
+        // We need to resolve relative to the directory containing the markdown file
+        let imageUrl: string;
+        if (imagePath.startsWith("./")) {
+          // Remove ./ and replace .md with / to get directory
+          const baseDir = baseUrl.substring(0, baseUrl.lastIndexOf("/") + 1);
+          imageUrl = baseDir + imagePath.substring(2);
+        } else if (imagePath.startsWith("/")) {
+          imageUrl = imagePath;
+        } else {
+          imageUrl = imagePath;
+        }
+
+        console.log(
+          `[PortfolioPapers] Resolved image path: ${imagePath} -> ${imageUrl}`,
+        );
+
+        const imageY = cursorY;
+        const imagePromise = new Promise<void>((resolve) => {
+          // Add timeout to prevent hanging
+          const timeout = setTimeout(() => {
+            console.warn(`[PortfolioPapers] Image load timeout: ${imageUrl}`);
+            resolve();
+          }, 5000); // 5 second timeout
+
+          img.onload = () => {
+            clearTimeout(timeout);
+            // Calculate dimensions to fit within usableWidth
+            const maxWidth = usableWidth * 0.8;
+            const scale = Math.min(1, maxWidth / img.width);
+            const displayWidth = img.width * scale;
+            const displayHeight = img.height * scale;
+
+            images.push({
+              img,
+              x: marginX,
+              y: imageY,
+              width: displayWidth,
+              height: displayHeight,
+            });
+            console.log(`[PortfolioPapers] Image loaded: ${imageUrl}`);
+            resolve();
+          };
+          img.onerror = (err) => {
+            clearTimeout(timeout);
+            console.error(
+              `[PortfolioPapers] Failed to load image: ${imageUrl}`,
+              err,
+            );
+            resolve(); // Continue even if image fails
+          };
+        });
+
+        img.src = imageUrl;
+        console.log(`[PortfolioPapers] Attempting to load image: ${imageUrl}`);
+        imageLoadPromises.push(imagePromise);
+
+        // Reserve space for the image
+        cursorY += 600;
+        return;
+      }
+
+      if (/^#{3}\s+/.test(trimmed)) {
+        const text = trimmed.replace(/^#{3}\s+/, "");
+        processLine(text, 48, "600", 0, headingColor, 16);
+        return;
+      }
+
+      if (/^#{2}\s+/.test(trimmed)) {
+        const text = trimmed.replace(/^#{2}\s+/, "");
+        processLine(text, 56, "600", 0, headingColor, 20);
+        return;
+      }
+
+      if (/^#\s+/.test(trimmed)) {
+        const text = trimmed.replace(/^#\s+/, "");
+        processLine(text, 64, "700", 0, headingColor, 24);
+        return;
+      }
+
+      if (/^[-*]\s+/.test(trimmed)) {
+        const text = trimmed.replace(/^[-*]\s+/, "");
+        processLine(
+          "• " + text,
+          32,
+          "400",
+          Math.floor(marginX * 0.25),
+          bodyColor,
+          10,
+        );
+        return;
+      }
+
+      if (/^####\s+/.test(trimmed)) {
+        const text = trimmed.replace(/^####\s+/, "");
+        processLine(text, 40, "600", 0, headingColor, 14);
+        return;
+      }
+
+      processLine(trimmed, 32, "400", 0, bodyColor, 14);
+    });
+
+    const totalHeight = cursorY + marginBottom;
+    fullCanvas.height = Math.max(VIEW_HEIGHT, Math.ceil(totalHeight));
+
+    const fullCtx = fullCanvas.getContext("2d");
+    const displayCtx = displayCanvas.getContext("2d");
+    if (!fullCtx || !displayCtx) {
+      return null;
+    }
+
+    // Function to render content
+    const renderContent = () => {
+      fullCtx.fillStyle = "#ffffff";
+      fullCtx.fillRect(0, 0, fullCanvas.width, fullCanvas.height);
+      fullCtx.fillStyle = "#111111";
+
+      segments.forEach((segment) => {
+        fullCtx.font = segment.font;
+        fullCtx.fillStyle = segment.color;
+        fullCtx.fillText(segment.text, segment.x, segment.y);
+      });
+
+      // Draw images
+      images.forEach((image) => {
+        fullCtx.drawImage(
+          image.img,
+          image.x,
+          image.y,
+          image.width,
+          image.height,
+        );
+      });
+
+      rules.forEach((ruleY) => {
+        fullCtx.strokeStyle = "#d0d7de";
+        fullCtx.lineWidth = 2;
+        fullCtx.beginPath();
+        fullCtx.moveTo(marginX, ruleY);
+        fullCtx.lineTo(fullCanvas.width - marginX, ruleY);
+        fullCtx.stroke();
+      });
+    };
+
+    // Render immediately without waiting for images
+    renderContent();
+
+    // Load images in background and re-render when ready (non-blocking)
+    if (imageLoadPromises.length > 0) {
+      Promise.race([
+        Promise.all(imageLoadPromises),
+        new Promise<void>((resolve) => setTimeout(resolve, 6000)),
+      ])
+        .then(() => {
+          console.log("[PortfolioPapers] Images loaded, re-rendering");
+          renderContent();
+        })
+        .catch((error) => {
+          console.error("[PortfolioPapers] Error loading images:", error);
+        });
+    }
+
+    displayCtx.clearRect(0, 0, displayCanvas.width, displayCanvas.height);
+    displayCtx.drawImage(
+      fullCanvas,
+      0,
+      0,
+      displayCanvas.width,
+      displayCanvas.height,
+      0,
+      0,
+      displayCanvas.width,
+      displayCanvas.height,
+    );
+
+    const maxScroll = Math.max(0, fullCanvas.height - displayCanvas.height);
+
+    return {
+      fullCanvas,
+      displayCanvas,
+      scrollOffset: 0,
+      maxScroll,
+    };
   }
 
   private async loadReport(paper: PaperConfig): Promise<void> {
@@ -289,7 +681,11 @@ export class PortfolioPapersManager {
     this.createPaperMesh(paper.id, canvas);
   }
 
-  private createPaperMesh(paperId: string, canvas: HTMLCanvasElement): void {
+  private createPaperMesh(
+    paperId: string,
+    canvas: HTMLCanvasElement,
+    scrollState?: PendingScrollState,
+  ): void {
     if (!this.whitepaperMesh) {
       console.error("[PortfolioPapers] Whitepaper mesh not set");
       return;
@@ -328,8 +724,10 @@ export class PortfolioPapersManager {
       existingMesh.parent.remove(existingMesh);
     }
 
+    const textureCanvas = scrollState?.displayCanvas ?? canvas;
+
     // Create texture from canvas with optimal settings for text
-    const texture = new CanvasTexture(canvas);
+    const texture = new CanvasTexture(textureCanvas);
     texture.colorSpace = SRGBColorSpace;
     texture.minFilter = LinearFilter;
     texture.magFilter = LinearFilter;
@@ -345,6 +743,16 @@ export class PortfolioPapersManager {
     }
 
     texture.needsUpdate = true;
+
+    if (scrollState) {
+      const stateWithTexture: ScrollablePaperState = {
+        ...scrollState,
+        texture,
+      };
+      this.scrollablePaperStates.set(paperId, stateWithTexture);
+    } else {
+      this.scrollablePaperStates.delete(paperId);
+    }
 
     // Create material with PDF texture - use MeshStandardMaterial for better lighting and depth
     const material = new MeshStandardMaterial({
@@ -400,6 +808,134 @@ export class PortfolioPapersManager {
       `[PortfolioPapers] Paper mesh created and added to scene for: ${paperId}`,
     );
     console.log(`[PortfolioPapers] Final mesh position:`, mesh.position);
+  }
+
+  scrollPaper(paperId: string, deltaY: number): boolean {
+    const scrollable = this.scrollablePaperStates.get(paperId);
+    if (!scrollable) {
+      return false;
+    }
+
+    const scrollRange = Math.max(
+      scrollable.maxScroll,
+      scrollable.fullCanvas.height - scrollable.displayCanvas.height,
+    );
+    scrollable.maxScroll = scrollRange;
+    if (scrollRange <= 0) {
+      return false;
+    }
+
+    const SCROLL_SPEED = 1.1;
+    const nextOffset = Math.max(
+      0,
+      Math.min(scrollRange, scrollable.scrollOffset + deltaY * SCROLL_SPEED),
+    );
+
+    if (nextOffset === scrollable.scrollOffset) {
+      return false;
+    }
+
+    scrollable.scrollOffset = nextOffset;
+    this.redrawScrollablePaper(paperId);
+    return true;
+  }
+
+  isPaperScrollable(paperId: string): boolean {
+    return this.scrollablePaperStates.has(paperId);
+  }
+
+  isPaperInLeftStack(paperId: string): boolean {
+    return this.leftStackPapers.includes(paperId);
+  }
+
+  setHoveredScrollablePaper(paperId: string | null): void {
+    if (this.hoveredScrollablePaperId === paperId) {
+      return;
+    }
+    const previous = this.hoveredScrollablePaperId;
+    this.hoveredScrollablePaperId = paperId;
+    if (previous && this.scrollablePaperStates.has(previous)) {
+      this.redrawScrollablePaper(previous, false);
+    }
+    if (paperId && this.scrollablePaperStates.has(paperId)) {
+      this.redrawScrollablePaper(paperId, true);
+    }
+  }
+
+  private redrawScrollablePaper(
+    paperId: string,
+    forceShowScrollbar?: boolean,
+  ): void {
+    const scrollable = this.scrollablePaperStates.get(paperId);
+    if (!scrollable) {
+      return;
+    }
+
+    const { displayCanvas, fullCanvas, texture, scrollOffset } = scrollable;
+    const displayCtx = displayCanvas.getContext("2d");
+    if (!displayCtx) {
+      return;
+    }
+
+    displayCtx.clearRect(0, 0, displayCanvas.width, displayCanvas.height);
+    displayCtx.drawImage(
+      fullCanvas,
+      0,
+      scrollOffset,
+      displayCanvas.width,
+      displayCanvas.height,
+      0,
+      0,
+      displayCanvas.width,
+      displayCanvas.height,
+    );
+
+    const shouldShowScrollbar =
+      forceShowScrollbar !== undefined
+        ? forceShowScrollbar
+        : this.hoveredScrollablePaperId === paperId;
+    if (shouldShowScrollbar && scrollable.maxScroll > 0) {
+      this.drawScrollbar(displayCtx, scrollable);
+    }
+
+    texture.needsUpdate = true;
+  }
+
+  private drawScrollbar(
+    ctx: CanvasRenderingContext2D,
+    scrollable: ScrollablePaperState,
+  ): void {
+    const width = Math.max(Math.floor(ctx.canvas.width * 0.012), 12);
+    const margin = Math.max(Math.floor(width * 1.2), 16);
+    const trackX = ctx.canvas.width - width - margin;
+    const trackY = Math.floor(ctx.canvas.height * 0.04);
+    const trackHeight = ctx.canvas.height - trackY * 2;
+
+    ctx.save();
+
+    // Draw track (background) - rectangular, subtle grey
+    ctx.globalAlpha = 0.15;
+    ctx.fillStyle = "#888888";
+    ctx.fillRect(trackX, trackY, width, trackHeight);
+
+    const scrollRatio =
+      scrollable.maxScroll === 0
+        ? 0
+        : scrollable.scrollOffset / scrollable.maxScroll;
+    const thumbHeight = Math.max(
+      trackHeight * (ctx.canvas.height / scrollable.fullCanvas.height),
+      Math.floor(ctx.canvas.height * 0.08),
+    );
+    const thumbY =
+      trackY +
+      (trackHeight - thumbHeight) * Math.min(Math.max(scrollRatio, 0), 1);
+
+    // Draw thumb (scrollbar handle) - rectangular, medium grey
+    ctx.globalAlpha = 0.6;
+    ctx.fillStyle = "#666666";
+    ctx.fillRect(trackX, thumbY, width, thumbHeight);
+
+    ctx.restore();
   }
 
   hidePaper(paperId: string): void {
@@ -552,6 +1088,9 @@ export class PortfolioPapersManager {
     }
 
     this.isAnimating = true;
+
+    // Clear hover state to hide scrollbar during navigation
+    this.setHoveredScrollablePaper(null);
 
     try {
       const nextIndex = currentIndex + 1;
@@ -746,6 +1285,9 @@ export class PortfolioPapersManager {
     }
 
     this.isAnimating = true;
+
+    // Clear hover state to hide scrollbar during navigation
+    this.setHoveredScrollablePaper(null);
 
     try {
       const prevIndex = currentIndex - 1;

@@ -538,23 +538,45 @@ document.addEventListener("mousemove", (event) => {
   // Check if hovering over portfolio papers (only when on portfolio page)
   if (activePage === "portfolio" && portfolioPapersManager) {
     let isHoveringPaper = false;
+    let hoveredScrollablePaperId: string | null = null;
     const paperMeshes = portfolioPapersManager.getPaperMeshes();
+    const currentPaperId = portfolioPapersManager.getCurrentPaperId();
+
     for (const [paperId, mesh] of paperMeshes) {
       const hits = raycaster.intersectObject(mesh, true);
-      if (hits.length > 0) {
-        // Check if it's a PDF paper
-        const paper = portfolioPapersManager
-          .getPapers()
-          .find((p) => p.id === paperId);
-        if (paper && paper.type === "pdf") {
-          isHoveringPaper = true;
-          break;
-        }
+      if (hits.length === 0) {
+        continue;
+      }
+
+      // Only interact with the current top paper (not papers in left stack)
+      if (
+        paperId !== currentPaperId ||
+        portfolioPapersManager.isPaperInLeftStack(paperId)
+      ) {
+        continue;
+      }
+
+      const paper = portfolioPapersManager
+        .getPapers()
+        .find((p) => p.id === paperId);
+      if (!paper) {
+        continue;
+      }
+      if (paper.type === "pdf") {
+        isHoveringPaper = true;
+      }
+      if (
+        !hoveredScrollablePaperId &&
+        portfolioPapersManager.isPaperScrollable(paperId)
+      ) {
+        hoveredScrollablePaperId = paperId;
       }
     }
 
-    // Only set cursor on portfolio page
+    portfolioPapersManager.setHoveredScrollablePaper(hoveredScrollablePaperId);
     canvas.style.cursor = isHoveringPaper ? "pointer" : "auto";
+  } else {
+    portfolioPapersManager?.setHoveredScrollablePaper(null);
   }
 
   // Set cursor for business card page - only show pointer on links
@@ -2473,9 +2495,19 @@ canvas.addEventListener("pointerdown", (event) => {
       // Check if clicking on a portfolio paper mesh
       if (portfolioPapersManager) {
         const paperMeshes = portfolioPapersManager.getPaperMeshes();
+        const currentPaperId = portfolioPapersManager.getCurrentPaperId();
+
         for (const [paperId, mesh] of paperMeshes) {
           const hits = raycaster.intersectObject(mesh, true);
           if (hits.length > 0) {
+            // Only allow clicking the current top paper (not papers in left stack)
+            if (
+              paperId !== currentPaperId ||
+              portfolioPapersManager.isPaperInLeftStack(paperId)
+            ) {
+              continue;
+            }
+
             // Found a paper click - check if it's a PDF
             const paper = portfolioPapersManager
               .getPapers()
@@ -2845,10 +2877,35 @@ canvas.addEventListener("pointerup", endBusinessCardRotation);
 canvas.addEventListener("pointercancel", endBusinessCardRotation);
 canvas.addEventListener("pointerleave", endBusinessCardRotation);
 
-// Scroll wheel camera orbit on home page
+const handlePortfolioPaperScroll = (event: WheelEvent): boolean => {
+  if (activePage !== "portfolio" || !portfolioPapersManager) {
+    return false;
+  }
+  if (!updatePointer(event, pointerNDC, canvas)) {
+    return false;
+  }
+  raycaster.setFromCamera(pointerNDC, camera);
+  const paperMeshes = portfolioPapersManager.getPaperMeshes();
+  for (const [paperId, mesh] of paperMeshes) {
+    const hits = raycaster.intersectObject(mesh, true);
+    if (hits.length > 0) {
+      portfolioPapersManager.setHoveredScrollablePaper(paperId);
+      return portfolioPapersManager.scrollPaper(paperId, event.deltaY);
+    }
+  }
+  return false;
+};
+
+// Scroll wheel camera orbit on home page and scroll papers on portfolio page
 canvas.addEventListener(
   "wheel",
   (event) => {
+    const scrolledPaper = handlePortfolioPaperScroll(event);
+    if (scrolledPaper) {
+      event.preventDefault();
+      return;
+    }
+
     if (activePage !== "home" || pageTransitionState.active) {
       return;
     }
