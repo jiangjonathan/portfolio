@@ -28,10 +28,21 @@ type PendingScrollState = {
   displayCanvas: HTMLCanvasElement;
   scrollOffset: number;
   maxScroll: number;
+  links?: LinkRegion[];
 };
 
 type ScrollablePaperState = PendingScrollState & {
   texture: CanvasTexture;
+  links?: LinkRegion[];
+  linkOverlays?: HTMLAnchorElement[];
+};
+
+type LinkRegion = {
+  url: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 };
 
 export const PAPERS: PaperConfig[] = [
@@ -43,7 +54,7 @@ export const PAPERS: PaperConfig[] = [
     description: "Test PDF document",
   },
   {
-    id: "hello-world",
+    id: "portfolio",
     name: "Portfolio Overview",
     type: "html",
     url: "/papers/portfolio.md",
@@ -241,11 +252,12 @@ export class PortfolioPapersManager {
   private async loadHTML(paper: PaperConfig): Promise<void> {
     console.log(`[PortfolioPapers] Loading HTML: ${paper.url}`);
 
-    if (paper.id === "hello-world") {
+    if (paper.id === "portfolio") {
       const markdownContent = await this.fetchMarkdownContent(paper);
       const scrollState = this.buildScrollableMarkdownPaper(
         markdownContent,
         paper.url,
+        paper.id,
       );
       if (scrollState) {
         this.createPaperMesh(paper.id, scrollState.displayCanvas, scrollState);
@@ -336,6 +348,7 @@ export class PortfolioPapersManager {
   private buildScrollableMarkdownPaper(
     markdown: string,
     baseUrl: string,
+    paperId: string,
   ): PendingScrollState | null {
     const VIEW_WIDTH = 2048;
     const VIEW_HEIGHT = Math.floor(VIEW_WIDTH * 1.294);
@@ -362,6 +375,8 @@ export class PortfolioPapersManager {
       color: string;
       isBold?: boolean;
       isItalic?: boolean;
+      isLink?: boolean;
+      linkUrl?: string;
     };
 
     type RenderImage = {
@@ -375,24 +390,75 @@ export class PortfolioPapersManager {
     const segments: RenderSegment[] = [];
     const images: RenderImage[] = [];
     const rules: number[] = [];
-    let cursorY = marginTop;
+    const links: LinkRegion[] = [];
     const fontFamily =
       '"Inter", "Helvetica Neue", "Segoe UI", Arial, sans-serif';
     const headingColor = "#0d0f12";
     const bodyColor = "#1f2328";
 
-    // Process inline markdown formatting (bold, italic)
+    // Process inline markdown formatting (bold, italic, links)
     const parseInlineMarkdown = (
+      text: string,
+    ): Array<{
+      text: string;
+      bold: boolean;
+      italic: boolean;
+      isLink?: boolean;
+      linkUrl?: string;
+    }> => {
+      const parts: Array<{
+        text: string;
+        bold: boolean;
+        italic: boolean;
+        isLink?: boolean;
+        linkUrl?: string;
+      }> = [];
+
+      // First pass: extract links [text](url)
+      const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+      let lastIndex = 0;
+      let match;
+
+      while ((match = linkRegex.exec(text)) !== null) {
+        const beforeLink = text.substring(lastIndex, match.index);
+        if (beforeLink) {
+          // Process the text before the link for bold/italic
+          const beforeParts = parseFormattingOnly(beforeLink);
+          parts.push(...beforeParts);
+        }
+
+        // Add the link
+        const linkText = match[1];
+        const linkUrl = match[2];
+        const linkParts = parseFormattingOnly(linkText);
+        linkParts.forEach((part) => {
+          parts.push({ ...part, isLink: true, linkUrl });
+        });
+
+        lastIndex = match.index + match[0].length;
+      }
+
+      // Process remaining text after last link
+      const remaining = text.substring(lastIndex);
+      if (remaining) {
+        const remainingParts = parseFormattingOnly(remaining);
+        parts.push(...remainingParts);
+      }
+
+      return parts.length > 0 ? parts : [{ text, bold: false, italic: false }];
+    };
+
+    // Helper to parse only bold/italic formatting
+    const parseFormattingOnly = (
       text: string,
     ): Array<{ text: string; bold: boolean; italic: boolean }> => {
       const parts: Array<{ text: string; bold: boolean; italic: boolean }> = [];
-      let remaining = text;
 
       // Match **bold**, *italic*, or plain text
       const regex = /(\*\*([^*]+)\*\*)|(\*([^*]+)\*)|([^*]+)/g;
       let match;
 
-      while ((match = regex.exec(remaining)) !== null) {
+      while ((match = regex.exec(text)) !== null) {
         if (match[2]) {
           // Bold text (**text**)
           parts.push({ text: match[2], bold: true, italic: false });
@@ -408,69 +474,169 @@ export class PortfolioPapersManager {
       return parts.length > 0 ? parts : [{ text, bold: false, italic: false }];
     };
 
-    const processLine = (
-      line: string,
-      fontSize: number,
-      baseFontWeight: string,
-      indent: number,
-      color: string,
-      extraSpacing: number,
-    ) => {
-      const inlineParts = parseInlineMarkdown(line);
-      let currentX = marginX + indent;
+    // Reusable function to parse all markdown and populate segments/links/rules
+    const parseMarkdown = () => {
+      // Clear arrays
+      segments.length = 0;
+      links.length = 0;
+      rules.length = 0;
 
-      inlineParts.forEach((part) => {
-        const fontWeight = part.bold ? "700" : baseFontWeight;
-        const fontStyle = part.italic ? "italic " : "";
-        const font = `${fontStyle}${fontWeight} ${fontSize}px ${fontFamily}`;
-        measuringCtx.font = font;
+      // Reset cursor
+      let cursorY = marginTop;
+      let imageIndex = 0; // Track which image we're at
 
-        const wrapped = this.wrapTextForMarkdown(
-          measuringCtx,
-          part.text,
-          usableWidth - (currentX - marginX),
-        );
+      const processLine = (
+        line: string,
+        fontSize: number,
+        baseFontWeight: string,
+        indent: number,
+        color: string,
+        extraSpacing: number,
+      ) => {
+        const inlineParts = parseInlineMarkdown(line);
+        let currentX = marginX + indent;
 
-        const lineHeight = Math.round(fontSize * 1.28);
-        wrapped.forEach((wrappedLine, idx) => {
-          segments.push({
-            text: wrappedLine,
-            x: idx === 0 ? currentX : marginX + indent,
-            y: cursorY,
-            font,
-            color,
+        inlineParts.forEach((part) => {
+          const fontWeight = part.bold ? "700" : baseFontWeight;
+          const fontStyle = part.italic ? "italic " : "";
+          const font = `${fontStyle}${fontWeight} ${fontSize}px ${fontFamily}`;
+          measuringCtx.font = font;
+
+          const wrapped = this.wrapTextForMarkdown(
+            measuringCtx,
+            part.text,
+            usableWidth - (currentX - marginX),
+          );
+
+          const lineHeight = Math.round(fontSize * 1.28);
+          wrapped.forEach((wrappedLine, idx) => {
+            const segmentX = idx === 0 ? currentX : marginX + indent;
+            const textWidth = measuringCtx.measureText(wrappedLine).width;
+
+            const segment = {
+              text: wrappedLine,
+              x: segmentX,
+              y: cursorY,
+              font,
+              color,
+              isLink: part.isLink,
+              linkUrl: part.linkUrl,
+            };
+            segments.push(segment);
+
+            // If this is a link, track its bounding box
+            // Use the segment's Y position to ensure they stay in sync
+            if (part.isLink && part.linkUrl) {
+              const linkRegion = {
+                url: part.linkUrl,
+                x: segment.x,
+                y: segment.y - fontSize * 0.85,
+                width: textWidth,
+                height: fontSize * 1.2,
+              };
+              links.push(linkRegion);
+            }
+
+            if (idx < wrapped.length - 1) {
+              cursorY += lineHeight;
+              currentX = marginX + indent;
+            } else {
+              currentX += textWidth;
+            }
           });
-
-          if (idx < wrapped.length - 1) {
-            cursorY += lineHeight;
-            currentX = marginX + indent;
-          } else {
-            currentX += measuringCtx.measureText(wrappedLine).width;
-          }
         });
+
+        cursorY += Math.round(fontSize * 1.28);
+        cursorY += extraSpacing;
+      };
+
+      lines.forEach((rawLine) => {
+        const line = rawLine.trimEnd();
+        const trimmed = line.trim();
+
+        if (trimmed === "") {
+          cursorY += 20;
+          return;
+        }
+
+        if (/^---+$/.test(trimmed)) {
+          rules.push(cursorY);
+          cursorY += 28;
+          return;
+        }
+
+        // Check for image: ![alt text](url)
+        const imageMatch = trimmed.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
+        if (imageMatch) {
+          // Use imageIndex to get the correct image (they're in order)
+          const imageEntry = images[imageIndex];
+          if (imageEntry) {
+            // Update image Y position
+            imageEntry.y = cursorY;
+
+            if (imageEntry.height > 0) {
+              // Image has loaded, use actual dimensions
+              cursorY += imageEntry.height + 30;
+            } else {
+              // Image not loaded yet, use estimated height
+              const estimatedHeight = usableWidth * 0.8 * 0.75;
+              cursorY += estimatedHeight + 30;
+            }
+            imageIndex++;
+          }
+          return;
+        }
+
+        if (/^#{3}\s+/.test(trimmed)) {
+          const text = trimmed.replace(/^#{3}\s+/, "");
+          processLine(text, 54, "600", 0, headingColor, 18);
+          return;
+        }
+
+        if (/^#{2}\s+/.test(trimmed)) {
+          const text = trimmed.replace(/^#{2}\s+/, "");
+          processLine(text, 62, "600", 0, headingColor, 22);
+          return;
+        }
+
+        if (/^#\s+/.test(trimmed)) {
+          const text = trimmed.replace(/^#\s+/, "");
+          processLine(text, 70, "700", 0, headingColor, 26);
+          return;
+        }
+
+        if (/^[-*]\s+/.test(trimmed)) {
+          const text = trimmed.replace(/^[-*]\s+/, "");
+          processLine(
+            "• " + text,
+            44,
+            "400",
+            Math.floor(marginX * 0.25),
+            bodyColor,
+            12,
+          );
+          return;
+        }
+
+        if (/^####\s+/.test(trimmed)) {
+          const text = trimmed.replace(/^####\s+/, "");
+          processLine(text, 48, "600", 0, headingColor, 16);
+          return;
+        }
+
+        processLine(trimmed, 44, "400", 0, bodyColor, 16);
       });
 
-      cursorY += Math.round(fontSize * 1.28);
-      cursorY += extraSpacing;
+      return cursorY;
     };
 
     // Track image load promises
     const imageLoadPromises: Promise<void>[] = [];
 
+    // Pre-scan for images and set up load handlers
     lines.forEach((rawLine) => {
       const line = rawLine.trimEnd();
       const trimmed = line.trim();
-
-      if (trimmed === "") {
-        cursorY += 20;
-        return;
-      }
-
-      if (/^---+$/.test(trimmed)) {
-        rules.push(cursorY);
-        cursorY += 28;
-        return;
-      }
 
       // Check for image: ![alt text](url)
       const imageMatch = trimmed.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
@@ -478,11 +644,9 @@ export class PortfolioPapersManager {
         const imagePath = imageMatch[2];
         const img = new Image();
 
-        // Resolve relative URLs - baseUrl is like "/papers/portfolio.md"
-        // We need to resolve relative to the directory containing the markdown file
+        // Resolve relative URLs
         let imageUrl: string;
         if (imagePath.startsWith("./")) {
-          // Remove ./ and replace .md with / to get directory
           const baseDir = baseUrl.substring(0, baseUrl.lastIndexOf("/") + 1);
           imageUrl = baseDir + imagePath.substring(2);
         } else if (imagePath.startsWith("/")) {
@@ -491,34 +655,31 @@ export class PortfolioPapersManager {
           imageUrl = imagePath;
         }
 
-        console.log(
-          `[PortfolioPapers] Resolved image path: ${imagePath} -> ${imageUrl}`,
-        );
+        // Create placeholder object
+        const imageEntry: RenderImage = {
+          img,
+          x: marginX,
+          y: 0, // Will be set during parseMarkdown
+          width: 0,
+          height: 0,
+        };
+        images.push(imageEntry);
 
-        const imageY = cursorY;
         const imagePromise = new Promise<void>((resolve) => {
-          // Add timeout to prevent hanging
           const timeout = setTimeout(() => {
             console.warn(`[PortfolioPapers] Image load timeout: ${imageUrl}`);
             resolve();
-          }, 5000); // 5 second timeout
+          }, 5000);
 
           img.onload = () => {
             clearTimeout(timeout);
-            // Calculate dimensions to fit within usableWidth
             const maxWidth = usableWidth * 0.8;
             const scale = Math.min(1, maxWidth / img.width);
             const displayWidth = img.width * scale;
             const displayHeight = img.height * scale;
 
-            images.push({
-              img,
-              x: marginX,
-              y: imageY,
-              width: displayWidth,
-              height: displayHeight,
-            });
-            console.log(`[PortfolioPapers] Image loaded: ${imageUrl}`);
+            imageEntry.width = displayWidth;
+            imageEntry.height = displayHeight;
             resolve();
           };
           img.onerror = (err) => {
@@ -527,57 +688,52 @@ export class PortfolioPapersManager {
               `[PortfolioPapers] Failed to load image: ${imageUrl}`,
               err,
             );
-            resolve(); // Continue even if image fails
+            resolve();
           };
         });
 
         img.src = imageUrl;
-        console.log(`[PortfolioPapers] Attempting to load image: ${imageUrl}`);
         imageLoadPromises.push(imagePromise);
+      }
+    });
 
-        // Reserve space for the image
-        cursorY += 600;
+    // Initial parse with estimated image sizes
+    let cursorY = parseMarkdown();
+
+    // Update image Y positions after initial parse
+    let imageIndex = 0;
+    let currentY = marginTop;
+    lines.forEach((rawLine) => {
+      const line = rawLine.trimEnd();
+      const trimmed = line.trim();
+
+      if (trimmed === "") {
+        currentY += 20;
         return;
       }
 
-      if (/^#{3}\s+/.test(trimmed)) {
-        const text = trimmed.replace(/^#{3}\s+/, "");
-        processLine(text, 48, "600", 0, headingColor, 16);
+      if (/^---+$/.test(trimmed)) {
+        currentY += 28;
         return;
       }
 
-      if (/^#{2}\s+/.test(trimmed)) {
-        const text = trimmed.replace(/^#{2}\s+/, "");
-        processLine(text, 56, "600", 0, headingColor, 20);
+      const imageMatch = trimmed.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
+      if (imageMatch) {
+        if (imageIndex < images.length) {
+          images[imageIndex].y = currentY;
+          const estimatedHeight = usableWidth * 0.8 * 0.75;
+          currentY += estimatedHeight + 30;
+          imageIndex++;
+        }
         return;
       }
 
-      if (/^#\s+/.test(trimmed)) {
-        const text = trimmed.replace(/^#\s+/, "");
-        processLine(text, 64, "700", 0, headingColor, 24);
-        return;
+      // Skip over other content types
+      if (/^#{1,4}\s+/.test(trimmed) || /^[-*]\s+/.test(trimmed)) {
+        currentY += 100; // Rough estimate
+      } else {
+        currentY += 70; // Rough estimate
       }
-
-      if (/^[-*]\s+/.test(trimmed)) {
-        const text = trimmed.replace(/^[-*]\s+/, "");
-        processLine(
-          "• " + text,
-          32,
-          "400",
-          Math.floor(marginX * 0.25),
-          bodyColor,
-          10,
-        );
-        return;
-      }
-
-      if (/^####\s+/.test(trimmed)) {
-        const text = trimmed.replace(/^####\s+/, "");
-        processLine(text, 40, "600", 0, headingColor, 14);
-        return;
-      }
-
-      processLine(trimmed, 32, "400", 0, bodyColor, 14);
     });
 
     const totalHeight = cursorY + marginBottom;
@@ -597,19 +753,30 @@ export class PortfolioPapersManager {
 
       segments.forEach((segment) => {
         fullCtx.font = segment.font;
-        fullCtx.fillStyle = segment.color;
+        fullCtx.fillStyle = segment.isLink ? "#0969da" : segment.color;
         fullCtx.fillText(segment.text, segment.x, segment.y);
+
+        if (segment.isLink) {
+          const textWidth = fullCtx.measureText(segment.text).width;
+          fullCtx.strokeStyle = "#0969da";
+          fullCtx.lineWidth = 1;
+          fullCtx.beginPath();
+          fullCtx.moveTo(segment.x, segment.y + 3);
+          fullCtx.lineTo(segment.x + textWidth, segment.y + 3);
+          fullCtx.stroke();
+        }
       });
 
-      // Draw images
       images.forEach((image) => {
-        fullCtx.drawImage(
-          image.img,
-          image.x,
-          image.y,
-          image.width,
-          image.height,
-        );
+        if (image.width > 0 && image.height > 0) {
+          fullCtx.drawImage(
+            image.img,
+            image.x,
+            image.y,
+            image.width,
+            image.height,
+          );
+        }
       });
 
       rules.forEach((ruleY) => {
@@ -625,15 +792,42 @@ export class PortfolioPapersManager {
     // Render immediately without waiting for images
     renderContent();
 
-    // Load images in background and re-render when ready (non-blocking)
+    // Load images in background and re-render when ready
     if (imageLoadPromises.length > 0) {
       Promise.race([
         Promise.all(imageLoadPromises),
         new Promise<void>((resolve) => setTimeout(resolve, 6000)),
       ])
         .then(() => {
-          console.log("[PortfolioPapers] Images loaded, re-rendering");
+          // Re-parse markdown with actual image dimensions
+          const newCursorY = parseMarkdown();
+          const newTotalHeight = newCursorY + marginBottom;
+          fullCanvas.height = Math.max(VIEW_HEIGHT, Math.ceil(newTotalHeight));
+
           renderContent();
+
+          displayCtx.clearRect(0, 0, displayCanvas.width, displayCanvas.height);
+          displayCtx.drawImage(
+            fullCanvas,
+            0,
+            0,
+            displayCanvas.width,
+            displayCanvas.height,
+            0,
+            0,
+            displayCanvas.width,
+            displayCanvas.height,
+          );
+
+          const scrollableState = this.scrollablePaperStates.get(paperId);
+          if (scrollableState?.texture) {
+            scrollableState.texture.needsUpdate = true;
+            scrollableState.links = links;
+            scrollableState.maxScroll = Math.max(
+              0,
+              fullCanvas.height - displayCanvas.height,
+            );
+          }
         })
         .catch((error) => {
           console.error("[PortfolioPapers] Error loading images:", error);
@@ -660,6 +854,7 @@ export class PortfolioPapersManager {
       displayCanvas,
       scrollOffset: 0,
       maxScroll,
+      links,
     };
   }
 
@@ -691,31 +886,11 @@ export class PortfolioPapersManager {
       return;
     }
 
-    console.log(`[PortfolioPapers] Creating paper mesh for: ${paperId}`);
-    console.log(
-      `[PortfolioPapers] Canvas size: ${canvas.width}x${canvas.height}`,
-    );
-    console.log(
-      `[PortfolioPapers] Whitepaper position:`,
-      this.whitepaperMesh.position,
-    );
-    console.log(
-      `[PortfolioPapers] Whitepaper rotation:`,
-      this.whitepaperMesh.rotation,
-    );
-    console.log(
-      `[PortfolioPapers] Whitepaper scale:`,
-      this.whitepaperMesh.scale,
-    );
-
     // Generate random rotation for this paper if not already set
     if (!this.paperRotations.has(paperId)) {
       const randomRotation =
         (Math.random() - 0.5) * 2 * this.MAX_RANDOM_ROTATION;
       this.paperRotations.set(paperId, randomRotation);
-      console.log(
-        `[PortfolioPapers] Generated random rotation for ${paperId}: ${(randomRotation * 180) / Math.PI}°`,
-      );
     }
 
     // Remove existing paper mesh if any
@@ -737,7 +912,6 @@ export class PortfolioPapersManager {
     if (this.renderer) {
       const maxAnisotropy = this.renderer.capabilities.getMaxAnisotropy();
       texture.anisotropy = maxAnisotropy;
-      console.log(`[PortfolioPapers] Using anisotropy: ${maxAnisotropy}`);
     } else {
       texture.anisotropy = 16;
     }
@@ -767,10 +941,6 @@ export class PortfolioPapersManager {
     const paperWidth = 21.6; // Base width in 3D units (increased for visibility)
     const paperHeight = paperWidth * aspectRatio; // Maintain PDF aspect ratio
 
-    console.log(
-      `[PortfolioPapers] Paper geometry size: ${paperWidth}x${paperHeight}, aspect ratio: ${aspectRatio}`,
-    );
-
     const geometry = new PlaneGeometry(paperWidth, paperHeight);
     const mesh = new Mesh(geometry, material);
 
@@ -797,17 +967,9 @@ export class PortfolioPapersManager {
     // Add to scene
     if (this.whitepaperMesh.parent) {
       this.whitepaperMesh.parent.add(mesh);
-      console.log(
-        `[PortfolioPapers] Paper mesh added to parent:`,
-        this.whitepaperMesh.parent,
-      );
     }
 
     this.paperMeshes.set(paperId, mesh);
-    console.log(
-      `[PortfolioPapers] Paper mesh created and added to scene for: ${paperId}`,
-    );
-    console.log(`[PortfolioPapers] Final mesh position:`, mesh.position);
   }
 
   scrollPaper(paperId: string, deltaY: number): boolean {
@@ -980,9 +1142,6 @@ export class PortfolioPapersManager {
     if (paperId) {
       const stackHeight = this.getStackHeightForPaper(paperId);
       mesh.position.y += stackHeight;
-      console.log(
-        `[PortfolioPapers] Positioning ${paperId} at stack height: ${stackHeight}`,
-      );
     } else {
       mesh.position.y += this.BASE_PAPER_HEIGHT;
     }
@@ -1323,5 +1482,36 @@ export class PortfolioPapersManager {
     } finally {
       this.isAnimating = false;
     }
+  }
+
+  // Check if a UV coordinate on a paper hits a link
+  checkLinkAtUV(paperId: string, u: number, v: number): string | null {
+    const scrollableState = this.scrollablePaperStates.get(paperId);
+    if (!scrollableState?.links || scrollableState.links.length === 0) {
+      return null;
+    }
+
+    const { displayCanvas, scrollOffset, links } = scrollableState;
+
+    // Convert UV coordinates to canvas pixel coordinates
+    // UV coordinates are in display space (the visible portion)
+    // IMPORTANT: V is flipped in texture space - V=0 is bottom, V=1 is top
+    const clickX = u * displayCanvas.width;
+    const clickY = (1 - v) * displayCanvas.height + scrollOffset; // Flip V and add scroll offset
+
+    // Check each link region with expanded hit area for easier clicking
+    const hitPadding = 10; // Extra pixels around the link for easier clicking
+    for (const link of links) {
+      if (
+        clickX >= link.x - hitPadding &&
+        clickX <= link.x + link.width + hitPadding &&
+        clickY >= link.y - hitPadding &&
+        clickY <= link.y + link.height + hitPadding
+      ) {
+        return link.url;
+      }
+    }
+
+    return null;
   }
 }

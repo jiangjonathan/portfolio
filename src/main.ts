@@ -562,6 +562,20 @@ document.addEventListener("mousemove", (event) => {
       if (!paper) {
         continue;
       }
+
+      // Check if hovering over a link
+      const hit = hits[0];
+      if (hit.uv) {
+        const linkUrl = portfolioPapersManager.checkLinkAtUV(
+          paperId,
+          hit.uv.x,
+          hit.uv.y,
+        );
+        if (linkUrl) {
+          isHoveringPaper = true;
+        }
+      }
+
       if (paper.type === "pdf") {
         isHoveringPaper = true;
       }
@@ -2506,6 +2520,21 @@ canvas.addEventListener("pointerdown", (event) => {
               portfolioPapersManager.isPaperInLeftStack(paperId)
             ) {
               continue;
+            }
+
+            // Check if clicking on a link within the paper
+            const hit = hits[0];
+            if (hit.uv) {
+              const linkUrl = portfolioPapersManager.checkLinkAtUV(
+                paperId,
+                hit.uv.x,
+                hit.uv.y,
+              );
+              if (linkUrl) {
+                console.log(`[Portfolio] Opening link: ${linkUrl}`);
+                window.open(linkUrl, "_blank");
+                return;
+              }
             }
 
             // Found a paper click - check if it's a PDF
