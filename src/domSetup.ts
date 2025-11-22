@@ -7,6 +7,23 @@ import {
   LINK_HOVER_COLOR,
 } from "./config";
 
+// Navigation controls styling - used on page load and when switching pages
+export const GLOBAL_CONTROLS_DEFAULT = {
+  top: "80px",
+  left: "20px",
+  gap: "3rem",
+  flexDirection: "column" as const,
+  transform: "none",
+} as const;
+
+export const GLOBAL_CONTROLS_TURNTABLE = {
+  bottom: "23px",
+  left: "65px",
+  gap: "1rem",
+  flexDirection: "row" as const,
+  transform: "none",
+} as const;
+
 export interface DOMElements {
   root: HTMLElement;
   canvas: HTMLCanvasElement;
@@ -41,7 +58,7 @@ export function setupDOM(): DOMElements {
   // Create name text in top left corner
   const nameText = document.createElement("div");
   nameText.id = "jonathan-jiang-name";
-  nameText.textContent = "Jonathan Jiang";
+  nameText.textContent = "jonathan jiang";
   nameText.style.cssText = `
     position: fixed;
     top: 20px;
@@ -289,12 +306,12 @@ export function setupDOM(): DOMElements {
   globalControls.id = "global-controls";
   Object.assign(globalControls.style, {
     position: "fixed",
-    bottom: "70%",
-    left: "20px",
-    transform: "translateY(50%)",
+    top: GLOBAL_CONTROLS_DEFAULT.top,
+    left: GLOBAL_CONTROLS_DEFAULT.left,
+    transform: GLOBAL_CONTROLS_DEFAULT.transform,
     display: "flex",
-    flexDirection: "column",
-    gap: "2rem",
+    flexDirection: GLOBAL_CONTROLS_DEFAULT.flexDirection,
+    gap: GLOBAL_CONTROLS_DEFAULT.gap,
     alignItems: "flex-start",
     zIndex: HIDE_BUTTON_Z_INDEX,
   });

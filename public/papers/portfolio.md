@@ -2,6 +2,9 @@
 **Three.js**, **TypeScript**, **WebGL**
 [jiangjonathan.com](https://jiangjonathan.com)    [github](https://github.com/jiangjonathan/portfolio)
 
+![portfolio website picture](./portfoliowebsite.png)
+
+
 ### Overview
 
 My portfolio website uses vanilla TypeScript, Three.js for 3D, and Vite for frontend tooling. For the complex models used in my website, I learned Blender for the first time. I would have rather used Autodesk Inventor or Solidworks, but I didn't have the licenses for those anymore.

@@ -127,7 +127,11 @@ import {
   type TurntableVinylState,
 } from "./vinylInteractions";
 import { TurntableStateManager } from "./turntableState";
-import { setupDOM } from "./domSetup";
+import {
+  setupDOM,
+  GLOBAL_CONTROLS_DEFAULT,
+  GLOBAL_CONTROLS_TURNTABLE,
+} from "./domSetup";
 import { PortfolioPapersManager } from "./portfolioPapers";
 
 declare global {
@@ -1124,19 +1128,23 @@ const setActiveScenePage = (page: ScenePage) => {
 
       if (page === "turntable") {
         // Move to bottom left, to the right of the + sign (toggle button is ~30px wide at left: 20px)
-        globalControls.style.bottom = "23px";
-        globalControls.style.left = "65px";
-        globalControls.style.transform = "none";
-        globalControls.style.flexDirection = "row";
-        globalControls.style.gap = "1rem";
+        globalControls.style.top = "";
+        globalControls.style.bottom = GLOBAL_CONTROLS_TURNTABLE.bottom;
+        globalControls.style.left = GLOBAL_CONTROLS_TURNTABLE.left;
+        globalControls.style.transform = GLOBAL_CONTROLS_TURNTABLE.transform;
+        globalControls.style.flexDirection =
+          GLOBAL_CONTROLS_TURNTABLE.flexDirection;
+        globalControls.style.gap = GLOBAL_CONTROLS_TURNTABLE.gap;
         globalControls.style.alignItems = "center";
       } else {
-        // Return to left side center-left
-        globalControls.style.bottom = "70%";
-        globalControls.style.left = "20px";
-        globalControls.style.transform = "translateY(50%)";
-        globalControls.style.flexDirection = "column";
-        globalControls.style.gap = "2rem";
+        // Return to left side top
+        globalControls.style.bottom = "";
+        globalControls.style.top = GLOBAL_CONTROLS_DEFAULT.top;
+        globalControls.style.left = GLOBAL_CONTROLS_DEFAULT.left;
+        globalControls.style.transform = GLOBAL_CONTROLS_DEFAULT.transform;
+        globalControls.style.flexDirection =
+          GLOBAL_CONTROLS_DEFAULT.flexDirection;
+        globalControls.style.gap = GLOBAL_CONTROLS_DEFAULT.gap;
         globalControls.style.alignItems = "flex-start";
       }
       // Fade back in
@@ -1147,18 +1155,22 @@ const setActiveScenePage = (page: ScenePage) => {
     updateButtonVisibility();
 
     if (page === "turntable") {
-      globalControls.style.bottom = "23px";
-      globalControls.style.left = "65px";
-      globalControls.style.transform = "none";
-      globalControls.style.flexDirection = "row";
-      globalControls.style.gap = "1rem";
+      globalControls.style.top = "";
+      globalControls.style.bottom = GLOBAL_CONTROLS_TURNTABLE.bottom;
+      globalControls.style.left = GLOBAL_CONTROLS_TURNTABLE.left;
+      globalControls.style.transform = GLOBAL_CONTROLS_TURNTABLE.transform;
+      globalControls.style.flexDirection =
+        GLOBAL_CONTROLS_TURNTABLE.flexDirection;
+      globalControls.style.gap = GLOBAL_CONTROLS_TURNTABLE.gap;
       globalControls.style.alignItems = "center";
     } else {
-      globalControls.style.bottom = "70%";
-      globalControls.style.left = "20px";
-      globalControls.style.transform = "translateY(50%)";
-      globalControls.style.flexDirection = "column";
-      globalControls.style.gap = "2rem";
+      globalControls.style.bottom = "";
+      globalControls.style.top = GLOBAL_CONTROLS_DEFAULT.top;
+      globalControls.style.left = GLOBAL_CONTROLS_DEFAULT.left;
+      globalControls.style.transform = GLOBAL_CONTROLS_DEFAULT.transform;
+      globalControls.style.flexDirection =
+        GLOBAL_CONTROLS_DEFAULT.flexDirection;
+      globalControls.style.gap = GLOBAL_CONTROLS_DEFAULT.gap;
       globalControls.style.alignItems = "flex-start";
     }
   }

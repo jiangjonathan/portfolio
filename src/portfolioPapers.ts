@@ -556,9 +556,9 @@ export class PortfolioPapersManager {
               const linkRegion = {
                 url: word.linkUrl,
                 x: segment.x,
-                y: segment.y - fontSize * 0.85,
+                y: segment.y - fontSize * 1,
                 width: wordWidth,
-                height: fontSize * 1.2,
+                height: fontSize * 1.6, // Make taller for better spacing
               };
               links.push(linkRegion);
             }
