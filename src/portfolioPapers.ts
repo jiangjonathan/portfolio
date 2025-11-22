@@ -495,58 +495,113 @@ export class PortfolioPapersManager {
       ) => {
         const inlineParts = parseInlineMarkdown(line);
         let currentX = marginX + indent;
+        const lineHeight = Math.round(fontSize * 1.28);
+
+        // Process all parts and build a flat list of words with their formatting
+        const words: Array<{
+          text: string;
+          font: string;
+          bold: boolean;
+          italic: boolean;
+          isLink?: boolean;
+          linkUrl?: string;
+        }> = [];
 
         inlineParts.forEach((part) => {
           const fontWeight = part.bold ? "700" : baseFontWeight;
           const fontStyle = part.italic ? "italic " : "";
           const font = `${fontStyle}${fontWeight} ${fontSize}px ${fontFamily}`;
-          measuringCtx.font = font;
 
-          const wrapped = this.wrapTextForMarkdown(
-            measuringCtx,
-            part.text,
-            usableWidth - (currentX - marginX),
-          );
+          // Split part into words but keep the formatting info
+          const partWords = part.text.split(/(\s+)/); // Keep whitespace
+          partWords.forEach((word) => {
+            if (word) {
+              words.push({
+                text: word,
+                font,
+                bold: part.bold,
+                italic: part.italic,
+                isLink: part.isLink,
+                linkUrl: part.linkUrl,
+              });
+            }
+          });
+        });
 
-          const lineHeight = Math.round(fontSize * 1.28);
-          wrapped.forEach((wrappedLine, idx) => {
-            const segmentX = idx === 0 ? currentX : marginX + indent;
-            const textWidth = measuringCtx.measureText(wrappedLine).width;
+        // Now layout words with proper wrapping
+        let lineWords: typeof words = [];
+        let lineWidth = 0;
+
+        const flushLine = () => {
+          if (lineWords.length === 0) return;
+
+          let x = currentX;
+          lineWords.forEach((word) => {
+            measuringCtx.font = word.font;
+            const wordWidth = measuringCtx.measureText(word.text).width;
 
             const segment = {
-              text: wrappedLine,
-              x: segmentX,
+              text: word.text,
+              x,
               y: cursorY,
-              font,
+              font: word.font,
               color,
-              isLink: part.isLink,
-              linkUrl: part.linkUrl,
+              isLink: word.isLink,
+              linkUrl: word.linkUrl,
             };
             segments.push(segment);
 
             // If this is a link, track its bounding box
-            // Use the segment's Y position to ensure they stay in sync
-            if (part.isLink && part.linkUrl) {
+            if (word.isLink && word.linkUrl) {
               const linkRegion = {
-                url: part.linkUrl,
+                url: word.linkUrl,
                 x: segment.x,
                 y: segment.y - fontSize * 0.85,
-                width: textWidth,
+                width: wordWidth,
                 height: fontSize * 1.2,
               };
               links.push(linkRegion);
             }
 
-            if (idx < wrapped.length - 1) {
-              cursorY += lineHeight;
-              currentX = marginX + indent;
-            } else {
-              currentX += textWidth;
-            }
+            x += wordWidth;
           });
+
+          cursorY += lineHeight;
+          currentX = marginX + indent;
+          lineWords = [];
+          lineWidth = 0;
+        };
+
+        words.forEach((word) => {
+          measuringCtx.font = word.font;
+          const wordWidth = measuringCtx.measureText(word.text).width;
+          const isWhitespace = /^\s+$/.test(word.text);
+
+          // Check if adding this word would exceed the line width
+          if (
+            lineWidth + wordWidth > usableWidth - (currentX - marginX) &&
+            lineWords.length > 0
+          ) {
+            // Remove trailing whitespace from current line
+            while (
+              lineWords.length > 0 &&
+              /^\s+$/.test(lineWords[lineWords.length - 1].text)
+            ) {
+              const removed = lineWords.pop()!;
+              measuringCtx.font = removed.font;
+              lineWidth -= measuringCtx.measureText(removed.text).width;
+            }
+            flushLine();
+          }
+
+          lineWords.push(word);
+          lineWidth += wordWidth;
         });
 
-        cursorY += Math.round(fontSize * 1.28);
+        // Flush remaining words
+        flushLine();
+
+        // Add extra spacing (but we already added one lineHeight in flushLine)
         cursorY += extraSpacing;
       };
 
