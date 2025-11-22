@@ -9,7 +9,7 @@ import {
 
 // Navigation controls styling - used on page load and when switching pages
 export const GLOBAL_CONTROLS_DEFAULT = {
-  top: "80px",
+  top: "150px",
   left: "20px",
   gap: "3rem",
   flexDirection: "column" as const,

@@ -1175,6 +1175,15 @@ export class PortfolioPapersManager {
     });
   }
 
+  hideAllPapersExceptTest(): void {
+    this.paperMeshes.forEach((mesh, paperId) => {
+      // Keep test.pdf visible, hide all others
+      if (paperId !== "test") {
+        mesh.visible = false;
+      }
+    });
+  }
+
   getCurrentPaperId(): string | null {
     return this.currentPaperId;
   }

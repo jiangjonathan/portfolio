@@ -740,11 +740,12 @@ const setupPortfolioCover = (model: Object3D) => {
       mesh.renderOrder = 100;
       // Disable shadow receiving on cover to prevent z-fighting
       mesh.receiveShadow = false;
-      console.log("[Portfolio Cover] Found cover mesh:", mesh.name);
-      console.log(
-        "[Portfolio Cover] Original Z rotation:",
-        portfolioCoverOriginalRotation,
-      );
+
+      // console.log("[Portfolio Cover] Found cover mesh:", mesh.name);
+      // console.log(
+      //   "[Portfolio Cover] Original Z rotation:",
+      //   portfolioCoverOriginalRotation,
+      // );
     },
     (whitepaperMesh) => {
       console.log("[Portfolio] Found whitepaper mesh:", whitepaperMesh.name);
@@ -1016,6 +1017,11 @@ const setActiveScenePage = (page: ScenePage) => {
     // Hide papers UI immediately for the new scene.
     portfolioPapersContainer.style.display = "none";
 
+    // Hide all paper meshes except test.pdf
+    if (portfolioPapersManager) {
+      portfolioPapersManager.hideAllPapersExceptTest();
+    }
+
     (async () => {
       try {
         if (portfolioPapersManager) {
@@ -1100,6 +1106,10 @@ const setActiveScenePage = (page: ScenePage) => {
     if (yt && !yt.isPlayerCollapsed()) {
       yt.setPlayerCollapsed(true);
     }
+    // Clear turntable-specific state when leaving turntable
+    isTonearmInPlayArea = false;
+    turntableStateManager.setTonearmInPlayArea(false);
+    yt?.updateButtonVisibility();
   }
 
   // Reposition buttons based on page
@@ -2301,6 +2311,7 @@ function setVinylOnTurntable(onTurntable: boolean) {
   turntableStateManager.setOnTurntable(false);
   turntableStateManager.setTurntableVinylState(null);
   turntableController?.setVinylPresence(false);
+  yt.pause();
   loadedSelectionVideoId = null;
   turntableStateManager.setTonearmInPlayArea(false);
   yt.setControlsVisible(false);
@@ -2352,9 +2363,11 @@ const startTurntableVinylFlyaway = () => {
   pendingPromotionSource = null;
   turntableController?.setVinylPresence(false);
   turntableController?.liftNeedle();
+  yt.pause();
   loadedSelectionVideoId = null;
   isTonearmInPlayArea = false;
   yt.setControlsVisible(false);
+  yt.updateButtonVisibility();
   const viewport = root.querySelector(
     ".yt-player-viewport",
   ) as HTMLElement | null;
