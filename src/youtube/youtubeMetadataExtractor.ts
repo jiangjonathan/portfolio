@@ -10,6 +10,27 @@
 
 import { getOrCacheAlbumCover } from "../utils/albumCoverCache";
 
+// MusicBrainz Rate Limiter (1 request per second)
+let lastMusicBrainzRequest = 0;
+const MUSICBRAINZ_RATE_LIMIT = 1100; // 1.1 seconds to be safe
+
+async function rateLimitedFetch(
+  url: string,
+  options?: RequestInit,
+): Promise<Response> {
+  const now = Date.now();
+  const timeSinceLastRequest = now - lastMusicBrainzRequest;
+
+  if (timeSinceLastRequest < MUSICBRAINZ_RATE_LIMIT) {
+    const waitTime = MUSICBRAINZ_RATE_LIMIT - timeSinceLastRequest;
+    console.log(`[MusicBrainz] Rate limiting: waiting ${waitTime}ms`);
+    await new Promise((resolve) => setTimeout(resolve, waitTime));
+  }
+
+  lastMusicBrainzRequest = Date.now();
+  return fetch(url, options);
+}
+
 export interface SongMetadata {
   youtubeId: string;
   artistName: string;
@@ -52,7 +73,7 @@ async function fetchArtistGenres(
     const query = `artist:"${artistName}"`;
     const url = `https://musicbrainz.org/ws/2/artist/?fmt=json&limit=1&query=${encodeURIComponent(query)}`;
 
-    const response = await fetch(url, {
+    const response = await rateLimitedFetch(url, {
       headers: {
         "User-Agent": "vinyl-library/1.0",
       },
@@ -97,7 +118,7 @@ async function fetchReleaseGroupGenres(
   try {
     const url = `https://musicbrainz.org/ws/2/release-group/${releaseGroupId}?inc=genres&fmt=json`;
 
-    const response = await fetch(url, {
+    const response = await rateLimitedFetch(url, {
       headers: {
         "User-Agent": "vinyl-library/1.0",
       },
@@ -180,7 +201,7 @@ async function fetchAdditionalReleasesByTitle(
     const query = `release:"${albumTitle}" AND artist:"${artistName}"`;
     const url = `https://musicbrainz.org/ws/2/release/?fmt=json&limit=50&query=${encodeURIComponent(query)}&inc=release-groups`;
 
-    const response = await fetch(url, {
+    const response = await rateLimitedFetch(url, {
       headers: {
         "User-Agent": "vinyl-library/1.0",
       },
@@ -317,7 +338,7 @@ async function searchMusicBrainz(
       }
       const url = `https://musicbrainz.org/ws/2/recording/?fmt=json&limit=20&query=${encodeURIComponent(query)}&inc=releases+release-groups`;
 
-      const response = await fetch(url, {
+      const response = await rateLimitedFetch(url, {
         headers: {
           "User-Agent": "vinyl-library/1.0",
         },
@@ -395,7 +416,7 @@ async function searchMusicBrainz(
         }
         const rgUrl = `https://musicbrainz.org/ws/2/release-group/?fmt=json&limit=10&query=${encodeURIComponent(rgQuery)}&inc=genres`;
 
-        const rgResponse = await fetch(rgUrl, {
+        const rgResponse = await rateLimitedFetch(rgUrl, {
           headers: {
             "User-Agent": "vinyl-library/1.0",
           },
