@@ -273,8 +273,8 @@ export class PortfolioPapersManager {
     });
     if (!ctx) return;
 
-    canvas.width = 1024;
-    canvas.height = Math.floor(1024 * 1.294);
+    canvas.width = 2048;
+    canvas.height = Math.floor(2048 * 1.294);
 
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -323,7 +323,7 @@ export class PortfolioPapersManager {
     baseUrl: string,
     paperId: string,
   ): PendingScrollState | null {
-    const VIEW_WIDTH = 1024;
+    const VIEW_WIDTH = 2048;
     const VIEW_HEIGHT = Math.floor(VIEW_WIDTH * 1.294);
     const displayCanvas = document.createElement("canvas");
     const fullCanvas = document.createElement("canvas");
@@ -616,19 +616,19 @@ export class PortfolioPapersManager {
 
         if (/^#{3}\s+/.test(trimmed)) {
           const text = trimmed.replace(/^#{3}\s+/, "");
-          processLine(text, 27, "600", 0, headingColor, 9);
+          processLine(text, 54, "600", 0, headingColor, 18);
           return;
         }
 
         if (/^#{2}\s+/.test(trimmed)) {
           const text = trimmed.replace(/^#{2}\s+/, "");
-          processLine(text, 31, "600", 0, headingColor, 11);
+          processLine(text, 62, "600", 0, headingColor, 22);
           return;
         }
 
         if (/^#\s+/.test(trimmed)) {
           const text = trimmed.replace(/^#\s+/, "");
-          processLine(text, 35, "700", 0, headingColor, 13);
+          processLine(text, 70, "700", 0, headingColor, 26);
           return;
         }
 
@@ -636,22 +636,22 @@ export class PortfolioPapersManager {
           const text = trimmed.replace(/^[-*]\s+/, "");
           processLine(
             "• " + text,
-            22,
+            44,
             "400",
             Math.floor(marginX * 0.25),
             bodyColor,
-            6,
+            12,
           );
           return;
         }
 
         if (/^####\s+/.test(trimmed)) {
           const text = trimmed.replace(/^####\s+/, "");
-          processLine(text, 24, "600", 0, headingColor, 8);
+          processLine(text, 48, "600", 0, headingColor, 16);
           return;
         }
 
-        processLine(trimmed, 22, "400", 0, bodyColor, 8);
+        processLine(trimmed, 44, "400", 0, bodyColor, 16);
       });
 
       return cursorY;
