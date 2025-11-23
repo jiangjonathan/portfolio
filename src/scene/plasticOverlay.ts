@@ -4,7 +4,12 @@
  */
 
 // Available plastic texture variants
-const PLASTIC_TEXTURES = ["plastic1.png", "plastic3.png", "plastic4.png"];
+const PLASTIC_TEXTURES = [
+  "plastic1.png",
+  "plastic2.png",
+  "plastic3.png",
+  "plastic4.png",
+];
 
 // Rotation options for variation (degrees)
 const ROTATION_OPTIONS = [0, 90, 180, 270];
