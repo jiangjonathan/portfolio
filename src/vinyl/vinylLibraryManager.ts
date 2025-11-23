@@ -35,6 +35,8 @@ export class VinylLibraryManager {
   private config: WidgetConfig;
   private ownerLibrary: VisitorEntry[] = [];
   private isLoading = false;
+  private statusAnimationInterval: number | null = null;
+  private statusStartTime: number = 0;
 
   constructor(config: WidgetConfig) {
     this.config = config;
@@ -865,8 +867,32 @@ export class VinylLibraryManager {
     const statusEl = document.getElementById("vinyl-status");
     if (!statusEl) return;
 
-    statusEl.textContent = message;
+    // Clear any existing animation
+    if (this.statusAnimationInterval !== null) {
+      clearInterval(this.statusAnimationInterval);
+      this.statusAnimationInterval = null;
+    }
+
     statusEl.className = `status-message show ${type}`;
+
+    if (type === "loading") {
+      // Start animation with elapsed time
+      this.statusStartTime = Date.now();
+      let dotCount = 0;
+
+      const updateStatus = () => {
+        const elapsed = Math.floor((Date.now() - this.statusStartTime) / 1000);
+        const dots = ".".repeat((dotCount % 3) + 1).padEnd(3, " "); // Keep dots at fixed width
+        statusEl.textContent = `${message}${dots} (${elapsed}s)`;
+        dotCount++;
+      };
+
+      updateStatus(); // Initial update
+      this.statusAnimationInterval = window.setInterval(updateStatus, 500);
+    } else {
+      // For success/error, just show the message
+      statusEl.textContent = message;
+    }
   }
 
   /**
