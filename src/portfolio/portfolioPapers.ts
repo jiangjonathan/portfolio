@@ -616,19 +616,19 @@ export class PortfolioPapersManager {
 
         if (/^#{3}\s+/.test(trimmed)) {
           const text = trimmed.replace(/^#{3}\s+/, "");
-          processLine(text, 54, "600", 0, headingColor, 18);
+          processLine(text, 27, "600", 0, headingColor, 9);
           return;
         }
 
         if (/^#{2}\s+/.test(trimmed)) {
           const text = trimmed.replace(/^#{2}\s+/, "");
-          processLine(text, 62, "600", 0, headingColor, 22);
+          processLine(text, 31, "600", 0, headingColor, 11);
           return;
         }
 
         if (/^#\s+/.test(trimmed)) {
           const text = trimmed.replace(/^#\s+/, "");
-          processLine(text, 70, "700", 0, headingColor, 26);
+          processLine(text, 35, "700", 0, headingColor, 13);
           return;
         }
 
@@ -636,22 +636,22 @@ export class PortfolioPapersManager {
           const text = trimmed.replace(/^[-*]\s+/, "");
           processLine(
             "• " + text,
-            44,
+            22,
             "400",
             Math.floor(marginX * 0.25),
             bodyColor,
-            12,
+            6,
           );
           return;
         }
 
         if (/^####\s+/.test(trimmed)) {
           const text = trimmed.replace(/^####\s+/, "");
-          processLine(text, 48, "600", 0, headingColor, 16);
+          processLine(text, 24, "600", 0, headingColor, 8);
           return;
         }
 
-        processLine(trimmed, 44, "400", 0, bodyColor, 16);
+        processLine(trimmed, 22, "400", 0, bodyColor, 8);
       });
 
       return cursorY;
