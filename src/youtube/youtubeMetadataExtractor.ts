@@ -361,6 +361,9 @@ async function searchMusicBrainz(
         for (const release of releases) {
           if (releaseMap.has(release.id)) continue;
 
+          // Filter: only official releases (no bootlegs)
+          if (release.status !== "Official") continue;
+
           const artistCredit = release["artist-credit"]?.[0];
           // Use release artist if available, otherwise fall back to recording artist
           const artist =
@@ -456,13 +459,37 @@ async function searchMusicBrainz(
             }
 
             const releasesData = await releasesResponse.json();
-            const releases = releasesData.releases || [];
+            const allReleases = releasesData.releases || [];
+
+            // Filter: only official releases (no bootlegs)
+            const officialReleases = allReleases.filter(
+              (r: any) => r.status === "Official",
+            );
+
             console.log(
-              `[MusicBrainz] Release group https://musicbrainz.org/release-group/${rgId}: Found ${releases.length} releases`,
+              `[MusicBrainz] Release group https://musicbrainz.org/release-group/${rgId}: Found ${allReleases.length} releases, ${officialReleases.length} official`,
+            );
+
+            // Prioritize by media type: Digital Media > Vinyl > CD
+            const prioritizedReleases = officialReleases.sort(
+              (a: any, b: any) => {
+                const getMediaPriority = (release: any) => {
+                  const media = release["media"] || [];
+                  if (media.length === 0) return 999; // No media info = lowest priority
+
+                  const format = media[0]["format"]?.toLowerCase() || "";
+                  if (format.includes("digital")) return 1;
+                  if (format.includes("vinyl")) return 2;
+                  if (format.includes("cd")) return 3;
+                  return 4; // Other formats
+                };
+
+                return getMediaPriority(a) - getMediaPriority(b);
+              },
             );
 
             allReleasesData.push({
-              releases: releases.slice(0, 5),
+              releases: prioritizedReleases.slice(0, 5),
               rgId,
             });
           } catch (error) {
@@ -655,21 +682,30 @@ async function searchMusicBrainz(
       );
     });
 
-    // Sort by vinyl priority (12" vinyl first, then other vinyl, then others)
-    const sortedByVinyl = withCoverArt.sort((a, b) => {
-      const aIsVinyl = a.packaging?.toLowerCase().includes("vinyl") ? 1 : 0;
-      const bIsVinyl = b.packaging?.toLowerCase().includes("vinyl") ? 1 : 0;
+    // Sort by media type priority: Digital Media > Vinyl > CD > Others
+    const sortedByMedia = withCoverArt.sort((a, b) => {
+      const getMediaPriority = (candidate: AlbumArtCandidate) => {
+        const packaging = candidate.packaging?.toLowerCase() || "";
+        if (packaging.includes("digital")) return 1;
+        if (packaging.includes("vinyl")) return 2;
+        if (packaging.includes("cd")) return 3;
+        return 4; // Other formats
+      };
 
-      if (aIsVinyl !== bIsVinyl) {
-        return bIsVinyl - aIsVinyl; // Vinyl first
+      const aPriority = getMediaPriority(a);
+      const bPriority = getMediaPriority(b);
+
+      if (aPriority !== bPriority) {
+        return aPriority - bPriority; // Lower number = higher priority
       }
 
       // If both are vinyl, prioritize 12"
-      const aIs12 = a.packaging?.toLowerCase().includes("12") ? 1 : 0;
-      const bIs12 = b.packaging?.toLowerCase().includes("12") ? 1 : 0;
-
-      if (aIs12 !== bIs12) {
-        return bIs12 - aIs12; // 12" first
+      if (aPriority === 2 && bPriority === 2) {
+        const aIs12 = a.packaging?.toLowerCase().includes("12") ? 1 : 0;
+        const bIs12 = b.packaging?.toLowerCase().includes("12") ? 1 : 0;
+        if (aIs12 !== bIs12) {
+          return bIs12 - aIs12; // 12" first
+        }
       }
 
       return 0;
@@ -678,7 +714,7 @@ async function searchMusicBrainz(
     // Deduplicate by album title to avoid showing multiple editions/versions
     // Keep first occurrence of each unique title
     const uniqueByTitle = new Map<string, AlbumArtCandidate>();
-    sortedByVinyl.forEach((c) => {
+    sortedByMedia.forEach((c) => {
       if (!uniqueByTitle.has(c.title)) {
         uniqueByTitle.set(c.title, c);
       }
