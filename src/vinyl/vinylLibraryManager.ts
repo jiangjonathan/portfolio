@@ -883,7 +883,8 @@ export class VinylLibraryManager {
       const updateStatus = () => {
         const elapsed = Math.floor((Date.now() - this.statusStartTime) / 1000);
         const dots = ".".repeat((dotCount % 3) + 1).padEnd(3, " "); // Keep dots at fixed width
-        statusEl.textContent = `${message}${dots} (${elapsed}s)`;
+        const timer = `${elapsed}`.padStart(3, " "); // Fixed width timer (e.g., "  3", " 12", "123")
+        statusEl.textContent = `${message} ${dots} (${timer}s)`;
         dotCount++;
       };
 
