@@ -744,8 +744,9 @@ export class VinylLibraryManager {
         youtubeInput.value = "";
         if (noteInput) noteInput.value = "";
 
-        // Small delay to ensure entry is saved before notifying library viewer
-        await new Promise((resolve) => setTimeout(resolve, 100));
+        // Delay to ensure KV write propagates before notifying library viewer
+        // Cloudflare Workers KV has eventual consistency, so we need to wait
+        await new Promise((resolve) => setTimeout(resolve, 500));
 
         // Dispatch event for other widgets to listen to
         window.dispatchEvent(
@@ -843,9 +844,11 @@ export class VinylLibraryManager {
 
       const updateStatus = () => {
         const elapsed = Math.floor((Date.now() - this.statusStartTime) / 1000);
-        const dots = ".".repeat((dotCount % 3) + 1).padEnd(3, " "); // Keep dots at fixed width
-        const timer = `${elapsed}`.padStart(3, " "); // Fixed width timer (e.g., "  3", " 12", "123")
-        statusEl.textContent = `${message} ${dots} (${timer}s)`;
+        const dots = ".".repeat((dotCount % 3) + 1);
+        // Use non-breaking spaces (\u00A0) to maintain width
+        const paddedDots = dots + "\u00A0".repeat(3 - dots.length);
+        const timer = `${elapsed}`.padStart(3, "\u00A0"); // Fixed width timer with non-breaking spaces
+        statusEl.textContent = `${message} ${paddedDots} (${timer}s)`;
         dotCount++;
       };
 
