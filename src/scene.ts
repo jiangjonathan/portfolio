@@ -5,6 +5,7 @@ import {
   LinearSRGBColorSpace,
   Mesh,
   MeshBasicMaterial,
+  PCFShadowMap,
   PlaneGeometry,
   PointLight,
   Scene,
@@ -103,8 +104,8 @@ export function createLights() {
   const keyLight = new DirectionalLight(0xffffff, 1.5);
   keyLight.position.set(-19, 38, 7);
   keyLight.castShadow = true;
-  keyLight.shadow.mapSize.width = 4096;
-  keyLight.shadow.mapSize.height = 4096;
+  keyLight.shadow.mapSize.width = 2048;
+  keyLight.shadow.mapSize.height = 2048;
   keyLight.shadow.camera.left = -80;
   keyLight.shadow.camera.right = 80;
   keyLight.shadow.camera.top = 80;
@@ -127,7 +128,7 @@ export function createRenderer(canvas: HTMLCanvasElement) {
   renderer.toneMapping = ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.1;
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = 1; // PCFSoftShadowMap
+  renderer.shadowMap.type = PCFShadowMap;
   return renderer;
 }
 
