@@ -235,7 +235,7 @@ export class VinylLibraryViewer {
     // If we have an entry ID to insert at top
     if (insertAtTop) {
       // First get all entries in their default order
-      const allEntries = [...ownerEntries, ...visitorEntries];
+      const allEntries = [...visitorEntries, ...ownerEntries];
       console.log(
         `[mergeLibraries] Total entries before insertion: ${allEntries.length}`,
       );
@@ -270,11 +270,11 @@ export class VinylLibraryViewer {
         );
       } else {
         // Fallback if entry not found
-        combinedEntries = [...ownerEntries, ...visitorEntries];
+        combinedEntries = [...visitorEntries, ...ownerEntries];
       }
     } else {
-      // Default behavior: combine both, owner entries first
-      combinedEntries = [...ownerEntries, ...visitorEntries];
+      // Default behavior: combine both, visitor entries first
+      combinedEntries = [...visitorEntries, ...ownerEntries];
     }
 
     // If filter is active, show only visitor entries
