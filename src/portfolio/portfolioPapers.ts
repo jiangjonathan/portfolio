@@ -104,7 +104,7 @@ export class PortfolioPapersManager {
 
   setWhitepaperMesh(mesh: Mesh): void {
     this.whitepaperMesh = mesh;
-    console.log("[PortfolioPapers] Whitepaper mesh set:", mesh.name);
+    // console.log("[PortfolioPapers] Whitepaper mesh set:", mesh.name);
   }
 
   private getPaperStackIndex(paperId: string): number {
@@ -177,7 +177,7 @@ export class PortfolioPapersManager {
   }
 
   async loadAllPapers(): Promise<void> {
-    console.log("[PortfolioPapers] Loading all papers");
+    // console.log("[PortfolioPapers] Loading all papers");
     const papersList = this.getPapers();
     for (const paper of papersList) {
       await this.loadPaper(paper.id);
@@ -1423,7 +1423,7 @@ export class PortfolioPapersManager {
   async nextPaper(): Promise<void> {
     // Prevent overlapping animations
     if (this.isAnimating) {
-      console.log("[PortfolioPapers] Animation in progress, ignoring next");
+      // console.log("[PortfolioPapers] Animation in progress, ignoring next");
       return;
     }
 
@@ -1436,7 +1436,7 @@ export class PortfolioPapersManager {
 
     // Don't do anything if we're at the last paper
     if (currentIndex >= papersList.length - 1) {
-      console.log("[PortfolioPapers] Already at last paper, next does nothing");
+      // console.log("[PortfolioPapers] Already at last paper, next does nothing");
       return;
     }
 
@@ -1629,7 +1629,7 @@ export class PortfolioPapersManager {
   async previousPaper(): Promise<void> {
     // Prevent overlapping animations
     if (this.isAnimating) {
-      console.log("[PortfolioPapers] Animation in progress, ignoring previous");
+      // console.log("[PortfolioPapers] Animation in progress, ignoring previous");
       return;
     }
 

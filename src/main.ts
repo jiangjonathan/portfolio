@@ -747,7 +747,7 @@ const setupPortfolioCover = (model: Object3D) => {
       // );
     },
     (whitepaperMesh) => {
-      console.log("[Portfolio] Found whitepaper mesh:", whitepaperMesh.name);
+      // console.log("[Portfolio] Found whitepaper mesh:", whitepaperMesh.name);
       whitepaperMesh.visible = false;
       if (portfolioPapersManager) {
         portfolioPapersManager.setWhitepaperMesh(whitepaperMesh);
@@ -973,7 +973,7 @@ turntableNavButton.addEventListener("click", () => {
 });
 
 portfolioNavButton.addEventListener("click", () => {
-  console.log("[Portfolio] Button clicked");
+  // console.log("[Portfolio] Button clicked");
   setActiveScenePage("portfolio");
   animatePortfolioCoverFlip();
 

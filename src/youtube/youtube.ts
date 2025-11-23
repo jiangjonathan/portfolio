@@ -86,7 +86,7 @@ let manualAspectRatioOverride: number | null = null;
  */
 export function setVideoAspectRatio(aspectRatio: number): void {
   DYNAMIC_VIDEO_ASPECT = aspectRatio;
-  console.log(`[YouTube] Manually set aspect ratio to ${aspectRatio}`);
+  // console.log(`[YouTube] Manually set aspect ratio to ${aspectRatio}`);
   // Notify the player to update its dimensions
   if (aspectRatioChangeCallback) {
     aspectRatioChangeCallback(aspectRatio);
@@ -440,13 +440,13 @@ export function createYouTubePlayer(): YouTubeBridge {
   };
 
   async function load(videoId: string) {
-    console.log(`[YouTube] Loading video: ${videoId}`);
+    // console.log(`[YouTube] Loading video: ${videoId}`);
     await ensureApi();
 
     await detectAndUpdateAspectRatio(videoId);
 
     if (player && typeof player.cueVideoById === "function") {
-      console.log(`[YouTube] Player exists and ready, cueing video`);
+      // console.log(`[YouTube] Player exists and ready, cueing video`);
       player.cueVideoById(videoId);
       disablePlayerInteraction();
       hasLoadedVideo = true;
@@ -456,7 +456,7 @@ export function createYouTubePlayer(): YouTubeBridge {
       });
     }
 
-    console.log(`[YouTube] Creating new player instance`);
+    // console.log(`[YouTube] Creating new player instance`);
     await new Promise<void>((resolve) => {
       const YT = (window as any).YT;
       player = new YT.Player(playerHostId, {
@@ -477,7 +477,7 @@ export function createYouTubePlayer(): YouTubeBridge {
         },
         events: {
           onReady: () => {
-            console.log(`[YouTube] Player onReady event`);
+            // console.log(`[YouTube] Player onReady event`);
             player!.setPlaybackRate(1);
             disablePlayerInteraction();
             updateVideoMetadata();
@@ -487,14 +487,14 @@ export function createYouTubePlayer(): YouTubeBridge {
           },
           onStateChange: (event: any) => {
             const state = event.data;
-            console.log(`[YouTube] Player state changed: ${state}`);
+            // console.log(`[YouTube] Player state changed: ${state}`);
             const YTState = (window as any).YT?.PlayerState;
             if (state === YTState?.ENDED) {
-              console.log(`[YouTube] Video ended (state ${state})`);
+              // console.log(`[YouTube] Video ended (state ${state})`);
               (bridge as any).onPlaybackEndedCallback?.();
             }
             if (state === 5) {
-              console.log(`[YouTube] Video cued (state 5)`);
+              // console.log(`[YouTube] Video cued (state 5)`);
               updateVideoMetadata();
               onVideoLoadedCallback?.();
               onVideoLoadedCallback = null;
@@ -989,7 +989,7 @@ export function createYouTubePlayer(): YouTubeBridge {
       if (aspectRatio === null) {
         // Clear manual override
         manualAspectRatioOverride = null;
-        console.log(`[YouTube] Cleared manual aspect ratio override`);
+        // console.log(`[YouTube] Cleared manual aspect ratio override`);
       } else {
         DYNAMIC_VIDEO_ASPECT = aspectRatio;
         manualAspectRatioOverride = aspectRatio;
