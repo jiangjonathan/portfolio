@@ -1279,7 +1279,7 @@ export class VinylLibraryViewer {
                   ${plasticOverlay}
                   ${genre ? `<div class="album-genre">${this.escapeHtml(genre)}</div>` : ""}
                 </div>
-                ${isOwner ? '<div class="owner-badge"> jonnys pick</div>' : ""}
+                ${isOwner ? '<div class="owner-badge"> jonny\'s pick</div>' : ""}
                 ${canDelete ? `<button class="delete-btn" data-entry-id="${entry.id}" data-is-owner="${isOwner}" title="Delete from collection">×</button>` : ""}
                 <div class="album-info">
                   <div class="album-artist">
