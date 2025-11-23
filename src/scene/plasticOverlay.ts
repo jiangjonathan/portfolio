@@ -10,6 +10,8 @@ const PLASTIC_TEXTURES = [
   "plastic3.png",
   "plastic4.png",
   "plastic5.png",
+  "plastic6.png",
+  "plastic7.png",
 ];
 
 // Rotation options for variation (degrees)
