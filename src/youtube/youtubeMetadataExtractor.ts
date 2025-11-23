@@ -436,20 +436,24 @@ async function searchMusicBrainz(
           })),
         );
 
-        // Fetch releases for all release groups in parallel (OPTIMIZED)
-        const releaseGroupPromises = releaseGroups.map(async (rg: any) => {
+        // Fetch releases for all release groups sequentially to respect rate limits
+        const allReleasesData = [];
+        for (const rg of releaseGroups) {
           const rgId = rg.id;
           // Fetch the list of releases for this release-group
           const releasesUrl = `https://musicbrainz.org/ws/2/release?release-group=${rgId}&fmt=json&limit=10`;
 
           try {
-            const releasesResponse = await fetch(releasesUrl, {
+            const releasesResponse = await rateLimitedFetch(releasesUrl, {
               headers: {
                 "User-Agent": "vinyl-library/1.0",
               },
             });
 
-            if (!releasesResponse.ok) return { releases: [], rgId };
+            if (!releasesResponse.ok) {
+              allReleasesData.push({ releases: [], rgId });
+              continue;
+            }
 
             const releasesData = await releasesResponse.json();
             const releases = releasesData.releases || [];
@@ -457,17 +461,15 @@ async function searchMusicBrainz(
               `[MusicBrainz] Release group https://musicbrainz.org/release-group/${rgId}: Found ${releases.length} releases`,
             );
 
-            return {
+            allReleasesData.push({
               releases: releases.slice(0, 5),
               rgId,
-            };
+            });
           } catch (error) {
             console.debug("Release fetch error:", error);
-            return { releases: [], rgId };
+            allReleasesData.push({ releases: [], rgId });
           }
-        });
-
-        const allReleasesData = await Promise.all(releaseGroupPromises);
+        }
 
         // Add releases with release-group ID stored
         for (const { releases, rgId } of allReleasesData) {
@@ -543,8 +545,13 @@ async function searchMusicBrainz(
 
     // Execute release-group searches FIRST, then recording searches
     // This ensures releases with genres from release-groups are added to releaseMap first
-    await Promise.all(releaseGroupPromises);
-    await Promise.all(recordingPromises);
+    // Run sequentially to respect MusicBrainz rate limits
+    for (const promise of releaseGroupPromises) {
+      await promise;
+    }
+    for (const promise of recordingPromises) {
+      await promise;
+    }
 
     const candidates = Array.from(releaseMap.values());
 
@@ -1527,11 +1534,17 @@ export async function extractAndEnrichMetadata(
     console.log(`  1. Song: "${songName}" + Artist: "${artistName}"`);
     console.log(`  2. Song: "${cleanSongName}" + Artist: "${artistName}"`);
 
-    // Run both searches in parallel
-    const [candidatesOriginalSong, candidatesCleanSong] = await Promise.all([
-      searchMusicBrainz(songName, artistName, albumName),
-      searchMusicBrainz(cleanSongName, artistName, albumName),
-    ]);
+    // Run searches sequentially to respect MusicBrainz rate limits
+    const candidatesOriginalSong = await searchMusicBrainz(
+      songName,
+      artistName,
+      albumName,
+    );
+    const candidatesCleanSong = await searchMusicBrainz(
+      cleanSongName,
+      artistName,
+      albumName,
+    );
 
     console.log(
       `Search results: ${candidatesOriginalSong.length} original song, ${candidatesCleanSong.length} clean song`,

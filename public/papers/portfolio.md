@@ -18,7 +18,7 @@ The site is organized into multiple "pages", each corresponding to a specific 3D
 The turntable model in my website is a conceptual hidden belt-drive turntable. This would be a nightmare for maintenance if it existed in real life, but I was drawn to the clean aesthetic of the turntable platter and flywheel being flush with the chassis.
 
 #### Design
-When sketching and drafting the design for the turntable, I leaned into a minimal and clean design. Some of my influences in the design include the Bang & Olufsen Beogram 6000, Pro-Ject turntables, Teenage Engineering TP-7, and modern Apple devices. The start-stop button for example was inspired from those found on Technics turntables. The cartridge design was inspired from geometric Ortofon cartridges.
+When sketching and drafting the design for the turntable, I gravitated towards a minimal and clean design. Some of my influences in the design include the Bang & Olufsen Beogram 6000, Pro-Ject turntables, Teenage Engineering TP-7, and modern Apple devices. The start-stop button for example was inspired from those found on Technics turntables. The cartridge design was inspired from geometric Ortofon cartridges.
 
 #### Function
 All "songs" in the library are sourced from YouTube, and the player is implemented using YouTube iframe API. Song covers, release, and genre metadata are fetched using a script that parses the YouTube video name to extract artist and song name. These are then parsed into a script that queries MusicBrainz and CoverArtArchive, allowing for accurate metadata and cover art for the records, even when the YouTube video itself lacks that metadata. 
@@ -28,7 +28,7 @@ For the turntable page in my website, I didn't want it to be a standard music pl
 
 Once the record is playing, the tonearm dynamically tracks across the vinyl based on the song's progress, allowing users to scrub the track by moving the tonearm. When the needle is dropped as the song plays, the tonearm starts bobbing, and the vinyl itself exhibits slight warp and wobble. I incorporated these small details to help the interaction feel authentic.
 
-Realism was a core principle I pursued in my design of the experience. UI elements such as the player timeline are intentionally non-scrubbable with the mouse. I wanted all the interaction to be with the 3D model, like handling a real record and turntable. And while vinyl records shouldn't show video, hiding the YouTube iframe for the player would be a waste. Many songs have excellent music videos, and they could heighten the experience, adding atmosphere, which is why I leaned into it and implemented a fullscreen mode for the player.
+Realism was a core principle I pursued in my design of the experience. UI elements such as the player timeline are intentionally non-scrubbable with the mouse. I wanted all the interaction to be with the 3D model, like handling a real record and turntable. And while vinyl records shouldn't show video, hiding the YouTube iframe for the player would be a waste. Many songs have music videos that could heighten the immesrion of the experience, which is why I leaned into it and implemented a fullscreen mode for the player.
 
 
 
