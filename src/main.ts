@@ -2552,9 +2552,29 @@ canvas.addEventListener("pointerdown", (event) => {
               continue;
             }
 
-            // Check if clicking on a link within the paper
+            // Check if clicking on scrollbar
             const hit = hits[0];
             if (hit.uv) {
+              const canvasCoords = portfolioPapersManager.uvToCanvasCoords(
+                paperId,
+                { x: hit.uv.x, y: hit.uv.y },
+              );
+              if (
+                canvasCoords &&
+                portfolioPapersManager.isPointerOnScrollbar(
+                  paperId,
+                  canvasCoords.x,
+                  canvasCoords.y,
+                )
+              ) {
+                portfolioPapersManager.startScrollbarDrag(
+                  paperId,
+                  canvasCoords.y,
+                );
+                return;
+              }
+
+              // Check if clicking on a link within the paper
               const linkUrl = portfolioPapersManager.checkLinkAtUV(
                 paperId,
                 hit.uv.x,
@@ -2701,6 +2721,29 @@ canvas.addEventListener("pointermove", (event) => {
   if (handleCameraOrbitMove(event)) {
     return;
   }
+
+  // Handle scrollbar dragging for portfolio papers
+  if (portfolioPapersManager && portfolioPapersManager.isDraggingScrollbar()) {
+    if (updatePointer(event, pointerNDC, canvas)) {
+      raycaster.setFromCamera(pointerNDC, camera);
+      const paperMeshes = portfolioPapersManager.getPaperMeshes();
+      for (const [paperId, mesh] of paperMeshes) {
+        const hits = raycaster.intersectObject(mesh, true);
+        if (hits.length > 0 && hits[0].uv) {
+          const canvasCoords = portfolioPapersManager.uvToCanvasCoords(
+            paperId,
+            { x: hits[0].uv.x, y: hits[0].uv.y },
+          );
+          if (canvasCoords) {
+            portfolioPapersManager.updateScrollbarDrag(canvasCoords.y);
+          }
+          break;
+        }
+      }
+    }
+    return;
+  }
+
   if (turntableController && turntableController.handlePointerMove(event)) {
     return;
   }
@@ -2935,6 +2978,16 @@ canvas.addEventListener("pointerleave", () => {
 canvas.addEventListener("pointerup", endBusinessCardRotation);
 canvas.addEventListener("pointercancel", endBusinessCardRotation);
 canvas.addEventListener("pointerleave", endBusinessCardRotation);
+
+const endScrollbarDrag = () => {
+  if (portfolioPapersManager) {
+    portfolioPapersManager.endScrollbarDrag();
+  }
+};
+
+canvas.addEventListener("pointerup", endScrollbarDrag);
+canvas.addEventListener("pointercancel", endScrollbarDrag);
+canvas.addEventListener("pointerleave", endScrollbarDrag);
 
 const handlePortfolioPaperScroll = (event: WheelEvent): boolean => {
   if (activePage !== "portfolio" || !portfolioPapersManager) {

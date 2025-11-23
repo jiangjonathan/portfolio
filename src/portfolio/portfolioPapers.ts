@@ -86,6 +86,9 @@ export class PortfolioPapersManager {
   private hoveredScrollablePaperId: string | null = null;
   private pendingRedraws: Set<string> = new Set(); // Batch scroll redraws
   private redrawAnimationFrameId: number | null = null;
+  private draggingScrollbarPaperId: string | null = null;
+  private scrollbarDragStartY: number = 0;
+  private scrollbarDragStartOffset: number = 0;
 
   constructor(_container: HTMLElement, renderer?: WebGLRenderer) {
     this.renderer = renderer || null;
@@ -1110,15 +1113,37 @@ export class PortfolioPapersManager {
     texture.needsUpdate = true;
   }
 
+  private getScrollbarGeometry(
+    canvas: HTMLCanvasElement,
+    scrollable: ScrollablePaperState,
+  ) {
+    const width = Math.max(Math.floor(canvas.width * 0.012), 12);
+    const margin = Math.max(Math.floor(width * 1.2), 16);
+    const trackX = canvas.width - width - margin;
+    const trackY = Math.floor(canvas.height * 0.04);
+    const trackHeight = canvas.height - trackY * 2;
+
+    const scrollRatio =
+      scrollable.maxScroll === 0
+        ? 0
+        : scrollable.scrollOffset / scrollable.maxScroll;
+    const thumbHeight = Math.max(
+      trackHeight * (canvas.height / scrollable.fullCanvas.height),
+      Math.floor(canvas.height * 0.08),
+    );
+    const thumbY =
+      trackY +
+      (trackHeight - thumbHeight) * Math.min(Math.max(scrollRatio, 0), 1);
+
+    return { width, trackX, trackY, trackHeight, thumbY, thumbHeight };
+  }
+
   private drawScrollbar(
     ctx: CanvasRenderingContext2D,
     scrollable: ScrollablePaperState,
   ): void {
-    const width = Math.max(Math.floor(ctx.canvas.width * 0.012), 12);
-    const margin = Math.max(Math.floor(width * 1.2), 16);
-    const trackX = ctx.canvas.width - width - margin;
-    const trackY = Math.floor(ctx.canvas.height * 0.04);
-    const trackHeight = ctx.canvas.height - trackY * 2;
+    const { width, trackX, trackY, trackHeight, thumbY, thumbHeight } =
+      this.getScrollbarGeometry(ctx.canvas, scrollable);
 
     ctx.save();
 
@@ -1127,24 +1152,100 @@ export class PortfolioPapersManager {
     ctx.fillStyle = "#888888";
     ctx.fillRect(trackX, trackY, width, trackHeight);
 
-    const scrollRatio =
-      scrollable.maxScroll === 0
-        ? 0
-        : scrollable.scrollOffset / scrollable.maxScroll;
-    const thumbHeight = Math.max(
-      trackHeight * (ctx.canvas.height / scrollable.fullCanvas.height),
-      Math.floor(ctx.canvas.height * 0.08),
-    );
-    const thumbY =
-      trackY +
-      (trackHeight - thumbHeight) * Math.min(Math.max(scrollRatio, 0), 1);
-
     // Draw thumb (scrollbar handle) - rectangular, medium grey
     ctx.globalAlpha = 0.6;
     ctx.fillStyle = "#666666";
     ctx.fillRect(trackX, thumbY, width, thumbHeight);
 
     ctx.restore();
+  }
+
+  uvToCanvasCoords(
+    paperId: string,
+    uv: { x: number; y: number },
+  ): { x: number; y: number } | null {
+    const scrollable = this.scrollablePaperStates.get(paperId);
+    if (!scrollable) return null;
+
+    // UV coordinates are 0-1, convert to canvas pixels
+    const canvasX = uv.x * scrollable.displayCanvas.width;
+    const canvasY = (1 - uv.y) * scrollable.displayCanvas.height; // Flip Y (UV is bottom-up)
+
+    return { x: canvasX, y: canvasY };
+  }
+
+  isPointerOnScrollbar(
+    paperId: string,
+    canvasX: number,
+    canvasY: number,
+  ): boolean {
+    const scrollable = this.scrollablePaperStates.get(paperId);
+    if (!scrollable || scrollable.maxScroll <= 0) return false;
+
+    const { width, trackX, trackY, trackHeight } = this.getScrollbarGeometry(
+      scrollable.displayCanvas,
+      scrollable,
+    );
+
+    return (
+      canvasX >= trackX &&
+      canvasX <= trackX + width &&
+      canvasY >= trackY &&
+      canvasY <= trackY + trackHeight
+    );
+  }
+
+  startScrollbarDrag(paperId: string, canvasY: number): void {
+    const scrollable = this.scrollablePaperStates.get(paperId);
+    if (!scrollable) return;
+
+    this.draggingScrollbarPaperId = paperId;
+    this.scrollbarDragStartY = canvasY;
+    this.scrollbarDragStartOffset = scrollable.scrollOffset;
+  }
+
+  updateScrollbarDrag(canvasY: number): void {
+    if (!this.draggingScrollbarPaperId) return;
+
+    const scrollable = this.scrollablePaperStates.get(
+      this.draggingScrollbarPaperId,
+    );
+    if (!scrollable) return;
+
+    const { trackHeight, thumbHeight } = this.getScrollbarGeometry(
+      scrollable.displayCanvas,
+      scrollable,
+    );
+
+    const deltaY = canvasY - this.scrollbarDragStartY;
+    const scrollableTrackHeight = trackHeight - thumbHeight;
+    const scrollDelta = (deltaY / scrollableTrackHeight) * scrollable.maxScroll;
+
+    const newOffset = Math.max(
+      0,
+      Math.min(
+        scrollable.maxScroll,
+        this.scrollbarDragStartOffset + scrollDelta,
+      ),
+    );
+
+    scrollable.scrollOffset = newOffset;
+
+    // Batch redraw
+    this.pendingRedraws.add(this.draggingScrollbarPaperId);
+    if (this.redrawAnimationFrameId === null) {
+      this.redrawAnimationFrameId = requestAnimationFrame(() => {
+        this.processPendingRedraws();
+      });
+    }
+  }
+
+  endScrollbarDrag(): void {
+    this.draggingScrollbarPaperId = null;
+  }
+
+  isDraggingScrollbar(): boolean {
+    return this.draggingScrollbarPaperId !== null;
   }
 
   hidePaper(paperId: string): void {
