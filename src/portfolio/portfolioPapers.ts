@@ -273,8 +273,8 @@ export class PortfolioPapersManager {
     });
     if (!ctx) return;
 
-    canvas.width = 2048;
-    canvas.height = Math.floor(2048 * 1.294);
+    canvas.width = 1024;
+    canvas.height = Math.floor(1024 * 1.294);
 
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -323,7 +323,7 @@ export class PortfolioPapersManager {
     baseUrl: string,
     paperId: string,
   ): PendingScrollState | null {
-    const VIEW_WIDTH = 2048;
+    const VIEW_WIDTH = 1024;
     const VIEW_HEIGHT = Math.floor(VIEW_WIDTH * 1.294);
     const displayCanvas = document.createElement("canvas");
     const fullCanvas = document.createElement("canvas");

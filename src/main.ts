@@ -2936,10 +2936,21 @@ canvas.addEventListener("pointerup", endBusinessCardRotation);
 canvas.addEventListener("pointercancel", endBusinessCardRotation);
 canvas.addEventListener("pointerleave", endBusinessCardRotation);
 
+let lastPortfolioScrollTime = 0;
+const PORTFOLIO_SCROLL_THROTTLE = 16; // ms (60fps)
+
 const handlePortfolioPaperScroll = (event: WheelEvent): boolean => {
   if (activePage !== "portfolio" || !portfolioPapersManager) {
     return false;
   }
+
+  // Throttle scroll events to improve performance
+  const now = Date.now();
+  if (now - lastPortfolioScrollTime < PORTFOLIO_SCROLL_THROTTLE) {
+    return false;
+  }
+  lastPortfolioScrollTime = now;
+
   if (!updatePointer(event, pointerNDC, canvas)) {
     return false;
   }
