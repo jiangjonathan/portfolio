@@ -264,28 +264,7 @@ export class VinylLibraryManager {
             border: none;
           }
 
-          .vinyl-widget-enhanced-compact .status-message.loading::after {
-            content: '';
-            animation: loading-dots 2s steps(4, end) infinite;
-          }
-
-          @keyframes loading-dots {
-            0%, 20% {
-              content: '';
-            }
-            21%, 40% {
-              content: '.';
-            }
-            41%, 60% {
-              content: '..';
-            }
-            61%, 80% {
-              content: '...';
-            }
-            81%, 100% {
-              content: '';
-            }
-          }
+          /* Removed CSS loading dots animation - now handled in JavaScript */
         </style>
 
         <button class="vinyl-toggle-btn" id="vinyl-toggle-btn">+</button>
@@ -430,28 +409,7 @@ export class VinylLibraryManager {
             border: none;
           }
 
-          .vinyl-widget-enhanced-full .status-message.loading::after {
-            content: '';
-            animation: loading-dots 2s steps(4, end) infinite;
-          }
-
-          @keyframes loading-dots {
-            0%, 20% {
-              content: '';
-            }
-            21%, 40% {
-              content: '.';
-            }
-            41%, 60% {
-              content: '..';
-            }
-            61%, 80% {
-              content: '...';
-            }
-            81%, 100% {
-              content: '';
-            }
-          }
+          /* Removed CSS loading dots animation - now handled in JavaScript */
 
           .vinyl-widget-enhanced-full .library-list {
             display: grid;
@@ -785,6 +743,9 @@ export class VinylLibraryManager {
         this.showStatus(`added to ${location}!`, "success");
         youtubeInput.value = "";
         if (noteInput) noteInput.value = "";
+
+        // Small delay to ensure entry is saved before notifying library viewer
+        await new Promise((resolve) => setTimeout(resolve, 100));
 
         // Dispatch event for other widgets to listen to
         window.dispatchEvent(
