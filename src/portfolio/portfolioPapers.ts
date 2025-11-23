@@ -84,6 +84,8 @@ export class PortfolioPapersManager {
   private leftStackPapers: string[] = []; // Papers that have been moved to left stack (in order moved)
   private scrollablePaperStates: Map<string, ScrollablePaperState> = new Map();
   private hoveredScrollablePaperId: string | null = null;
+  private pendingRedraws: Set<string> = new Set(); // Batch scroll redraws
+  private redrawAnimationFrameId: number | null = null;
 
   constructor(_container: HTMLElement, renderer?: WebGLRenderer) {
     this.renderer = renderer || null;
@@ -1028,8 +1030,23 @@ export class PortfolioPapersManager {
     }
 
     scrollable.scrollOffset = nextOffset;
-    this.redrawScrollablePaper(paperId);
+
+    // Batch redraw instead of immediate redraw
+    this.pendingRedraws.add(paperId);
+    if (this.redrawAnimationFrameId === null) {
+      this.redrawAnimationFrameId = requestAnimationFrame(() => {
+        this.processPendingRedraws();
+      });
+    }
     return true;
+  }
+
+  private processPendingRedraws(): void {
+    for (const paperId of this.pendingRedraws) {
+      this.redrawScrollablePaper(paperId);
+    }
+    this.pendingRedraws.clear();
+    this.redrawAnimationFrameId = null;
   }
 
   isPaperScrollable(paperId: string): boolean {
