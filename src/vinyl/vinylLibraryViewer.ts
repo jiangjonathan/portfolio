@@ -2552,14 +2552,30 @@ export class VinylLibraryViewer {
       const customEvent = event as CustomEvent;
       const isNewAddition = customEvent.detail?.isNewAddition;
       const newEntryId = customEvent.detail?.entryId;
+      const newEntry = customEvent.detail?.newEntry;
 
       // 🔹 Capture scroll so re-render doesn’t cause a jump
       const scrollPos = this.scrollContainer?.scrollTop ?? 0;
 
       this.visitorLibrary = loadVisitorLibrary();
 
-      // Reload owner library from API if configured
-      if (this.config.apiUrl) {
+      // For new additions, optimistically add to owner library if provided
+      if (isNewAddition && newEntry && newEntry.isOwnerEntry !== false) {
+        console.log(
+          "[vinyl-library-updated] Optimistically adding new entry to owner library",
+        );
+        // Check if it already exists to avoid duplicates
+        const exists = this.ownerLibrary.some((e) => e.id === newEntry.id);
+        if (!exists) {
+          this.ownerLibrary.unshift(newEntry);
+          console.log(
+            `[vinyl-library-updated] Owner library now has ${this.ownerLibrary.length} entries`,
+          );
+        }
+      }
+
+      // Still reload from API in background for non-new additions
+      if (this.config.apiUrl && !isNewAddition) {
         try {
           this.ownerLibrary = await fetchOwnerLibrary(this.config.apiUrl);
         } catch (error) {

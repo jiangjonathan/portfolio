@@ -744,16 +744,14 @@ export class VinylLibraryManager {
         youtubeInput.value = "";
         if (noteInput) noteInput.value = "";
 
-        // Delay to ensure KV write propagates before notifying library viewer
-        // Cloudflare Workers KV has eventual consistency, so we need to wait
-        await new Promise((resolve) => setTimeout(resolve, 500));
-
-        // Dispatch event for other widgets to listen to
+        // Dispatch event immediately with the new entry data
+        // The viewer will add it optimistically without waiting for API refetch
         window.dispatchEvent(
           new CustomEvent("vinyl-library-updated", {
             detail: {
               isNewAddition: true,
               entryId: entry.id,
+              newEntry: entry, // Pass the full entry for optimistic update
             },
           }),
         );
