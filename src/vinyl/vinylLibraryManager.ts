@@ -847,7 +847,7 @@ export class VinylLibraryManager {
         const dots = ".".repeat((dotCount % 3) + 1);
         // Use non-breaking spaces (\u00A0) to maintain width
         const paddedDots = dots + "\u00A0".repeat(3 - dots.length);
-        const timer = `${elapsed}`.padStart(3, "\u00A0"); // Fixed width timer with non-breaking spaces
+        const timer = `${elapsed}`.padStart(2, "\u00A0"); // Fixed width timer with 2 spaces
         statusEl.textContent = `${message} ${paddedDots} (${timer}s)`;
         dotCount++;
       };
