@@ -5,7 +5,7 @@ import {
   HIDE_BUTTON_Z_INDEX,
   LINK_COLOR,
   LINK_HOVER_COLOR,
-} from "./config";
+} from "../utils/config";
 
 // Navigation controls styling - used on page load and when switching pages
 export const GLOBAL_CONTROLS_DEFAULT = {

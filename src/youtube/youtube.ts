@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { clampValue } from "./utils";
-import { extractYouTubeVideoId } from "./metadata";
+import { clampValue } from "../utils/utils";
+import { extractYouTubeVideoId } from "../utils/metadata";
 
 type YTPlayer = any;
 

@@ -8,7 +8,7 @@
  * 4. Return metadata with image URL (no storage needed)
  */
 
-import { getOrCacheAlbumCover } from "./albumCoverCache";
+import { getOrCacheAlbumCover } from "../utils/albumCoverCache";
 
 export interface SongMetadata {
   youtubeId: string;

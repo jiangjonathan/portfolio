@@ -1,6 +1,6 @@
 import type { CameraRig } from "./cameraRig";
 import type { ScenePage } from "./pageNavigation";
-import { CAMERA_ORBIT_SENSITIVITY, PAN_SENSITIVITY } from "./config";
+import { CAMERA_ORBIT_SENSITIVITY, PAN_SENSITIVITY } from "../utils/config";
 
 export interface CameraOrbitState {
   isOrbiting: boolean;

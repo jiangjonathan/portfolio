@@ -10,18 +10,18 @@ import {
   deleteOwnerEntry,
   addToOwnerLibrary,
   type VisitorEntry,
-} from "./visitorLibrary";
+} from "../utils/visitorLibrary";
 
 import {
   extractAndEnrichMetadata,
   fetchYouTubeMetadata,
-} from "./youtubeMetadataExtractor";
+} from "../youtube/youtubeMetadataExtractor";
 
 import {
   cleanupUnusedCovers,
   recreateBlobUrlIfNeeded,
   initializeCache,
-} from "./albumCoverCache";
+} from "../utils/albumCoverCache";
 
 interface WidgetConfig {
   apiUrl: string;

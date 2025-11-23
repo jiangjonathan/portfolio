@@ -1,5 +1,5 @@
-import type { VideoMetadata } from "./youtube";
-import type { LabelVisualOptions } from "./labels";
+import type { VideoMetadata } from "../youtube/youtube";
+import type { LabelVisualOptions } from "../vinyl/labels";
 
 type MetadataControllerDeps = {
   labelVisuals: LabelVisualOptions;

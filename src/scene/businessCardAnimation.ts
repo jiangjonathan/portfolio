@@ -1,6 +1,6 @@
 import { Object3D, Quaternion, Vector3 } from "three";
-import { directionFromAngles } from "./pageNavigation";
-import type { ScenePage } from "./pageNavigation";
+import { directionFromAngles } from "../camera/pageNavigation";
+import type { ScenePage } from "../camera/pageNavigation";
 import {
   BUSINESS_CARD_PAGE,
   BUSINESS_CARD_CAMERA_PITCH,

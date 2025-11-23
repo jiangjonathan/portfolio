@@ -1,6 +1,6 @@
 import type { Object3D } from "three";
 import { Matrix4, Quaternion, Vector3 } from "three";
-import { clampValue } from "./utils";
+import { clampValue } from "../utils/utils";
 
 export const MAX_DRAG_RADIUS = 100;
 const SWING_DAMPING = 0.18;

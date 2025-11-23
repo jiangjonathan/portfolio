@@ -1,12 +1,12 @@
 import { Vector3 } from "three";
 import type { Object3D } from "three";
-import type { CameraRig } from "./cameraRig";
+import type { CameraRig } from "../camera/cameraRig";
 import type { LabelTextures, LabelVisualOptions } from "./labels";
 import { createLabelTextures } from "./labels";
-import { extractDominantColor } from "./colorUtils";
-import { FALLBACK_BACKGROUND_COLOR } from "./config";
-import type { VinylSelectionDetail } from "./vinylState";
-import { getOrCacheAlbumCover } from "./albumCoverCache";
+import { extractDominantColor } from "../utils/colorUtils";
+import { FALLBACK_BACKGROUND_COLOR } from "../utils/config";
+import type { VinylSelectionDetail } from "./vinylInteractions";
+import { getOrCacheAlbumCover } from "../utils/albumCoverCache";
 
 export const FOCUS_VINYL_BASE_SCALE = 1.0;
 export const VINYL_DRAG_THRESHOLD = 38;

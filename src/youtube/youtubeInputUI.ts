@@ -1,5 +1,5 @@
-import { extractYouTubeVideoId } from "./metadata";
-import { extractDominantColor } from "./colorUtils";
+import { extractYouTubeVideoId } from "../utils/metadata";
+import { extractDominantColor } from "../utils/colorUtils";
 
 export interface YouTubeMetadataWithColor {
   videoId: string;
@@ -35,7 +35,9 @@ export async function fetchYouTubeOEmbed(
   }
 
   // Extract dominant color from thumbnail
-  const dominantColor = thumbnailUrl ? await extractDominantColor(thumbnailUrl) : "#e0e0e0";
+  const dominantColor = thumbnailUrl
+    ? await extractDominantColor(thumbnailUrl)
+    : "#e0e0e0";
 
   return {
     videoId,

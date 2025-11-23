@@ -4,17 +4,15 @@ import {
   DirectionalLight,
   LinearSRGBColorSpace,
   Mesh,
-  MeshBasicMaterial,
   PCFShadowMap,
   PlaneGeometry,
-  PointLight,
   Scene,
   ShadowMaterial,
   SRGBColorSpace,
   TextureLoader,
   WebGLRenderer,
 } from "three";
-import { CameraRig } from "./cameraRig";
+import { CameraRig } from "../camera/cameraRig";
 
 // Lighting state for fullscreen transitions
 type LightingState = {
@@ -32,12 +30,12 @@ const NORMAL_LIGHTING: LightingState = {
 const FULLSCREEN_LIGHTING: LightingState = {
   ambientIntensity: 0,
   keyIntensity: 0.3,
-  fillIntensity: 0,
+  fillIntensity: 0.1,
 };
 
 const FULLSCREEN_HOVER_LIGHTING: LightingState = {
-  ambientIntensity: 1,
-  keyIntensity: 1,
+  ambientIntensity: 0.5,
+  keyIntensity: 1.5,
   fillIntensity: 0,
 };
 

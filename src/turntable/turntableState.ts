@@ -1,6 +1,6 @@
-import type { YouTubeBridge } from "./youtube";
-import type { TurntableVinylState } from "./vinylInteractions";
-import type { ScenePage } from "./pageNavigation";
+import type { YouTubeBridge } from "../youtube/youtube";
+import type { TurntableVinylState } from "../vinyl/vinylInteractions";
+import type { ScenePage } from "../camera/pageNavigation";
 import { Vector3 } from "three";
 
 // CameraRig interface for type safety

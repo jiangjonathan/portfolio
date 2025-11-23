@@ -10,13 +10,16 @@ import {
   fetchOwnerLibrary,
   deleteOwnerEntry,
   type VisitorEntry,
-} from "./visitorLibrary";
+} from "../utils/visitorLibrary";
 
-import { initializeCache, recreateBlobUrlIfNeeded } from "./albumCoverCache";
+import {
+  initializeCache,
+  recreateBlobUrlIfNeeded,
+} from "../utils/albumCoverCache";
 import {
   generatePlasticOverlay,
   PLASTIC_OVERLAY_BLEND_MODE,
-} from "./plasticOverlay";
+} from "../scene/plasticOverlay";
 
 interface ViewerConfig {
   containerId: string;

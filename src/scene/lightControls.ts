@@ -1,5 +1,5 @@
 import GUI from "lil-gui";
-import { AmbientLight, DirectionalLight, PointLight } from "three";
+import { AmbientLight, DirectionalLight } from "three";
 
 export interface LightControls {
   ambientLight: AmbientLight;

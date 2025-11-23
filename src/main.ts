@@ -18,7 +18,7 @@ import {
 } from "three";
 import type { Intersection } from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { loadVinylModel } from "./vinyl";
+import { loadVinylModel } from "./vinyl/vinyl";
 import {
   applyLabelTextures,
   createLabelTextures,
@@ -26,8 +26,8 @@ import {
   type LabelVisualOptions,
   type LabelApplicationOptions,
   type LabelTextures,
-} from "./labels";
-import { loadTurntableModel, TurntableController } from "./turntable";
+} from "./vinyl/labels";
+import { loadTurntableModel, TurntableController } from "./turntable/turntable";
 import {
   createScene,
   createLights,
@@ -39,30 +39,29 @@ import {
   NORMAL_LIGHTING,
   FULLSCREEN_LIGHTING,
   FULLSCREEN_HOVER_LIGHTING,
-} from "./scene";
+} from "./scene/scene";
 import {} from // createTonearmRotationDisplay,
 // createCameraInfoDisplay,
-"./ui";
-import { initializeYouTubePlayer, type YouTubeBridge } from "./youtube";
-import { createMetadataController } from "./metadata";
-import { updatePointer } from "./utils";
+"./ui/ui";
+import { initializeYouTubePlayer, type YouTubeBridge } from "./youtube/youtube";
+import { createMetadataController } from "./utils/metadata";
+import { updatePointer } from "./utils/utils";
 import {
   CAMERA_ORBIT_SENSITIVITY,
   PAN_SENSITIVITY,
   FALLBACK_BACKGROUND_COLOR,
-} from "./config";
+} from "./utils/config";
 import {
   createVinylAnimationState,
   RETURN_CLEARANCE,
   updateVinylAnimation,
-} from "./vinylAnimation";
-import { VinylLibraryManager } from "./vinylLibraryManager";
-import { VinylLibraryViewer } from "./vinylLibraryViewer";
-import { extractDominantColor } from "./colorUtils";
-import { initializeCache } from "./albumCoverCache";
-import type { VideoMetadata } from "./youtube";
-import { TutorialManager } from "./tutorialManager";
-import { createLightControlPanel } from "./lightControls";
+} from "./vinyl/vinylAnimation";
+import { VinylLibraryManager } from "./vinyl/vinylLibraryManager";
+import { VinylLibraryViewer } from "./vinyl/vinylLibraryViewer";
+import { extractDominantColor } from "./utils/colorUtils";
+import { initializeCache } from "./utils/albumCoverCache";
+import type { VideoMetadata } from "./youtube/youtube";
+import { TutorialManager } from "./turntable/tutorialManager";
 
 // New modular imports
 import {
@@ -88,7 +87,7 @@ import {
   HOME_FRAME_OFFSET,
   type ScenePage,
   type PageCameraSettings,
-} from "./pageNavigation";
+} from "./camera/pageNavigation";
 import {
   createBusinessCardMesh,
   createPlaceholderMesh,
@@ -108,16 +107,16 @@ import {
   BUSINESS_CARD_LINKEDIN_URL,
   BUSINESS_CARD_GITHUB_URL,
   setBusinessCardContactHighlight,
-} from "./sceneObjects";
-import type { BusinessCardContact, UVRect } from "./sceneObjects";
-import { createBusinessCardAnimation } from "./businessCardAnimation";
+} from "./scene/sceneObjects";
+import type { BusinessCardContact, UVRect } from "./scene/sceneObjects";
+import { createBusinessCardAnimation } from "./scene/businessCardAnimation";
 import {
   getFocusVinylScale,
   applyFocusVinylScale,
   cloneLabelVisuals,
   getSelectionCoverUrl,
   applyLabelTextureQuality,
-} from "./vinylHelpers";
+} from "./vinyl/vinylHelpers";
 import {
   VINYL_DRAG_THRESHOLD,
   FOCUS_VINYL_CLICK_ANIMATION_SPEED,
@@ -125,14 +124,14 @@ import {
   type VinylSelectionDetail,
   type FocusVinylState,
   type TurntableVinylState,
-} from "./vinylInteractions";
-import { TurntableStateManager } from "./turntableState";
+} from "./vinyl/vinylInteractions";
+import { TurntableStateManager } from "./turntable/turntableState";
 import {
   setupDOM,
   GLOBAL_CONTROLS_DEFAULT,
   GLOBAL_CONTROLS_TURNTABLE,
-} from "./domSetup";
-import { PortfolioPapersManager } from "./portfolioPapers";
+} from "./ui/domSetup";
+import { PortfolioPapersManager } from "./portfolio/portfolioPapers";
 
 declare global {
   interface Window {

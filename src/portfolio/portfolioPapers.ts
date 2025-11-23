@@ -47,11 +47,11 @@ type LinkRegion = {
 
 export const PAPERS: PaperConfig[] = [
   {
-    id: "test-pdf",
-    name: "Test PDF",
+    id: "resume-pdf",
+    name: "Resume PDF",
     type: "pdf",
-    url: "/test.pdf",
-    description: "Test PDF document",
+    url: "/JonathanJiangResume.pdf",
+    description: "Resume PDF",
   },
   {
     id: "portfolio",
@@ -318,33 +318,6 @@ export class PortfolioPapersManager {
     }
   }
 
-  private wrapTextForMarkdown(
-    ctx: CanvasRenderingContext2D,
-    text: string,
-    maxWidth: number,
-  ): string[] {
-    const words = text.split(" ");
-    const lines: string[] = [];
-    let currentLine = "";
-
-    words.forEach((word) => {
-      const testLine = currentLine ? `${currentLine} ${word}` : word;
-      const metrics = ctx.measureText(testLine);
-      if (metrics.width > maxWidth && currentLine) {
-        lines.push(currentLine);
-        currentLine = word;
-      } else {
-        currentLine = testLine;
-      }
-    });
-
-    if (currentLine) {
-      lines.push(currentLine);
-    }
-
-    return lines;
-  }
-
   private buildScrollableMarkdownPaper(
     markdown: string,
     baseUrl: string,
@@ -575,7 +548,6 @@ export class PortfolioPapersManager {
         words.forEach((word) => {
           measuringCtx.font = word.font;
           const wordWidth = measuringCtx.measureText(word.text).width;
-          const isWhitespace = /^\s+$/.test(word.text);
 
           // Check if adding this word would exceed the line width
           if (

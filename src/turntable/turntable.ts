@@ -1,8 +1,8 @@
 import type { Camera, Object3D } from "three";
 import { Material, Mesh, Raycaster, Vector2 } from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { mediaTimeToYaw } from "./media";
-import { clampValue, updatePointer } from "./utils";
+import { mediaTimeToYaw } from "../utils/media";
+import { clampValue, updatePointer } from "../utils/utils";
 
 export interface TurntableControllerOptions {
   camera: Camera;

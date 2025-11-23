@@ -56,6 +56,8 @@ export const PORTFOLIO_PAPER_OFFSET = -2;
 export const PORTFOLIO_PAPER_UNITS = -2;
 export const PORTFOLIO_COVER_OFFSET = -3;
 export const PORTFOLIO_COVER_UNITS = -3;
+export const PORTFOLIO_TEXT_OFFSET = -4;
+export const PORTFOLIO_TEXT_UNITS = -4;
 
 export type UVRect = {
   minU: number;

@@ -5,7 +5,7 @@ import {
   MathUtils,
   Object3D,
 } from "three";
-import { getContrastTextColor } from "./colorUtils";
+import { getContrastTextColor } from "../utils/colorUtils";
 
 export type LabelTextures = { sideA: CanvasTexture; sideB: CanvasTexture };
 export type LabelApplicationOptions = {
@@ -23,8 +23,6 @@ const defaultLabelOptions: LabelApplicationOptions = {
 };
 
 const LABEL_RENDER_ORDER = 420;
-const LABEL_POLYGON_OFFSET_FACTOR = 0;
-const LABEL_POLYGON_OFFSET_UNITS = 0;
 
 export type LabelVisualOptions = {
   background: string;
