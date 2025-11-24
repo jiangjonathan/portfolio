@@ -80,7 +80,7 @@ export class PortfolioPapersManager {
   private readonly PAPER_STACK_HEIGHT_OFFSET = 0.04; // Height between stacked papers
   private readonly BASE_PAPER_HEIGHT = 0.05; // Base height above whitepaper
   private readonly LEFT_STACK_X_OFFSET = -23.5; // X offset for left stack
-  private readonly MAX_RANDOM_ROTATION = (2.5 * Math.PI) / 180; // ±2.5 degrees in radians
+  private readonly MAX_RANDOM_ROTATION = (2 * Math.PI) / 180; // ±2 degrees in radians
   private leftStackPapers: string[] = []; // Papers that have been moved to left stack (in order moved)
   private scrollablePaperStates: Map<string, ScrollablePaperState> = new Map();
   private hoveredScrollablePaperId: string | null = null;
@@ -128,7 +128,7 @@ export class PortfolioPapersManager {
   private getLeftStackHeightForPaper(paperId: string): number {
     // Left stack grows upward as papers are added, significantly higher than right stack
     // to avoid z-fighting. Papers are added to the top, so earlier papers are lower.
-    const BASE_LEFT_STACK_HEIGHT = 0.2; // Much higher base for left stack to avoid z-fighting
+    const BASE_LEFT_STACK_HEIGHT = 0.25; // Much higher base for left stack to avoid z-fighting
     const LEFT_STACK_HEIGHT_OFFSET = 0.04; // Larger spacing between papers on left stack
 
     const indexInLeftStack = this.leftStackPapers.indexOf(paperId);

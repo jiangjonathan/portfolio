@@ -1914,6 +1914,10 @@ async function handleFocusSelection(selection: VinylSelectionDetail) {
   isReturningVinyl = false;
   isReturningToFocusCard = false;
 
+  // Hide vinyl immediately when loading a new selection to prevent flash
+  focusVinylManuallyHidden = true;
+  updateFocusVinylVisibility();
+
   console.log(`[handleFocusSelection] Applying selection visuals...`);
   await applySelectionVisualsToVinyl(selection);
   console.log(`[handleFocusSelection] Selection visuals applied`);
@@ -1959,21 +1963,27 @@ function prepareFocusVinylPresentation(model: Object3D, token: number) {
   // Enable billboard effect immediately
   vinylCameraTrackingEnabled = true;
 
-  // Wait for camera animation to complete before showing vinyl (700ms matches camera animation)
-  setTimeout(() => {
+  // Register callback FIRST, then trigger camera animation
+  // This ensures the callback fires even if camera is already at target position
+  cameraRig.onAnimationComplete(() => {
     if (token === focusVinylLoadToken && focusVinylState?.model === model) {
+      // Enable vinyl visibility after camera animation
+      focusVinylManuallyHidden = false;
       updateFocusVinylVisibility();
-    }
-  }, 800);
-
-  setTimeout(() => {
-    if (token === focusVinylLoadToken && focusVinylState?.model === model) {
       updateFocusCardPosition();
       console.log(
-        "[load-vinyl-song] Updated focus card position after camera animation",
+        "[load-vinyl-song] Camera animation complete, vinyl now visible",
       );
     }
-  }, 700);
+  });
+
+  // Now trigger the camera animation to bottom-center position
+  runWhenTurntableReady(() => {
+    turntablePositionState = "bottom-center";
+    cameraRig.setLookTarget(CAMERA_TARGETS[turntablePositionState], true);
+    vinylAnimationState.cameraRelativeOffsetValid = false;
+    cameraRig.setPolarAngle(22, true);
+  });
 }
 
 // Listen for aspect ratio updates from the focus card

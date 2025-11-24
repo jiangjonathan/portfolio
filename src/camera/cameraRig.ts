@@ -164,13 +164,20 @@ export class CameraRig {
     const targetPolarRadians = (targetPolarDegrees * Math.PI) / 180;
 
     if (animate) {
-      this.isAnimating = true;
-      this.isAnimatingViewDirection = true;
-      this.animationProgress = 0;
-      this.animationStartAzimuth = this.orbitAzimuth;
-      this.animationStartPolar = this.orbitPolar;
-      this.animationEndAzimuth = this.orbitAzimuth; // Keep azimuth the same
-      this.animationEndPolar = targetPolarRadians;
+      // Check if already at target angle (within small threshold)
+      const angleDiff = Math.abs(this.orbitPolar - targetPolarRadians);
+      if (angleDiff < 0.001) {
+        // Already at target angle, immediately notify completion
+        this.notifyAnimationComplete();
+      } else {
+        this.isAnimating = true;
+        this.isAnimatingViewDirection = true;
+        this.animationProgress = 0;
+        this.animationStartAzimuth = this.orbitAzimuth;
+        this.animationStartPolar = this.orbitPolar;
+        this.animationEndAzimuth = this.orbitAzimuth; // Keep azimuth the same
+        this.animationEndPolar = targetPolarRadians;
+      }
     } else {
       this.orbitPolar = targetPolarRadians;
       this.updateDirectionFromOrbit();
@@ -230,7 +237,14 @@ export class CameraRig {
 
   setLookTarget(newTarget: Vector3, animate = true) {
     if (animate) {
-      this.animateTo(newTarget);
+      // Check if already at target (within small threshold)
+      const distance = this.target.distanceTo(newTarget);
+      if (distance < 0.001) {
+        // Already at target, immediately notify completion
+        this.notifyAnimationComplete();
+      } else {
+        this.animateTo(newTarget);
+      }
     } else {
       this.target.copy(newTarget);
       this.updateCameraPosition();
@@ -335,7 +349,9 @@ export class CameraRig {
   }
 
   private notifyAnimationComplete() {
-    this.animationCompleteCallbacks.forEach((cb) => cb());
+    const callbacks = [...this.animationCompleteCallbacks];
+    this.animationCompleteCallbacks = []; // Clear callbacks after copying
+    callbacks.forEach((cb) => cb());
   }
 
   onAnimationComplete(callback: () => void) {

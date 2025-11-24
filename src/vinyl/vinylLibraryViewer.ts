@@ -302,11 +302,12 @@ export class VinylLibraryViewer {
     }
 
     // Apply custom ordering if any entries have been reordered
+    // Sort by timestamp in descending order (most recent first)
     if (this.customOrder.size > 0) {
       this.library.sort((a, b) => {
-        const orderA = this.customOrder.get(a.id) ?? Infinity;
-        const orderB = this.customOrder.get(b.id) ?? Infinity;
-        return orderA - orderB;
+        const orderA = this.customOrder.get(a.id) ?? -Infinity;
+        const orderB = this.customOrder.get(b.id) ?? -Infinity;
+        return orderB - orderA; // Reverse order: newest first
       });
     }
   }
@@ -397,7 +398,6 @@ export class VinylLibraryViewer {
           .focus-card-cover,
           .focus-card-info {
             pointer-events: auto;
-            animation: fade-in-focus 0.4s ease-out forwards;
             position: relative;
           }
 
@@ -930,45 +930,21 @@ export class VinylLibraryViewer {
 
 
           /* Insertion animation for new albums */
-          /* New entry: reserve space, then fade the cover in */
+          /* Simple fade in and expand */
           @keyframes slide-in-expand {
             0% {
               opacity: 0;
               max-height: 0;
-              margin-top: 0;
-              margin-bottom: 0;
-              padding-top: 0;
-              padding-bottom: 0;
-            }
-            50% {
-              opacity: 0;
-              max-height: 400px;      /* Expand to push cards up */
-              margin-top: -150px;     /* Pull up to overlap above */
-              margin-bottom: -100px;  /* Pull card below up */
-              padding-top: 0.5rem;
-              padding-bottom: 0.5rem;
-            }
-            95% {
-              opacity: 1;
-              max-height: 280px;      /* Final card height */
-              margin-top: 0;
-              margin-bottom: 0.75rem; /* Final gap */
-              padding-top: 0.5rem;
-              padding-bottom: 0.5rem;
             }
             100% {
               opacity: 1;
               max-height: 280px;      /* Final card height */
-              margin-top: 0;
-              margin-bottom: 0.75rem; /* Final gap */
-              padding-top: 0.5rem;
-              padding-bottom: 0.5rem;
             }
           }
 
           .vinyl-viewer-widget .album-card.inserting {
-            animation: slide-in-expand 1000ms cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards !important;
-            overflow: visible !important;
+            animation: slide-in-expand 1500ms ease-out forwards !important;
+            overflow: hidden !important;
             z-index: 10;
             position: relative;
           }
@@ -1024,7 +1000,7 @@ export class VinylLibraryViewer {
 
           .vinyl-viewer-widget .filter-controls {
             display: flex;
-            justify-content: flex-end;
+            justify-content: space-between;
             align-items: center;
             margin-bottom: 1rem;
             gap: 0.5rem;
@@ -1033,6 +1009,8 @@ export class VinylLibraryViewer {
             background: transparent;
             z-index: 100;
             padding: 0.5rem 0;
+            width: 430px;
+            max-width: 430px;
           }
 
           .vinyl-viewer-widget .filter-btn {
@@ -1050,7 +1028,6 @@ export class VinylLibraryViewer {
             position: relative;
             display: inline-block;
             vertical-align: baseline;
-            top: -1.5px;
           }
 
           .vinyl-viewer-widget .sort-container .filter-btn {
@@ -1083,9 +1060,12 @@ export class VinylLibraryViewer {
 
           .vinyl-viewer-widget .search-container {
             display: flex;
-            align-items: baseline;
+            align-items: center;
             gap: 0.3rem;
-            min-width: 200px;
+            flex: 1;
+            min-width: 0;
+            position: relative;
+            top: 1px;
           }
 
           .vinyl-viewer-widget .search-label {
@@ -1094,8 +1074,6 @@ export class VinylLibraryViewer {
             text-shadow: var(--vinyl-link-text-shadow);
             -webkit-font-smoothing: none;
             -moz-osx-font-smoothing: grayscale;
-            position: relative;
-            top: 0px;
             flex-shrink: 0;
           }
 
@@ -1105,14 +1083,21 @@ export class VinylLibraryViewer {
             background: transparent;
             font-size: 0.85rem;
             font-family: inherit;
-            width: 120px;
-            min-width: 120px;
+            flex: 1;
+            min-width: 60px;
             -webkit-font-smoothing: none;
             -moz-osx-font-smoothing: grayscale;
             line-height: 1;
             vertical-align: baseline;
             text-decoration: underline;
             text-underline-offset: 1px;
+          }
+
+          .vinyl-viewer-widget .filter-buttons {
+            display: flex;
+            gap: 0.5rem;
+            flex-shrink: 0;
+            align-items: baseline;
           }
 
           .vinyl-viewer-widget .search-input::placeholder {
@@ -1174,17 +1159,19 @@ export class VinylLibraryViewer {
             >
             <button id="vinyl-clear-search-btn" class="clear-search-btn">×</button>
           </div>
-          <div class="sort-container">
-            <button id="vinyl-sort-btn" class="filter-btn vinyl-hyperlink">sort</button>
-            <div id="vinyl-sort-dropdown" class="sort-dropdown" style="display: none;">
-              <div class="sort-option" data-category="artist">artist</div>
-              <div class="sort-option" data-category="genre">genre</div>
-              <div class="sort-option" data-category="year">year</div>
+          <div class="filter-buttons">
+            <div class="sort-container">
+              <button id="vinyl-sort-btn" class="filter-btn vinyl-hyperlink">sort</button>
+              <div id="vinyl-sort-dropdown" class="sort-dropdown" style="display: none;">
+                <div class="sort-option" data-category="artist">artist</div>
+                <div class="sort-option" data-category="genre">genre</div>
+                <div class="sort-option" data-category="year">year</div>
+              </div>
             </div>
+            <button id="vinyl-filter-btn" class="filter-btn vinyl-hyperlink">show personal only</button>
+            <button id="vinyl-jump-top-btn" class="filter-btn vinyl-hyperlink">to top</button>
+            <button id="vinyl-edit-btn" class="filter-btn vinyl-hyperlink">edit</button>
           </div>
-          <button id="vinyl-filter-btn" class="filter-btn vinyl-hyperlink">show personal only</button>
-          <button id="vinyl-jump-top-btn" class="filter-btn vinyl-hyperlink">to top</button>
-          <button id="vinyl-edit-btn" class="filter-btn vinyl-hyperlink">edit</button>
         </div>
         <div class="library-grid" id="vinyl-viewer-grid"></div>
       </div>
@@ -1378,12 +1365,8 @@ export class VinylLibraryViewer {
     );
     if (!focusCoverContainer || !focusInfoContainer) return;
 
-    // Dispatch event to change camera position to "bottom-center" and polar angle to 22 degrees
-    window.dispatchEvent(
-      new CustomEvent("focus-card-shown", {
-        detail: { position: "bottom-center", polarAngle: 22 },
-      }),
-    );
+    // Note: Camera position change is now handled in main.ts after vinyl callback is registered
+    // This ensures the callback fires even if camera is already at target position
 
     // Hide the "show focus" button since we're showing the focus card
     const showFocusBtn = document.getElementById("vinyl-show-focus-btn");
@@ -1415,8 +1398,9 @@ export class VinylLibraryViewer {
     console.log(`[renderFocusCard] Full entry object:`, entry);
 
     const containers = [focusCoverContainer, focusInfoContainer];
+    // Set initial opacity to 0 without transition
     containers.forEach((container) => {
-      container.style.transition = "opacity 0.3s ease";
+      container.style.transition = "none";
       container.style.opacity = "0";
     });
 
@@ -1503,9 +1487,10 @@ export class VinylLibraryViewer {
     focusInfoContainer.innerHTML = infoHtml;
     this.focusedEntryVideoId = entry.youtubeId || null;
     this.applyFocusCardTurntableState();
-    window.dispatchEvent(
-      new CustomEvent("focus-visibility-change", { detail: { visible: true } }),
-    );
+
+    // Don't dispatch visibility change immediately - let the camera animation complete first
+    // The vinyl will be made visible by the camera animation callback in main.ts
+    // This prevents the vinyl from flashing during the focus card fade-in
 
     const plasticOverlayElement = focusCoverContainer.querySelector(
       ".plastic-overlay",
@@ -1578,8 +1563,13 @@ export class VinylLibraryViewer {
     dispatchCoverHoverEvent(false);
     dispatchCoverClickEvent(false);
 
+    // Force a reflow to ensure opacity 0 is applied, then enable transition and fade in
     requestAnimationFrame(() => {
       containers.forEach((container) => {
+        // Force reflow
+        void container.offsetHeight;
+        // Now enable transition and fade to opacity 1
+        container.style.transition = "opacity 0.01s";
         container.style.opacity = "1";
       });
     });
@@ -1733,7 +1723,7 @@ export class VinylLibraryViewer {
 
         // Fade out animation
         containers.forEach((container) => {
-          container.style.transition = "opacity 0.3s ease";
+          container.style.transition = "opacity 0.15s ease";
           container.style.opacity = "0";
         });
 
@@ -1762,7 +1752,7 @@ export class VinylLibraryViewer {
           if (showFocusBtn) {
             showFocusBtn.style.display = "inline";
           }
-        }, 300);
+        }, 80);
       });
     }
 
@@ -2011,15 +2001,10 @@ export class VinylLibraryViewer {
         // Get the entry-id for the new card
         const entryId = (card as HTMLElement).getAttribute("data-entry-id");
 
-        // Don't re-focus if this card is already focused
-        if ((card as HTMLElement).classList.contains("focused")) {
-          return;
-        }
-
         // Track the focused entry ID
         this.focusedEntryId = entryId;
 
-        // Move this card to the front of the custom order
+        // Update custom order immediately so the list reorders right away
         if (entryId) {
           this.customOrder.set(entryId, Date.now());
           this.mergeLibraries();
@@ -2029,7 +2014,7 @@ export class VinylLibraryViewer {
 
         const entry = this.library.find((e) => e.id === entryId);
         if (entry) {
-          // Render the focus card in the separate container
+          // Render the focus card in the separate container immediately
           this.renderFocusCard(entry);
 
           window.dispatchEvent(
@@ -2560,7 +2545,7 @@ export class VinylLibraryViewer {
       this.visitorLibrary = loadVisitorLibrary();
 
       // For new additions, optimistically add to owner library if provided
-      if (isNewAddition && newEntry && newEntry.isOwnerEntry !== false) {
+      if (isNewAddition && newEntry && newEntry.isOwnerEntry === true) {
         console.log(
           "[vinyl-library-updated] Optimistically adding new entry to owner library",
         );
@@ -2595,7 +2580,8 @@ export class VinylLibraryViewer {
         console.log(
           `[vinyl-library-updated] Calling mergeLibraries with insertAtTop="${newEntryId}"`,
         );
-        // Don't set the flag yet - we'll set it after render
+        // Give new entry the highest timestamp so it stays at the top when custom order is applied
+        this.customOrder.set(newEntryId, Date.now());
         this.mergeLibraries(newEntryId);
       } else {
         console.log(

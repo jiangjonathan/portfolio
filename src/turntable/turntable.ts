@@ -70,7 +70,7 @@ export class TurntableController {
   private readonly TONEARM_MIN_DRAG_YAW = (-33 * Math.PI) / 180;
   private readonly TONEARM_MAX_YAW = (10 * Math.PI) / 180;
   private readonly TONEARM_PLAY_YAW_THRESHOLD = (-15 * Math.PI) / 180;
-  private readonly TONEARM_DRAG_SENSITIVITY = 0.012;
+  private readonly TONEARM_DRAG_SENSITIVITY = 0.007;
   private readonly TONEARM_RETURN_RATE = 0.04;
   private readonly TONEARM_PLAY_LERP = 0.02;
   private readonly TONEARM_PLAY_EPSILON = 0.01;
