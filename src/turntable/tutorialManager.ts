@@ -61,11 +61,11 @@ export class TutorialManager {
       },
       {
         action: "drag-vinyl" as TutorialAction,
-        text: "- drag the vinyl down near the turntable and let go",
+        text: "- drag the vinyl down near the turntable platter and let go",
       },
       {
         action: "start-player" as TutorialAction,
-        text: "- click the start button or press [space] to start/stop the turntable",
+        text: "- left click the start button or press [space] to start/stop the turntable",
       },
       {
         action: "drag-tonearm" as TutorialAction,

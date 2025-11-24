@@ -1,0 +1,9 @@
+# Allow search engines to crawl all pages
+User-agent: *
+Allow: /
+
+# Crawl delay to be respectful to server resources
+Crawl-delay: 1
+
+# Point to sitemap
+Sitemap: https://jiangjonathan.com/sitemap.xml
