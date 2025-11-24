@@ -1958,6 +1958,7 @@ youtubeBridge = yt;
 const turntableStateManager = new TurntableStateManager(yt, root);
 
 yt.setFKeyListenerEnabled(false);
+yt.setIsFreeLookModeQuery(() => isFreeLookMode);
 yt.onPlaybackEnded(() => {
   turntableController?.notifyPlaybackFinishedExternally();
 });

@@ -43,6 +43,7 @@ export interface YouTubeBridge {
   onFullscreenChange(callback: (isFullscreen: boolean) => void): void;
   setIsTonearmInPlayAreaQuery(callback: () => boolean): void;
   setIsOnTurntablePageQuery(callback: () => boolean): void;
+  setIsFreeLookModeQuery(callback: () => boolean): void;
   isPlayerCollapsed(): boolean;
   setPlayerCollapsed(collapsed: boolean): void;
   setFKeyListenerEnabled(enabled: boolean): void;
@@ -253,6 +254,7 @@ export function createYouTubePlayer(): YouTubeBridge {
   const updateFullscreenButtonVisibility = () => {
     const isTonearmInPlayArea = isTonearmInPlayAreaQuery?.() ?? false;
     const isOnTurntablePage = isOnTurntablePageQuery?.() ?? false;
+    const isInFreeLookMode = isFreeLookModeQuery?.() ?? false;
     const isHoveringPlayer = wrapper.matches(":hover");
     const shouldShow =
       hasLoadedVideo &&
@@ -260,7 +262,8 @@ export function createYouTubePlayer(): YouTubeBridge {
       !isCollapsed &&
       isTonearmInPlayArea &&
       isOnTurntablePage &&
-      isHoveringPlayer;
+      isHoveringPlayer &&
+      !isInFreeLookMode;
     if (shouldShow) {
       fullscreenButtonContainer.style.opacity = "1";
       fullscreenButtonContainer.style.pointerEvents = "auto";
@@ -319,6 +322,7 @@ export function createYouTubePlayer(): YouTubeBridge {
   let fullscreenChangeCallback: ((isFullscreen: boolean) => void) | null = null;
   let isTonearmInPlayAreaQuery: (() => boolean) | null = null;
   let isOnTurntablePageQuery: (() => boolean) | null = null;
+  let isFreeLookModeQuery: (() => boolean) | null = null;
   let hasLoadedVideo = false;
   let controlsAreVisible = false;
 
@@ -1014,6 +1018,9 @@ export function createYouTubePlayer(): YouTubeBridge {
     setIsOnTurntablePageQuery(callback: () => boolean) {
       isOnTurntablePageQuery = callback;
     },
+    setIsFreeLookModeQuery(callback: () => boolean) {
+      isFreeLookModeQuery = callback;
+    },
     isPlayerCollapsed(): boolean {
       return isCollapsed;
     },
@@ -1082,7 +1089,8 @@ export function createYouTubePlayer(): YouTubeBridge {
       event.preventDefault();
 
       const isTonearmInPlayArea = isTonearmInPlayAreaQuery?.() ?? false;
-      if (!isTonearmInPlayArea) {
+      const isInFreeLookMode = isFreeLookModeQuery?.() ?? false;
+      if (!isTonearmInPlayArea || isInFreeLookMode) {
         return;
       }
       setFullscreen(!isFullscreenMode);

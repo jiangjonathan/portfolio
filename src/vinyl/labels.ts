@@ -57,7 +57,7 @@ export function createDefaultLabelVisuals(): LabelVisualOptions {
     title2: "Untitled Track",
     title3: "",
     sideLabel: "SIDE A",
-    rpmLabel: "33 1/3 RPM",
+    rpmLabel: "33 1/3",
   };
 }
 
@@ -115,7 +115,7 @@ export function createLabelTexture(
     title2 = "Untitled Track",
     title3 = "",
     sideLabel = "SIDE A",
-    rpmLabel = "33 1/3 RPM",
+    rpmLabel = "33 1/3",
   } = visuals;
 
   context.fillStyle = background;
