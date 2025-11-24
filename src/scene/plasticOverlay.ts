@@ -5,13 +5,16 @@
 
 // Available plastic texture variants
 const PLASTIC_TEXTURES = [
-  "plastic1.png",
-  "plastic2.png",
-  "plastic3.png",
-  "plastic4.png",
-  "plastic5.png",
-  "plastic6.png",
-  "plastic7.png",
+  "plastics/plastic1.png",
+  "plastics/plastic2.png",
+  "plastics/plastic3.png",
+  "plastics/plastic4.png",
+  "plastics/plastic5.png",
+  "plastics/plastic6.png",
+  "plastics/plastic7.png",
+  "plastics/plastic8.png",
+  "plastics/plastic9.png",
+  "plastics/plastic10.png",
 ];
 
 // Rotation options for variation (degrees)

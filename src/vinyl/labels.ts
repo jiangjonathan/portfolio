@@ -57,7 +57,7 @@ export function createDefaultLabelVisuals(): LabelVisualOptions {
     title2: "Untitled Track",
     title3: "",
     sideLabel: "SIDE A",
-    rpmLabel: "33 1/3",
+    rpmLabel: "33 1/3 RPM",
   };
 }
 
