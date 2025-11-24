@@ -212,7 +212,7 @@ export class TurntableController {
       this.canvas.releasePointerCapture(e.pointerId);
     } catch {}
     // Snap to sweet spot if close (−15° to −5° → snap to −15)
-    const max = (-5 * Math.PI) / 180;
+    const max = (-3.69 * Math.PI) / 180;
     const min = this.TONEARM_PLAY_YAW_THRESHOLD; // −15°
     if (this.tonearmBaseRotation <= max && this.tonearmBaseRotation >= min) {
       this.tonearmBaseRotation = min - 0.0005;
@@ -462,6 +462,12 @@ export class TurntableController {
     if (this.startOn && this.isTonearmOverVinyl()) {
       this.scrubVideoToCurrentYaw();
     }
+    // Dispatch event for tutorial tracking (button click)
+    window.dispatchEvent(
+      new CustomEvent("tutorial-action", {
+        detail: { action: "start-player" },
+      }),
+    );
   }
 
   private pressStartStop() {

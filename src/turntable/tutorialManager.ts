@@ -53,15 +53,15 @@ export class TutorialManager {
     const instructions = [
       {
         action: "click-song" as TutorialAction,
-        text: "- click on a song to focus it",
+        text: "- left click on a song to focus it",
       },
       {
         action: "click-album-cover" as TutorialAction,
-        text: "- click the album cover of the focused song to open the vinyl",
+        text: "- left click the album cover of the focused song to open the vinyl",
       },
       {
         action: "drag-vinyl" as TutorialAction,
-        text: "- drag the vinyl near the turntable and let go",
+        text: "- drag the vinyl down near the turntable and let go",
       },
       {
         action: "start-player" as TutorialAction,
@@ -73,7 +73,7 @@ export class TutorialManager {
       },
       {
         action: "toggle-fullscreen" as TutorialAction,
-        text: "- when player is active, [F] to toggle fullscreen",
+        text: "- when the player is active, [F] to toggle fullscreen",
       },
       {
         action: "press-add-button" as TutorialAction,

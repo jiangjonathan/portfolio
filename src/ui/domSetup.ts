@@ -94,9 +94,9 @@ export function setupDOM(): DOMElements {
   tutorialContainer.id = "vinyl-tutorial";
   tutorialContainer.style.cssText = `
     position: fixed;
-    bottom: 280px;
+    bottom: 230px;
     left: 20px;
-    max-width: 350px;
+    max-width: 600px;
     z-index: ${UI_Z_INDEX};
     background: transparent;
     padding: 0;
