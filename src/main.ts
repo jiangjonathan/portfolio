@@ -340,15 +340,6 @@ const markFreeLookTutorialAction = (action: FreeLookTutorialAction) => {
   saveFreeLookTutorialState();
   renderFreeLookTutorialContent();
 };
-const dismissFreeLookTutorial = () => {
-  if (freeLookTutorialState.dismissed) {
-    return;
-  }
-  freeLookTutorialState.dismissed = true;
-  saveFreeLookTutorialState();
-  setFreeLookTutorialVisible(false);
-};
-
 window.addEventListener("free-look-action", (event) => {
   const detail = (event as CustomEvent).detail;
   if (!detail?.action) {
