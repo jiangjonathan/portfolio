@@ -128,7 +128,7 @@ export class PortfolioPapersManager {
   private getLeftStackHeightForPaper(paperId: string): number {
     // Left stack grows upward as papers are added, significantly higher than right stack
     // to avoid z-fighting. Papers are added to the top, so earlier papers are lower.
-    const BASE_LEFT_STACK_HEIGHT = 0.25; // Much higher base for left stack to avoid z-fighting
+    const BASE_LEFT_STACK_HEIGHT = 0.3; // Much higher base for left stack to avoid z-fighting
     const LEFT_STACK_HEIGHT_OFFSET = 0.04; // Larger spacing between papers on left stack
 
     const indexInLeftStack = this.leftStackPapers.indexOf(paperId);
