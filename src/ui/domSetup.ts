@@ -29,6 +29,7 @@ export interface DOMElements {
   canvas: HTMLCanvasElement;
   vinylLibraryContainer: HTMLDivElement;
   tutorialContainer: HTMLDivElement;
+  freeLookTutorialContainer: HTMLDivElement;
   vinylViewerContainer: HTMLDivElement;
   hideLibraryBtn: HTMLButtonElement;
   focusCardCoverContainer: HTMLDivElement;
@@ -39,6 +40,7 @@ export interface DOMElements {
   turntableNavButton: HTMLButtonElement;
   portfolioNavButton: HTMLButtonElement;
   resetTutorialButton: HTMLButtonElement;
+  freeLookButton: HTMLButtonElement;
   contactButton: HTMLButtonElement;
   cameraDebugPanel: HTMLDivElement;
   portfolioPapersContainer: HTMLDivElement;
@@ -109,6 +111,28 @@ export function setupDOM(): DOMElements {
     pointer-events: none;
   `;
   root.appendChild(tutorialContainer);
+
+  // Create free-look tutorial container (only shown during free-look mode)
+  const freeLookTutorialContainer = document.createElement("div");
+  freeLookTutorialContainer.id = "free-look-tutorial";
+  freeLookTutorialContainer.style.cssText = `
+    position: fixed;
+    bottom: 230px;
+    left: 20px;
+    max-width: 600px;
+    z-index: ${UI_Z_INDEX};
+    background: transparent;
+    padding: 0;
+    border: none;
+    font-size: 0.85rem;
+    line-height: 1.6;
+    display: none;
+    opacity: 0;
+    transition: opacity 0.45s ease;
+    pointer-events: none;
+  `;
+  freeLookTutorialContainer.innerHTML = "";
+  root.appendChild(freeLookTutorialContainer);
 
   // Create vinyl viewer container
   const vinylViewerContainer = document.createElement("div");
@@ -339,6 +363,11 @@ export function setupDOM(): DOMElements {
   resetTutorialButton.textContent = "reset tutorial";
   globalControls.appendChild(resetTutorialButton);
 
+  const freeLookButton = document.createElement("button");
+  freeLookButton.id = "free-look-button";
+  freeLookButton.textContent = "free-look";
+  globalControls.appendChild(freeLookButton);
+
   // Create camera debug panel (debug - hidden)
   const cameraDebugPanel = document.createElement("div");
   cameraDebugPanel.id = "camera-debug-panel";
@@ -487,6 +516,7 @@ export function setupDOM(): DOMElements {
     canvas,
     vinylLibraryContainer,
     tutorialContainer,
+    freeLookTutorialContainer,
     vinylViewerContainer,
     hideLibraryBtn,
     focusCardCoverContainer,
@@ -497,6 +527,7 @@ export function setupDOM(): DOMElements {
     turntableNavButton,
     portfolioNavButton,
     resetTutorialButton,
+    freeLookButton,
     contactButton,
     cameraDebugPanel,
     portfolioPapersContainer,

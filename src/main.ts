@@ -146,6 +146,7 @@ const {
   canvas,
   vinylLibraryContainer,
   tutorialContainer,
+  freeLookTutorialContainer,
   vinylViewerContainer,
   hideLibraryBtn,
   focusCardCoverContainer,
@@ -157,6 +158,7 @@ const {
   turntableNavButton,
   portfolioNavButton,
   resetTutorialButton,
+  freeLookButton,
   contactButton,
   // cameraDebugPanel, // Debug UI - disabled
   portfolioPrevArrow,
@@ -171,6 +173,7 @@ turntableNavButton.style.display = "block";
 portfolioNavButton.style.display = "block";
 contactButton.style.display = "block";
 resetTutorialButton.style.display = "none";
+freeLookButton.style.display = "none";
 
 // Initialize IndexedDB cache for album covers
 initializeCache().catch((error) => {
@@ -213,6 +216,149 @@ const focusCardContainers = [focusCardCoverContainer, focusCardInfoContainer];
 const vinylPositionOffset = new Vector3(0, 0, 0);
 const vinylDisplayPosition = new Vector3();
 let vinylScaleFactor = 1.0;
+const FREE_LOOK_MIN_ZOOM = 1.1;
+type FreeLookTutorialAction = "rotate" | "pan" | "zoom";
+interface FreeLookTutorialState {
+  completed: FreeLookTutorialAction[];
+  dismissed: boolean;
+}
+const FREE_LOOK_TUTORIAL_STORAGE_KEY = "free-look-tutorial-state";
+const FREE_LOOK_TUTORIAL_ACTIONS: Array<{
+  action: FreeLookTutorialAction;
+  text: string;
+}> = [
+  {
+    action: "rotate",
+    text: "- right click + drag to rotate the camera",
+  },
+  {
+    action: "pan",
+    text: "- middle mouse click + drag to pan the camera",
+  },
+  {
+    action: "zoom",
+    text: "- scroll to zoom the camera",
+  },
+];
+let freeLookTutorialState: FreeLookTutorialState = {
+  completed: [],
+  dismissed: false,
+};
+const loadFreeLookTutorialState = (): FreeLookTutorialState => {
+  try {
+    const stored = localStorage.getItem(FREE_LOOK_TUTORIAL_STORAGE_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (error) {
+    console.warn("Failed to load free-look tutorial state:", error);
+  }
+  return { completed: [], dismissed: false };
+};
+const saveFreeLookTutorialState = () => {
+  try {
+    localStorage.setItem(
+      FREE_LOOK_TUTORIAL_STORAGE_KEY,
+      JSON.stringify(freeLookTutorialState),
+    );
+  } catch (error) {
+    console.warn("Failed to save free-look tutorial state:", error);
+  }
+};
+freeLookTutorialState = loadFreeLookTutorialState();
+const renderFreeLookTutorialContent = () => {
+  if (!freeLookTutorialContainer) {
+    return;
+  }
+  const stepsHtml = FREE_LOOK_TUTORIAL_ACTIONS.map(({ action, text }) => {
+    const completed = freeLookTutorialState.completed.includes(action);
+    const className = completed ? "tutorial-step completed" : "tutorial-step";
+    return `<div class="${className}" data-action="${action}">${text}</div>`;
+  }).join("");
+  freeLookTutorialContainer.innerHTML = `
+    <style>
+      #free-look-tutorial {
+        position: relative;
+      }
+      #free-look-tutorial .tutorial-close-btn {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        background: transparent;
+        border: none;
+        font-size: 1.2rem;
+        cursor: pointer;
+        color: #666;
+        width: 24px;
+        height: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+        transition: opacity 0.2s, color 0.2s;
+        padding: 0;
+        line-height: 1;
+      }
+      #free-look-tutorial:hover .tutorial-close-btn {
+        opacity: 1;
+      }
+      #free-look-tutorial .tutorial-close-btn:hover {
+        color: #000;
+      }
+      #free-look-tutorial .tutorial-step {
+        margin-bottom: 8px;
+        opacity: 1;
+        transition: opacity 0.3s, text-decoration 0.3s;
+      }
+      #free-look-tutorial .tutorial-step.completed {
+        text-decoration: line-through;
+        opacity: 0.5;
+      }
+      #free-look-tutorial .tutorial-step:last-child {
+        margin-bottom: 0;
+      }
+    </style>
+    <button class="tutorial-close-btn" id="free-look-tutorial-close">
+      ×
+    </button>
+    ${stepsHtml}
+  `;
+  const closeBtn = freeLookTutorialContainer.querySelector(
+    "#free-look-tutorial-close",
+  ) as HTMLButtonElement | null;
+  closeBtn?.addEventListener("click", () => {
+    freeLookTutorialState.dismissed = true;
+    saveFreeLookTutorialState();
+    setFreeLookTutorialVisible(false);
+  });
+};
+const markFreeLookTutorialAction = (action: FreeLookTutorialAction) => {
+  if (freeLookTutorialState.completed.includes(action)) {
+    return;
+  }
+  freeLookTutorialState.completed.push(action);
+  saveFreeLookTutorialState();
+  renderFreeLookTutorialContent();
+};
+const dismissFreeLookTutorial = () => {
+  if (freeLookTutorialState.dismissed) {
+    return;
+  }
+  freeLookTutorialState.dismissed = true;
+  saveFreeLookTutorialState();
+  setFreeLookTutorialVisible(false);
+};
+
+window.addEventListener("free-look-action", (event) => {
+  const detail = (event as CustomEvent).detail;
+  if (!detail?.action) {
+    return;
+  }
+  markFreeLookTutorialAction(detail.action as FreeLookTutorialAction);
+});
+let isFreeLookMode = false;
+let freeLookWasPlayerCollapsed = false;
+let freeLookFocusHidden = false;
 
 // Turntable position cycling (camera view)
 type TurntablePosition =
@@ -811,7 +957,8 @@ const setTurntableUIVisible = (visible: boolean) => {
     visible &&
     vinylUIFadeTriggered &&
     !turntableStateManager.getIsFullscreenMode() &&
-    activePage === "turntable";
+    activePage === "turntable" &&
+    !isFreeLookMode;
   vinylViewerContainer.style.opacity = effective ? "1" : "0";
   vinylViewerContainer.style.pointerEvents = effective ? "auto" : "none";
   hideLibraryBtn.style.opacity = effective ? "1" : "0";
@@ -849,6 +996,109 @@ const setTurntableUIVisible = (visible: boolean) => {
   }
 };
 setTurntableUIVisible(false);
+
+const setFreeLookTutorialVisible = (visible: boolean) => {
+  if (!freeLookTutorialContainer) {
+    return;
+  }
+  if (visible && !freeLookTutorialState.dismissed) {
+    renderFreeLookTutorialContent();
+    freeLookTutorialContainer.style.display = "block";
+    requestAnimationFrame(() => {
+      freeLookTutorialContainer.style.opacity = "1";
+      freeLookTutorialContainer.style.pointerEvents = "auto";
+    });
+  } else {
+    freeLookTutorialContainer.style.opacity = "0";
+    freeLookTutorialContainer.style.pointerEvents = "none";
+    setTimeout(() => {
+      if (freeLookTutorialContainer.style.opacity === "0") {
+        freeLookTutorialContainer.style.display = "none";
+      }
+    }, 450);
+  }
+};
+
+const exitFreeLookMode = ({
+  restoreCamera = true,
+  restoreUI = true,
+  restorePlayer = true,
+}: {
+  restoreCamera?: boolean;
+  restoreUI?: boolean;
+  restorePlayer?: boolean;
+} = {}) => {
+  if (!isFreeLookMode) {
+    return;
+  }
+  isFreeLookMode = false;
+  freeLookButton.textContent = "free-look";
+  setFreeLookTutorialVisible(false);
+  focusVinylManuallyHidden = true;
+  updateFocusVinylVisibility();
+  if (restorePlayer && yt) {
+    yt.setPlayerCollapsed(freeLookWasPlayerCollapsed);
+  }
+  if (restoreCamera) {
+    turntablePositionState = "bottom-center";
+    cameraRig.setLookTarget(CAMERA_TARGETS[turntablePositionState], true);
+    cameraRig.setViewDirection(
+      directionFromAngles(pageCameraSettings.turntable.yaw, 22),
+      true,
+    );
+    cameraRig.setZoomFactor(pageCameraSettings.turntable.zoom);
+    cameraRig.onAnimationComplete(() => {
+      focusVinylManuallyHidden = freeLookFocusHidden;
+      updateFocusVinylVisibility();
+    });
+  } else {
+    focusVinylManuallyHidden = freeLookFocusHidden;
+    updateFocusVinylVisibility();
+  }
+  if (restoreUI) {
+    setTurntableUIVisible(activePage === "turntable");
+  }
+};
+
+const enterFreeLookMode = () => {
+  if (
+    isFreeLookMode ||
+    activePage !== "turntable" ||
+    pageTransitionState.active
+  ) {
+    return;
+  }
+  isFreeLookMode = true;
+  freeLookButton.textContent = "exit free-look";
+  freeLookWasPlayerCollapsed = yt?.isPlayerCollapsed() ?? false;
+  freeLookFocusHidden = focusVinylManuallyHidden;
+  focusVinylManuallyHidden = true;
+  updateFocusVinylVisibility();
+  setTurntableUIVisible(false);
+  if (yt) {
+    yt.setPlayerCollapsed(true);
+  }
+  turntablePositionState = "default";
+  const defaultTurntableSettings = pageCameraSettings.turntable;
+  cameraRig.setLookTarget(defaultTurntableSettings.target, true);
+  cameraRig.setViewDirection(
+    directionFromAngles(
+      defaultTurntableSettings.yaw,
+      defaultTurntableSettings.pitch,
+    ),
+    true,
+  );
+  cameraRig.setZoomFactor(defaultTurntableSettings.zoom);
+  setFreeLookTutorialVisible(true);
+};
+
+const toggleFreeLookMode = () => {
+  if (isFreeLookMode) {
+    exitFreeLookMode();
+  } else {
+    enterFreeLookMode();
+  }
+};
 
 // Initialize portfolio papers manager
 portfolioPapersManager = new PortfolioPapersManager(
@@ -997,6 +1247,10 @@ resetTutorialButton.addEventListener("click", () => {
   }
 });
 
+freeLookButton.addEventListener("click", () => {
+  toggleFreeLookMode();
+});
+
 contactButton.addEventListener("click", () => {
   setActiveScenePage("business_card");
 });
@@ -1016,6 +1270,13 @@ portfolioNextArrow.addEventListener("click", () => {
 const setActiveScenePage = (page: ScenePage) => {
   if (page === activePage) {
     return;
+  }
+  if (page !== "turntable" && isFreeLookMode) {
+    exitFreeLookMode({
+      restoreCamera: false,
+      restoreUI: false,
+      restorePlayer: false,
+    });
   }
   const previousPage = activePage;
   if (previousPage === "portfolio" && page !== "portfolio") {
@@ -1128,6 +1389,7 @@ const setActiveScenePage = (page: ScenePage) => {
     portfolioNavButton.style.display = page === "portfolio" ? "none" : "block";
     contactButton.style.display = page === "business_card" ? "none" : "block";
     resetTutorialButton.style.display = page === "turntable" ? "block" : "none";
+    freeLookButton.style.display = page === "turntable" ? "block" : "none";
   };
 
   if (isPositionChanging) {
@@ -2032,6 +2294,7 @@ const updateFocusVinylVisibility = () => {
   const hasFocusCard = focusCardCoverContainer.childElementCount > 0;
   focusVinylState.model.visible =
     !turntableStateManager.getIsFullscreenMode() &&
+    !isFreeLookMode &&
     !focusVinylManuallyHidden &&
     hasFocusCard;
 };
@@ -3029,7 +3292,24 @@ canvas.addEventListener(
       return;
     }
 
-    if (activePage !== "home" || pageTransitionState.active) {
+    if (pageTransitionState.active) {
+      return;
+    }
+
+    if (isFreeLookMode) {
+      event.preventDefault();
+      const zoomMultiplier = Math.pow(1.0015, -event.deltaY);
+      const candidateZoom = cameraRig.getZoomFactor() * zoomMultiplier;
+      cameraRig.setZoomFactor(Math.max(FREE_LOOK_MIN_ZOOM, candidateZoom));
+      window.dispatchEvent(
+        new CustomEvent("free-look-action", {
+          detail: { action: "zoom" as FreeLookTutorialAction },
+        }),
+      );
+      return;
+    }
+
+    if (activePage !== "home") {
       return;
     }
 
@@ -3923,8 +4203,16 @@ function startCameraOrbit(event: PointerEvent) {
   cameraOrbitState.lastY = event.clientY;
   cameraOrbitState.mode = activePage;
 
-  if (activePage === "turntable") {
+  if (activePage === "turntable" && !isFreeLookMode) {
     cameraRig.saveRotationState();
+  }
+
+  if (isFreeLookMode) {
+    window.dispatchEvent(
+      new CustomEvent("free-look-action", {
+        detail: { action: "rotate" as FreeLookTutorialAction },
+      }),
+    );
   }
 
   canvas.setPointerCapture(event.pointerId);
@@ -3975,7 +4263,7 @@ function endCameraOrbit(event: PointerEvent) {
   cameraOrbitState.isOrbiting = false;
   cameraOrbitState.pointerId = -1;
 
-  if (cameraOrbitState.mode === "turntable") {
+  if (cameraOrbitState.mode === "turntable" && !isFreeLookMode) {
     // Restore to saved rotation state with animation
     cameraRig.restoreRotationState();
   } else if (cameraOrbitState.mode === "home") {
@@ -4004,6 +4292,13 @@ function startCameraPan(event: PointerEvent) {
   cameraPanState.pointerId = event.pointerId;
   cameraPanState.lastX = event.clientX;
   cameraPanState.lastY = event.clientY;
+  if (isFreeLookMode) {
+    window.dispatchEvent(
+      new CustomEvent("free-look-action", {
+        detail: { action: "pan" as FreeLookTutorialAction },
+      }),
+    );
+  }
   canvas.setPointerCapture(event.pointerId);
 }
 

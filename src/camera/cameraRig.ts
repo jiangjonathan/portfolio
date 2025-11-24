@@ -33,6 +33,7 @@ export class CameraRig {
   private animationProgress = 0;
   private animationDuration = 0.6; // seconds
   private animationCompleteCallbacks: Array<() => void> = [];
+  private isTargetAnimating = false;
 
   // Rotation memory for animated return
   private savedAzimuth: number | null = null;
@@ -77,6 +78,10 @@ export class CameraRig {
     // Start animation
     this.isAnimating = true;
     this.isAnimatingViewDirection = true;
+    if (!this.isTargetAnimating) {
+      this.animationStartTarget.copy(this.target);
+      this.animationEndTarget.copy(this.target);
+    }
     this.animationProgress = 0;
     this.animationStartAzimuth = this.orbitAzimuth;
     this.animationStartPolar = this.orbitPolar;
@@ -172,6 +177,10 @@ export class CameraRig {
       } else {
         this.isAnimating = true;
         this.isAnimatingViewDirection = true;
+        if (!this.isTargetAnimating) {
+          this.animationStartTarget.copy(this.target);
+          this.animationEndTarget.copy(this.target);
+        }
         this.animationProgress = 0;
         this.animationStartAzimuth = this.orbitAzimuth;
         this.animationStartPolar = this.orbitPolar;
@@ -253,6 +262,7 @@ export class CameraRig {
 
   private animateTo(newTarget: Vector3) {
     this.isAnimating = true;
+    this.isTargetAnimating = true;
     this.animationProgress = 0;
     this.animationStartTarget.copy(this.target);
     this.animationEndTarget.copy(newTarget);
@@ -298,6 +308,7 @@ export class CameraRig {
     // Clear view direction animation flag when done
     if (this.animationProgress >= 1) {
       this.isAnimatingViewDirection = false;
+      this.isTargetAnimating = false;
       this.notifyAnimationComplete();
     }
   }
