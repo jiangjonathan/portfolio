@@ -132,6 +132,7 @@ import {
   GLOBAL_CONTROLS_TURNTABLE,
 } from "./ui/domSetup";
 import { PortfolioPapersManager } from "./portfolio/portfolioPapers";
+import type { PaperConfig } from "./portfolio/portfolioPapers";
 
 declare global {
   interface Window {
@@ -216,6 +217,11 @@ const focusCardContainers = [focusCardCoverContainer, focusCardInfoContainer];
 const vinylPositionOffset = new Vector3(0, 0, 0);
 const vinylDisplayPosition = new Vector3();
 let vinylScaleFactor = 1.0;
+const isMarkdownPaperConfig = (paper: { url: string }): boolean => {
+  return paper.url?.toLowerCase().endsWith(".md");
+};
+const isResumePaperConfig = (paper: { id: string }): boolean =>
+  paper.id === "resume-pdf";
 const FREE_LOOK_MIN_ZOOM = 1.1;
 type FreeLookTutorialAction = "rotate" | "pan" | "zoom";
 interface FreeLookTutorialState {
@@ -677,34 +683,21 @@ document.addEventListener("mousemove", (event) => {
 
   // Check if hovering over portfolio papers (only when on portfolio page)
   if (activePage === "portfolio" && portfolioPapersManager) {
+    let hoveredPaper: PortfolioPaperHit | null = null;
+    if (updatePointer(event, pointerNDC, canvas)) {
+      raycaster.setFromCamera(pointerNDC, camera);
+      hoveredPaper = pickPortfolioPaperUnderPointer();
+    }
+    const hoveredScrollablePaperId =
+      hoveredPaper &&
+      portfolioPapersManager.isPaperScrollable(hoveredPaper.paperId)
+        ? hoveredPaper.paperId
+        : null;
+    portfolioPapersManager.setHoveredScrollablePaper(hoveredScrollablePaperId);
     let isHoveringPaper = false;
-    let hoveredScrollablePaperId: string | null = null;
-    const paperMeshes = portfolioPapersManager.getPaperMeshes();
-    const currentPaperId = portfolioPapersManager.getCurrentPaperId();
-
-    for (const [paperId, mesh] of paperMeshes) {
-      const hits = raycaster.intersectObject(mesh, true);
-      if (hits.length === 0) {
-        continue;
-      }
-
-      // Only interact with the current top paper (not papers in left stack)
-      if (
-        paperId !== currentPaperId ||
-        portfolioPapersManager.isPaperInLeftStack(paperId)
-      ) {
-        continue;
-      }
-
-      const paper = portfolioPapersManager
-        .getPapers()
-        .find((p) => p.id === paperId);
-      if (!paper) {
-        continue;
-      }
-
-      // Check if hovering over a link
-      const hit = hits[0];
+    if (hoveredPaper) {
+      const { paperId, hit } = hoveredPaper;
+      isHoveringPaper = true;
       if (hit.uv) {
         const linkUrl = portfolioPapersManager.checkLinkAtUV(
           paperId,
@@ -715,19 +708,7 @@ document.addEventListener("mousemove", (event) => {
           isHoveringPaper = true;
         }
       }
-
-      if (paper.type === "pdf") {
-        isHoveringPaper = true;
-      }
-      if (
-        !hoveredScrollablePaperId &&
-        portfolioPapersManager.isPaperScrollable(paperId)
-      ) {
-        hoveredScrollablePaperId = paperId;
-      }
     }
-
-    portfolioPapersManager.setHoveredScrollablePaper(hoveredScrollablePaperId);
     canvas.style.cursor = isHoveringPaper ? "pointer" : "auto";
   } else {
     portfolioPapersManager?.setHoveredScrollablePaper(null);
@@ -1444,17 +1425,16 @@ const setActiveScenePage = (page: ScenePage) => {
   }
 
   // Show/hide portfolio navigation arrows
-  if (page === "portfolio") {
-    portfolioPrevArrow.style.opacity = "1";
-    portfolioPrevArrow.style.pointerEvents = "auto";
-    portfolioNextArrow.style.opacity = "1";
-    portfolioNextArrow.style.pointerEvents = "auto";
-  } else {
-    portfolioPrevArrow.style.opacity = "0";
-    portfolioPrevArrow.style.pointerEvents = "none";
-    portfolioNextArrow.style.opacity = "0";
-    portfolioNextArrow.style.pointerEvents = "none";
-  }
+  const setPortfolioArrowVisibility = (visible: boolean) => {
+    const opacity = visible ? "1" : "0";
+    const pointer = visible ? "auto" : "none";
+    portfolioPrevArrow.style.opacity = opacity;
+    portfolioPrevArrow.style.pointerEvents = pointer;
+    portfolioNextArrow.style.opacity = opacity;
+    portfolioNextArrow.style.pointerEvents = pointer;
+  };
+
+  setPortfolioArrowVisibility(page === "portfolio");
 
   // Show/hide placeholder info
   if (page === "placeholder_A") {
@@ -2800,69 +2780,42 @@ canvas.addEventListener("pointerdown", (event) => {
       }
       startBusinessCardRotation();
     } else if (activePage === "portfolio") {
-      // Check if clicking on a portfolio paper mesh
-      if (portfolioPapersManager) {
-        const paperMeshes = portfolioPapersManager.getPaperMeshes();
-        const currentPaperId = portfolioPapersManager.getCurrentPaperId();
-
-        for (const [paperId, mesh] of paperMeshes) {
-          const hits = raycaster.intersectObject(mesh, true);
-          if (hits.length > 0) {
-            // Only allow clicking the current top paper (not papers in left stack)
-            if (
-              paperId !== currentPaperId ||
-              portfolioPapersManager.isPaperInLeftStack(paperId)
-            ) {
-              continue;
-            }
-
-            // Check if clicking on scrollbar
-            const hit = hits[0];
-            if (hit.uv) {
-              const canvasCoords = portfolioPapersManager.uvToCanvasCoords(
-                paperId,
-                { x: hit.uv.x, y: hit.uv.y },
-              );
-              if (
-                canvasCoords &&
-                portfolioPapersManager.isPointerOnScrollbar(
-                  paperId,
-                  canvasCoords.x,
-                  canvasCoords.y,
-                )
-              ) {
-                portfolioPapersManager.startScrollbarDrag(
-                  paperId,
-                  canvasCoords.y,
-                );
-                return;
-              }
-
-              // Check if clicking on a link within the paper
-              const linkUrl = portfolioPapersManager.checkLinkAtUV(
-                paperId,
-                hit.uv.x,
-                hit.uv.y,
-              );
-              if (linkUrl) {
-                console.log(`[Portfolio] Opening link: ${linkUrl}`);
-                window.open(linkUrl, "_blank");
-                return;
-              }
-            }
-
-            // Found a paper click - check if it's a PDF
-            const paper = portfolioPapersManager
-              .getPapers()
-              .find((p) => p.id === paperId);
-            if (paper && paper.type === "pdf") {
-              console.log(
-                `[Portfolio] Opening PDF in new window: ${paper.url}`,
-              );
-              window.open(paper.url, "_blank");
-              return;
-            }
+      const hoveredPaper = pickPortfolioPaperUnderPointer();
+      if (hoveredPaper) {
+        const { paperId, paper, hit } = hoveredPaper;
+        if (hit.uv) {
+          const canvasCoords = portfolioPapersManager?.uvToCanvasCoords(
+            paperId,
+            { x: hit.uv.x, y: hit.uv.y },
+          );
+          if (
+            canvasCoords &&
+            portfolioPapersManager?.isPointerOnScrollbar(
+              paperId,
+              canvasCoords.x,
+              canvasCoords.y,
+            )
+          ) {
+            portfolioPapersManager?.startScrollbarDrag(paperId, canvasCoords.y);
+            return;
           }
+
+          const linkUrl = portfolioPapersManager?.checkLinkAtUV(
+            paperId,
+            hit.uv.x,
+            hit.uv.y,
+          );
+          if (linkUrl) {
+            console.log(`[Portfolio] Opening link: ${linkUrl}`);
+            window.open(linkUrl, "_blank");
+            return;
+          }
+        }
+
+        if (paper.type === "pdf") {
+          console.log(`[Portfolio] Opening PDF in new window: ${paper.url}`);
+          window.open(paper.url, "_blank");
+          return;
         }
       }
     }
@@ -3253,6 +3206,56 @@ canvas.addEventListener("pointerup", endScrollbarDrag);
 canvas.addEventListener("pointercancel", endScrollbarDrag);
 canvas.addEventListener("pointerleave", endScrollbarDrag);
 
+type PortfolioPaperHit = {
+  paperId: string;
+  paper: PaperConfig;
+  hit: Intersection<Object3D>;
+};
+
+const pickPortfolioPaperUnderPointer = (
+  options: { requireScrollable?: boolean } = {},
+): PortfolioPaperHit | null => {
+  if (!portfolioPapersManager) {
+    return null;
+  }
+  const { requireScrollable = false } = options;
+  const paperMeshes = portfolioPapersManager.getPaperMeshes();
+  const currentPaperId = portfolioPapersManager.getCurrentPaperId();
+  const papersById = new Map(
+    portfolioPapersManager.getPapers().map((paper) => [paper.id, paper]),
+  );
+  let bestHit: PortfolioPaperHit | null = null;
+
+  for (const [paperId, mesh] of paperMeshes) {
+    const hits = raycaster.intersectObject(mesh, true);
+    if (!hits.length) {
+      continue;
+    }
+    const paper = papersById.get(paperId);
+    if (!paper) {
+      continue;
+    }
+    if (
+      requireScrollable &&
+      !portfolioPapersManager.isPaperScrollable(paperId)
+    ) {
+      continue;
+    }
+    const allowLeftStackInteraction =
+      isMarkdownPaperConfig(paper) || isResumePaperConfig(paper);
+    const isLeftStack = portfolioPapersManager.isPaperInLeftStack(paperId);
+    const isCurrentPaper = paperId === currentPaperId;
+    if (!allowLeftStackInteraction && (!isCurrentPaper || isLeftStack)) {
+      continue;
+    }
+    const hit = hits[0];
+    if (!bestHit || hit.distance < bestHit.hit.distance) {
+      bestHit = { paperId, paper, hit };
+    }
+  }
+  return bestHit;
+};
+
 const handlePortfolioPaperScroll = (event: WheelEvent): boolean => {
   if (activePage !== "portfolio" || !portfolioPapersManager) {
     return false;
@@ -3262,15 +3265,15 @@ const handlePortfolioPaperScroll = (event: WheelEvent): boolean => {
     return false;
   }
   raycaster.setFromCamera(pointerNDC, camera);
-  const paperMeshes = portfolioPapersManager.getPaperMeshes();
-  for (const [paperId, mesh] of paperMeshes) {
-    const hits = raycaster.intersectObject(mesh, true);
-    if (hits.length > 0) {
-      portfolioPapersManager.setHoveredScrollablePaper(paperId);
-      return portfolioPapersManager.scrollPaper(paperId, event.deltaY);
-    }
+  const hoveredPaper = pickPortfolioPaperUnderPointer({
+    requireScrollable: true,
+  });
+  if (!hoveredPaper) {
+    portfolioPapersManager.setHoveredScrollablePaper(null);
+    return false;
   }
-  return false;
+  portfolioPapersManager.setHoveredScrollablePaper(hoveredPaper.paperId);
+  return portfolioPapersManager.scrollPaper(hoveredPaper.paperId, event.deltaY);
 };
 
 // Scroll wheel camera orbit on home page and scroll papers on portfolio page

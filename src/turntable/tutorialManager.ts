@@ -61,7 +61,7 @@ export class TutorialManager {
       },
       {
         action: "drag-vinyl" as TutorialAction,
-        text: "- drag the vinyl down near the turntable platter and let go",
+        text: "- left click + drag the vinyl down near the turntable platter and let go",
       },
       {
         action: "start-player" as TutorialAction,
@@ -69,7 +69,7 @@ export class TutorialManager {
       },
       {
         action: "drag-tonearm" as TutorialAction,
-        text: "- drag the tonearm onto the vinyl to start playing / scrub media",
+        text: "- left click + drag the tonearm onto the vinyl to start playing / scrub media",
       },
       {
         action: "toggle-fullscreen" as TutorialAction,
@@ -77,7 +77,7 @@ export class TutorialManager {
       },
       {
         action: "press-add-button" as TutorialAction,
-        text: "- press the + sign below to add a song",
+        text: "- press the + button below to add a song",
       },
       { action: null, text: "enjoy" },
     ];

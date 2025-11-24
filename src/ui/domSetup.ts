@@ -412,58 +412,43 @@ export function setupDOM(): DOMElements {
   });
   // root.appendChild(portfolioPapersContainer); // Debug UI - disabled
 
-  // Create portfolio navigation arrows
-  const portfolioPrevArrow = document.createElement("button");
-  portfolioPrevArrow.textContent = "‹";
-  Object.assign(portfolioPrevArrow.style, {
+  const arrowBaseStyles: Partial<CSSStyleDeclaration> = {
     position: "fixed",
-    left: "50px",
     top: "50%",
     transform: "translateY(-50%)",
-    fontSize: "4rem",
+    fontSize: "3rem",
     background: "transparent",
     border: "none",
     color: "#000",
     cursor: "pointer",
-    padding: "0.5rem",
-    zIndex: "1050",
+    padding: "0.25rem",
+    textShadow: "-0.5px 0 #ff0000, 0.5px 0 #0000ff",
     opacity: "0",
     pointerEvents: "none",
-    transition: "all 0.3s ease",
-    textShadow: "-0.5px 0 #ff0000, 0.5px 0 #0000ff",
-  });
+    zIndex: "1050",
+    transition: "opacity 0.3s ease, transform 0.15s ease",
+    lineHeight: "1",
+  };
+
+  const portfolioPrevArrow = document.createElement("button");
+  portfolioPrevArrow.textContent = "‹";
+  Object.assign(portfolioPrevArrow.style, arrowBaseStyles, { left: "50px" });
   portfolioPrevArrow.addEventListener("mouseover", () => {
-    portfolioPrevArrow.style.fontSize = "4.5rem";
+    portfolioPrevArrow.style.transform = "translateY(-50%) scale(1.05)";
   });
   portfolioPrevArrow.addEventListener("mouseout", () => {
-    portfolioPrevArrow.style.fontSize = "4rem";
+    portfolioPrevArrow.style.transform = "translateY(-50%) scale(1)";
   });
   root.appendChild(portfolioPrevArrow);
 
   const portfolioNextArrow = document.createElement("button");
   portfolioNextArrow.textContent = "›";
-  Object.assign(portfolioNextArrow.style, {
-    position: "fixed",
-    right: "50px",
-    top: "50%",
-    transform: "translateY(-50%)",
-    fontSize: "4rem",
-    background: "transparent",
-    border: "none",
-    color: "#000",
-    cursor: "pointer",
-    padding: "0.5rem",
-    zIndex: "1050",
-    opacity: "0",
-    pointerEvents: "none",
-    transition: "all 0.3s ease",
-    textShadow: "-0.5px 0 #ff0000, 0.5px 0 #0000ff",
-  });
+  Object.assign(portfolioNextArrow.style, arrowBaseStyles, { right: "50px" });
   portfolioNextArrow.addEventListener("mouseover", () => {
-    portfolioNextArrow.style.fontSize = "4.5rem";
+    portfolioNextArrow.style.transform = "translateY(-50%) scale(1.05)";
   });
   portfolioNextArrow.addEventListener("mouseout", () => {
-    portfolioNextArrow.style.fontSize = "4rem";
+    portfolioNextArrow.style.transform = "translateY(-50%) scale(1)";
   });
   root.appendChild(portfolioNextArrow);
 
