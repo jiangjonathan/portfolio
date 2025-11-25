@@ -324,6 +324,8 @@ export class VinylLibraryViewer {
             background: transparent;
             border: none;
             min-height: auto;
+            transform-origin: top right;
+            transform: scale(var(--vinyl-widget-scale, 1));
           }
 
           .vinyl-viewer-widget h3 {

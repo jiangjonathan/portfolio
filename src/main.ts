@@ -195,7 +195,10 @@ const triggerVinylUIFadeIn = () => {
   vinylUIFadeTriggered = true;
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
-      vinylViewerContainer.style.transform = "translateY(0)";
+      vinylViewerContainer.style.setProperty(
+        "--vinyl-viewer-translate",
+        "translateY(0)",
+      );
       setTurntableUIVisible(activePage === "turntable");
     });
   });

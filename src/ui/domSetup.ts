@@ -86,6 +86,7 @@ export function setupDOM(): DOMElements {
     bottom: 20px;
     left: 20px;
     max-width: ${UI_MAX_WIDTH};
+    width: min(${UI_MAX_WIDTH}, calc(100vw - 40px));
     z-index: ${UI_Z_INDEX};
     overflow: visible;
   `;
@@ -149,10 +150,25 @@ export function setupDOM(): DOMElements {
     -ms-overflow-style: none;
     transition: opacity 0.45s ease, transform 0.45s ease;
     opacity: 0;
-    transform: translateY(8px);
+    transform-origin: top right;
+    transform: var(--vinyl-viewer-translate, translateY(8px));
     padding: 20px 40px 20px 20px;
   `;
   vinylViewerContainer.style.pointerEvents = "none";
+
+  const updateVinylViewerScale = () => {
+    const viewportWidth = window.innerWidth;
+    const baseWidth = 1400;
+    const minScale = 0.6;
+    const scale = Math.max(minScale, Math.min(1, viewportWidth / baseWidth));
+    vinylViewerContainer.style.setProperty(
+      "--vinyl-widget-scale",
+      scale.toString(),
+    );
+  };
+
+  updateVinylViewerScale();
+  window.addEventListener("resize", updateVinylViewerScale);
 
   // Create hide/show library button
   const hideLibraryBtn = document.createElement("button");
