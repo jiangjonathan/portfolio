@@ -3814,13 +3814,7 @@ const animate = (time: number) => {
         yt.setControlsVisible(true);
         // Animate viewport back in only if not manually collapsed
         if (!yt.isPlayerCollapsed()) {
-          const targetHeight = 512 / yt.getAspectRatio();
-          const viewport = root.querySelector(
-            ".yt-player-viewport",
-          ) as HTMLElement;
-          if (viewport) {
-            viewport.style.height = `${targetHeight}px`;
-          }
+          yt.refreshLayout();
         }
         // Update button visibility after viewport height change
         yt.updateButtonVisibility();

@@ -48,6 +48,7 @@ export interface YouTubeBridge {
   setPlayerCollapsed(collapsed: boolean): void;
   setFKeyListenerEnabled(enabled: boolean): void;
   updateButtonVisibility(): void;
+  refreshLayout(): void;
 }
 
 let apiReadyPromise: Promise<void> | null = null;
@@ -99,13 +100,18 @@ export function createYouTubePlayer(): YouTubeBridge {
   const COLLAPSE_BUTTON_Z_INDEX = "21001";
   const FULLSCREEN_BUTTON_Z_INDEX = "21002";
   const FULLSCREEN_CONTROLS_Z_INDEX = "21003";
+  const DEFAULT_SMALL_PLAYER_WIDTH = 512;
+  const SMALL_PLAYER_MARGIN_PX = 20;
+  const SMALL_PLAYER_MARGIN = `${SMALL_PLAYER_MARGIN_PX}px`;
+  const SMALL_PLAYER_HEIGHT_RATIO = 2;
+  const FOCUS_COVER_GAP_PX = 20;
 
   const wrapper = document.createElement("div");
   wrapper.className = "yt-shell";
   Object.assign(wrapper.style, {
     position: "absolute",
-    top: "1.5rem",
-    left: "1.5rem",
+    top: SMALL_PLAYER_MARGIN,
+    left: SMALL_PLAYER_MARGIN,
     zIndex: SMALL_PLAYER_Z_INDEX,
     pointerEvents: "auto",
     transition: "all 0.3s ease-in-out",
@@ -113,7 +119,7 @@ export function createYouTubePlayer(): YouTubeBridge {
 
   const viewport = document.createElement("div");
   viewport.className = "yt-player-viewport";
-  viewport.style.width = "512px";
+  viewport.style.width = `${DEFAULT_SMALL_PLAYER_WIDTH}px`;
   viewport.style.height = "0px";
   viewport.style.transition = "height 0.5s ease-out";
   viewport.style.transformOrigin = "center center";
@@ -205,7 +211,7 @@ export function createYouTubePlayer(): YouTubeBridge {
     } else {
       const isTonearmInPlayArea = isTonearmInPlayAreaQuery?.() ?? false;
       if (isTonearmInPlayArea) {
-        const targetHeight = 512 / DYNAMIC_VIDEO_ASPECT;
+        const targetHeight = getSmallPlayerTargetHeight();
         viewport.style.height = `${targetHeight}px`;
       }
       collapseButton.title = "Hide player";
@@ -302,8 +308,8 @@ export function createYouTubePlayer(): YouTubeBridge {
 
   const playerSize = document.createElement("div");
   playerSize.id = "player-size";
-  playerSize.style.width = "512px";
-  playerSize.style.height = "1024px";
+  playerSize.style.width = `${DEFAULT_SMALL_PLAYER_WIDTH}px`;
+  playerSize.style.height = `${DEFAULT_SMALL_PLAYER_WIDTH * SMALL_PLAYER_HEIGHT_RATIO}px`;
   viewport.appendChild(playerSize);
 
   const playerHostId = "player";
@@ -325,6 +331,11 @@ export function createYouTubePlayer(): YouTubeBridge {
   let isFreeLookModeQuery: (() => boolean) | null = null;
   let hasLoadedVideo = false;
   let controlsAreVisible = false;
+  let smallPlayerWidth = DEFAULT_SMALL_PLAYER_WIDTH;
+  let focusCoverElement: HTMLElement | null = null;
+  let observedFocusCover: HTMLElement | null = null;
+  let focusCoverResizeObserver: ResizeObserver | null = null;
+  let focusCoverMutationObserver: MutationObserver | null = null;
 
   const disablePlayerInteraction = () => {
     const iframe = player?.getIframe?.();
@@ -359,13 +370,65 @@ export function createYouTubePlayer(): YouTubeBridge {
   resizeObserver.observe(playerSize);
   resizeObserver.observe(viewport);
 
+  const getFocusCoverElement = () => {
+    if (focusCoverElement && document.body.contains(focusCoverElement)) {
+      return focusCoverElement;
+    }
+    focusCoverElement = document.querySelector(
+      ".focus-card-cover-container",
+    ) as HTMLElement | null;
+    return focusCoverElement;
+  };
+
+  const ensureFocusCoverObservers = () => {
+    const element = getFocusCoverElement();
+    if (!element || observedFocusCover === element) {
+      return;
+    }
+
+    observedFocusCover = element;
+
+    const handleFocusCoverChange = () => {
+      updateSmallPlayerDimensions();
+      updateViewportForAspectRatio();
+    };
+
+    if (!focusCoverResizeObserver) {
+      focusCoverResizeObserver = new ResizeObserver(() => {
+        handleFocusCoverChange();
+      });
+    } else {
+      focusCoverResizeObserver.disconnect();
+    }
+    focusCoverResizeObserver.observe(element);
+
+    if (!focusCoverMutationObserver) {
+      focusCoverMutationObserver = new MutationObserver(() => {
+        handleFocusCoverChange();
+      });
+    } else {
+      focusCoverMutationObserver.disconnect();
+    }
+    focusCoverMutationObserver.observe(element, {
+      attributes: true,
+      attributeFilter: ["style", "class"],
+      childList: true,
+      subtree: true,
+    });
+  };
+
+  const getSmallPlayerTargetHeight = () => {
+    const safeAspect = DYNAMIC_VIDEO_ASPECT || 1;
+    return smallPlayerWidth / safeAspect;
+  };
+
   // Function to update viewport height based on aspect ratio
   const updateViewportForAspectRatio = () => {
     // Only update if player is not collapsed and not in fullscreen
     if (!isCollapsed && !isFullscreenMode) {
       const isTonearmInPlayArea = isTonearmInPlayAreaQuery?.() ?? false;
       if (isTonearmInPlayArea) {
-        const targetHeight = 512 / DYNAMIC_VIDEO_ASPECT;
+        const targetHeight = getSmallPlayerTargetHeight();
         viewport.style.height = `${targetHeight}px`;
         console.log(
           `[YouTube] Updated viewport height to ${targetHeight}px for aspect ratio ${DYNAMIC_VIDEO_ASPECT}`,
@@ -373,6 +436,42 @@ export function createYouTubePlayer(): YouTubeBridge {
       }
     }
   };
+
+  const getFocusCoverLeftEdge = () => {
+    const focusCoverContainer = getFocusCoverElement();
+    if (!focusCoverContainer) return null;
+    const rect = focusCoverContainer.getBoundingClientRect();
+    return rect.left;
+  };
+
+  const updateSmallPlayerDimensions = () => {
+    if (isFullscreenMode) return;
+    ensureFocusCoverObservers();
+    const focusLeft = getFocusCoverLeftEdge();
+    const leftMarginPx = SMALL_PLAYER_MARGIN_PX;
+    let width = smallPlayerWidth || DEFAULT_SMALL_PLAYER_WIDTH;
+    if (focusLeft !== null && Number.isFinite(focusLeft)) {
+      const computedWidth = focusLeft - leftMarginPx - FOCUS_COVER_GAP_PX;
+      if (computedWidth > 0) {
+        width = computedWidth;
+      }
+    }
+    if (!Number.isFinite(width) || width <= 0) {
+      width = DEFAULT_SMALL_PLAYER_WIDTH;
+    }
+    smallPlayerWidth = width;
+    viewport.style.width = `${width}px`;
+    playerSize.style.width = `${width}px`;
+    playerSize.style.height = `${width * SMALL_PLAYER_HEIGHT_RATIO}px`;
+    updateViewport();
+  };
+
+  updateSmallPlayerDimensions();
+  updateViewportForAspectRatio();
+  window.addEventListener("resize", () => {
+    updateSmallPlayerDimensions();
+    updateViewportForAspectRatio();
+  });
 
   // Register callback for aspect ratio changes
   aspectRatioChangeCallback = (aspectRatio: number) => {
@@ -701,7 +800,7 @@ export function createYouTubePlayer(): YouTubeBridge {
       const windowWidth = window.innerWidth;
       const windowHeight = window.innerHeight;
       const playerWidth = windowWidth;
-      const playerHeight = 2 * windowWidth;
+      const playerHeight = SMALL_PLAYER_HEIGHT_RATIO * windowWidth;
 
       wrapper.style.transition = "none";
       wrapper.style.opacity = "0";
@@ -762,7 +861,7 @@ export function createYouTubePlayer(): YouTubeBridge {
         const newWindowWidth = window.innerWidth;
         const newWindowHeight = window.innerHeight;
         const newPlayerWidth = newWindowWidth;
-        const newPlayerHeight = 2 * newWindowWidth;
+        const newPlayerHeight = SMALL_PLAYER_HEIGHT_RATIO * newWindowWidth;
 
         wrapper.style.width = `${newWindowWidth}px`;
         wrapper.style.height = `${newWindowHeight}px`;
@@ -820,12 +919,7 @@ export function createYouTubePlayer(): YouTubeBridge {
         viewport.style.transition = "none";
         playerSize.style.transition = "none";
 
-        Object.assign(playerSize.style, {
-          width: "512px",
-          height: "1024px",
-        });
-
-        viewport.style.width = "512px";
+        updateSmallPlayerDimensions();
         viewport.style.height = "0px";
         viewport.style.opacity = "1";
         void viewport.offsetHeight;
@@ -858,7 +952,7 @@ export function createYouTubePlayer(): YouTubeBridge {
         // Only show player if tonearm is in play area
         const isTonearmInPlayArea = isTonearmInPlayAreaQuery?.() ?? false;
         if (isTonearmInPlayArea) {
-          const targetHeight = 512 / DYNAMIC_VIDEO_ASPECT;
+          const targetHeight = getSmallPlayerTargetHeight();
           viewport.style.height = `${targetHeight}px`;
         }
       })();
@@ -1044,7 +1138,7 @@ export function createYouTubePlayer(): YouTubeBridge {
         // Restore to previous height or calculate it
         const isTonearmInPlayArea = isTonearmInPlayAreaQuery?.() ?? false;
         if (isTonearmInPlayArea) {
-          const targetHeight = 512 / DYNAMIC_VIDEO_ASPECT;
+          const targetHeight = getSmallPlayerTargetHeight();
           viewport.style.height = `${targetHeight}px`;
         }
         collapseButton.title = "Hide player";
@@ -1067,6 +1161,10 @@ export function createYouTubePlayer(): YouTubeBridge {
     updateButtonVisibility() {
       updateButtonVisibility();
       updateFullscreenButtonVisibility();
+    },
+    refreshLayout() {
+      updateSmallPlayerDimensions();
+      updateViewportForAspectRatio();
     },
   };
 

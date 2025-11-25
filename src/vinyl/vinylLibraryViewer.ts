@@ -380,7 +380,7 @@ export class VinylLibraryViewer {
 
           .focus-card-container {
             position: fixed;
-            top: 24px;
+            top: 20px;
             pointer-events: none;
             z-index: 10000;
           }
