@@ -353,6 +353,12 @@ window.addEventListener("free-look-action", (event) => {
   }
   markFreeLookTutorialAction(detail.action as FreeLookTutorialAction);
 });
+const resetFreeLookTutorial = () => {
+  freeLookTutorialState = { completed: [], dismissed: false };
+  saveFreeLookTutorialState();
+  renderFreeLookTutorialContent();
+  console.log("Free-look tutorial reset");
+};
 let isFreeLookMode = false;
 let freeLookWasPlayerCollapsed = false;
 let freeLookFocusHidden = false;
@@ -1217,6 +1223,7 @@ resetTutorialButton.addEventListener("click", () => {
     tutorialManager.reset();
     console.log("Tutorial reset");
   }
+  resetFreeLookTutorial();
 });
 
 freeLookButton.addEventListener("click", () => {

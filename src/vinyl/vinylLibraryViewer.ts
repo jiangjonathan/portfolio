@@ -828,13 +828,14 @@ export class VinylLibraryViewer {
             overflow: hidden;
             width: 100%;
             position: relative;
+            padding-bottom: 2px;
           }
 
           .vinyl-viewer-widget .album-artist {
             font-size: 0.7rem;
             color: #000;
-            margin-bottom: 0.15rem;
-            line-height: 1.1;
+            margin-bottom: -0.25rem;
+            line-height: 1.4;
             font-weight: normal;
           }
 
@@ -842,13 +843,13 @@ export class VinylLibraryViewer {
             font-weight: 500;
             font-size: 0.8rem;
             color: #000;
-            line-height: 1.1;
+            line-height: 1.4;
           }
 
           .vinyl-viewer-widget .album-year {
             font-size: 0.65rem;
             color: #888;
-            margin-top: 0.15rem;
+            margin-top: 0rem;
             line-height: 1.1;
           }
 
