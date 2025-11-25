@@ -357,6 +357,21 @@ const resetFreeLookTutorial = () => {
   freeLookTutorialState = { completed: [], dismissed: false };
   saveFreeLookTutorialState();
   renderFreeLookTutorialContent();
+
+  // If tutorial was invisible, make it visible and fade it in
+  if (freeLookTutorialContainer) {
+    freeLookTutorialContainer.style.display = "block";
+    // Force a reflow to ensure display change is applied
+    void freeLookTutorialContainer.offsetHeight;
+    freeLookTutorialContainer.style.opacity = "0";
+    freeLookTutorialContainer.style.pointerEvents = "auto";
+
+    // Trigger fade-in animation on next frame
+    setTimeout(() => {
+      freeLookTutorialContainer.style.opacity = "1";
+    }, 10);
+  }
+
   console.log("Free-look tutorial reset");
 };
 let isFreeLookMode = false;
@@ -1012,6 +1027,10 @@ const exitFreeLookMode = ({
   isFreeLookMode = false;
   freeLookButton.textContent = "free-look";
   setFreeLookTutorialVisible(false);
+
+  // Restore turntable tutorial display (setTurntableUIVisible will handle opacity)
+  tutorialContainer.style.display = "block";
+
   focusVinylManuallyHidden = true;
   updateFocusVinylVisibility();
   if (restorePlayer && yt) {
@@ -1052,6 +1071,10 @@ const enterFreeLookMode = () => {
   freeLookFocusHidden = focusVinylManuallyHidden;
   focusVinylManuallyHidden = true;
   updateFocusVinylVisibility();
+
+  // Immediately hide turntable tutorial to prevent overlap with free-look tutorial
+  tutorialContainer.style.display = "none";
+
   setTurntableUIVisible(false);
   if (yt) {
     yt.setPlayerCollapsed(true);
@@ -1218,12 +1241,17 @@ portfolioNavButton.addEventListener("click", () => {
 });
 
 resetTutorialButton.addEventListener("click", () => {
-  const tutorialManager = (window as any).tutorialManager;
-  if (tutorialManager) {
-    tutorialManager.reset();
-    console.log("Tutorial reset");
+  if (isFreeLookMode) {
+    // Only reset free-look tutorial when in free-look mode
+    resetFreeLookTutorial();
+  } else {
+    // Only reset turntable tutorial when not in free-look mode
+    const tutorialManager = (window as any).tutorialManager;
+    if (tutorialManager) {
+      tutorialManager.reset();
+      console.log("Tutorial reset");
+    }
   }
-  resetFreeLookTutorial();
 });
 
 freeLookButton.addEventListener("click", () => {

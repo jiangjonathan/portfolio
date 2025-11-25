@@ -327,6 +327,16 @@ export class TutorialManager {
     this.saveState();
     this.render();
     this.attachEventListeners();
-    this.show();
+
+    // If tutorial was invisible, make it visible and fade it in
+    this.container.style.display = "block";
+    // Force a reflow to ensure display change is applied
+    void this.container.offsetHeight;
+    this.container.style.opacity = "0";
+
+    // Trigger fade-in animation on next frame
+    setTimeout(() => {
+      this.container.style.opacity = "1";
+    }, 10);
   }
 }
