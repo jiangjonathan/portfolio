@@ -6,7 +6,7 @@ export const PAN_SENSITIVITY = 0.08;
 // UI
 export const UI_MAX_WIDTH = "350px";
 export const UI_Z_INDEX = "100";
-export const VIEWER_MAX_WIDTH = "600px";
+export const VIEWER_MAX_WIDTH = "500px";
 export const HIDE_BUTTON_Z_INDEX = "101";
 
 // Colors

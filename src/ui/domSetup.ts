@@ -151,7 +151,7 @@ export function setupDOM(): DOMElements {
     transition: opacity 0.45s ease, transform 0.45s ease;
     opacity: 0;
     transform-origin: top right;
-    transform: var(--vinyl-viewer-translate, translateY(8px));
+    transform: var(--vinyl-viewer-translate, translateY(8px)) scale(var(--vinyl-widget-scale, 1));
     padding: 20px 40px 20px 20px;
   `;
   vinylViewerContainer.style.pointerEvents = "none";
@@ -167,8 +167,63 @@ export function setupDOM(): DOMElements {
     );
   };
 
-  updateVinylViewerScale();
-  window.addEventListener("resize", updateVinylViewerScale);
+  const FOCUS_INFO_VIEWER_GAP = 48;
+  const FOCUS_INFO_SHRINK_PADDING = 120;
+  const FOCUS_INFO_COMFORT_MIN_WIDTH = 260;
+  let focusInfoDefaultWidth = 0;
+  let focusInfoUpdateHandle: number | null = null;
+
+  const applyFocusInfoMaxWidth = () => {
+    focusInfoUpdateHandle = null;
+    const viewerRect = vinylViewerContainer.getBoundingClientRect();
+    const infoRect = focusCardInfoContainer.getBoundingClientRect();
+    if (!viewerRect.width) return;
+
+    if (!focusInfoDefaultWidth && infoRect.width) {
+      focusInfoDefaultWidth = infoRect.width;
+    }
+    const baseLimit =
+      focusInfoDefaultWidth ||
+      parseFloat(getComputedStyle(focusCardInfoContainer).width) ||
+      420;
+
+    const rawAvailable =
+      viewerRect.left - infoRect.left - FOCUS_INFO_VIEWER_GAP;
+    const maxNonOverlap = Math.max(0, Math.floor(rawAvailable));
+    const desiredWidth = Math.max(
+      FOCUS_INFO_COMFORT_MIN_WIDTH,
+      maxNonOverlap - FOCUS_INFO_SHRINK_PADDING,
+    );
+    const preferredWidth = Math.min(baseLimit, desiredWidth);
+    const safeWidth = Math.max(0, Math.min(maxNonOverlap, preferredWidth));
+    const nextWidth =
+      safeWidth > 0
+        ? safeWidth
+        : Math.min(
+            baseLimit,
+            Math.max(FOCUS_INFO_COMFORT_MIN_WIDTH, maxNonOverlap),
+          );
+
+    document.documentElement.style.setProperty(
+      "--vinyl-focus-info-max-width",
+      `${Math.max(0, Math.floor(nextWidth))}px`,
+    );
+  };
+
+  const scheduleFocusInfoMaxWidthUpdate = () => {
+    if (focusInfoUpdateHandle !== null) {
+      cancelAnimationFrame(focusInfoUpdateHandle);
+    }
+    focusInfoUpdateHandle = requestAnimationFrame(applyFocusInfoMaxWidth);
+  };
+
+  const handleViewportChange = () => {
+    updateVinylViewerScale();
+    scheduleFocusInfoMaxWidthUpdate();
+  };
+
+  handleViewportChange();
+  window.addEventListener("resize", handleViewportChange);
 
   // Create hide/show library button
   const hideLibraryBtn = document.createElement("button");
@@ -271,6 +326,7 @@ export function setupDOM(): DOMElements {
       --vinyl-link-hover-color: ${LINK_HOVER_COLOR};
       --vinyl-link-font-size: 0.85rem;
       --vinyl-link-text-shadow: 0.2px 0 0 rgba(255, 0, 0, 0.5), -0.2px 0 0 rgba(0, 100, 200, 0.5);
+      --vinyl-focus-info-max-width: 420px;
     }
 
     .vinyl-hyperlink {

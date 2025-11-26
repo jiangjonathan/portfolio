@@ -324,8 +324,6 @@ export class VinylLibraryViewer {
             background: transparent;
             border: none;
             min-height: auto;
-            transform-origin: top right;
-            transform: scale(var(--vinyl-widget-scale, 1));
           }
 
           .vinyl-viewer-widget h3 {
@@ -394,8 +392,17 @@ export class VinylLibraryViewer {
 
           .focus-card-info-container {
             left: calc(52.5% - 350px + 250px + 1rem);
-            width: calc(700px - 250px - 1rem);
+            width: min(
+              var(--vinyl-focus-info-max-width, calc(700px - 250px - 1rem)),
+              calc(700px - 250px - 1rem)
+            );
+            max-width: min(
+              var(--vinyl-focus-info-max-width, calc(700px - 250px - 1rem)),
+              calc(700px - 250px - 1rem)
+            );
+            min-width: 0;
           }
+
 
           .focus-card-cover,
           .focus-card-info {
@@ -502,8 +509,9 @@ export class VinylLibraryViewer {
             background: transparent;
             justify-content: center;
             min-width: 0;
-            width: 180px;
-            flex-shrink: 0;
+            width: auto;
+            flex: 1 1 180px;
+            min-width: 160px;
             overflow: visible;
             position: relative;
             height: 100%;
@@ -1006,7 +1014,7 @@ export class VinylLibraryViewer {
             justify-content: space-between;
             align-items: center;
             margin-bottom: 1rem;
-            gap: 0.5rem;
+            gap: 0;
             position: sticky;
             top: 0;
             background: transparent;

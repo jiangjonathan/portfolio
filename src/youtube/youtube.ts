@@ -105,6 +105,9 @@ export function createYouTubePlayer(): YouTubeBridge {
   const SMALL_PLAYER_MARGIN = `${SMALL_PLAYER_MARGIN_PX}px`;
   const SMALL_PLAYER_HEIGHT_RATIO = 2;
   const FOCUS_COVER_GAP_PX = 20;
+  const PLAYER_CENTER_BREAKPOINT_PX = 300;
+  const MIN_SMALL_PLAYER_WIDTH_PX = 250;
+  const FOCUS_COVER_VERTICAL_GAP_PX = 16;
 
   const wrapper = document.createElement("div");
   wrapper.className = "yt-shell";
@@ -337,6 +340,12 @@ export function createYouTubePlayer(): YouTubeBridge {
   let focusCoverResizeObserver: ResizeObserver | null = null;
   let focusCoverMutationObserver: MutationObserver | null = null;
 
+  const roundDownPx = (value: number) => {
+    if (!Number.isFinite(value)) return 0;
+    const floored = Math.floor(value);
+    return floored < 0 ? 0 : floored;
+  };
+
   const disablePlayerInteraction = () => {
     const iframe = player?.getIframe?.();
     if (!iframe) return;
@@ -363,7 +372,8 @@ export function createYouTubePlayer(): YouTubeBridge {
     viewport.style.overflow = "hidden";
 
     const excessY = playerHeight - viewportHeight;
-    playerSize.style.transform = `translateY(${-excessY / 2}px)`;
+    const shift = excessY > 0 ? Math.floor(excessY / 2) : 0;
+    playerSize.style.transform = `translateY(${-shift}px)`;
   };
 
   const resizeObserver = new ResizeObserver(() => updateViewport());
@@ -378,6 +388,12 @@ export function createYouTubePlayer(): YouTubeBridge {
       ".focus-card-cover-container",
     ) as HTMLElement | null;
     return focusCoverElement;
+  };
+
+  const getFocusCoverRect = () => {
+    const element = getFocusCoverElement();
+    if (!element) return null;
+    return element.getBoundingClientRect();
   };
 
   const ensureFocusCoverObservers = () => {
@@ -419,7 +435,9 @@ export function createYouTubePlayer(): YouTubeBridge {
 
   const getSmallPlayerTargetHeight = () => {
     const safeAspect = DYNAMIC_VIDEO_ASPECT || 1;
-    return smallPlayerWidth / safeAspect;
+    const rawHeight =
+      safeAspect > 0 ? smallPlayerWidth / safeAspect : smallPlayerWidth;
+    return roundDownPx(rawHeight);
   };
 
   // Function to update viewport height based on aspect ratio
@@ -438,32 +456,104 @@ export function createYouTubePlayer(): YouTubeBridge {
   };
 
   const getFocusCoverLeftEdge = () => {
-    const focusCoverContainer = getFocusCoverElement();
-    if (!focusCoverContainer) return null;
-    const rect = focusCoverContainer.getBoundingClientRect();
-    return rect.left;
+    const rect = getFocusCoverRect();
+    return rect ? rect.left : null;
+  };
+
+  const getViewerLeftEdge = () => {
+    const viewer = document.getElementById("vinyl-library-viewer");
+    if (!viewer) {
+      return window.innerWidth;
+    }
+    const rect = viewer.getBoundingClientRect();
+    return rect.left || window.innerWidth;
+  };
+
+  const getInlineAvailableWidth = () => {
+    const leftMarginPx = SMALL_PLAYER_MARGIN_PX;
+    const focusLeft = getFocusCoverLeftEdge();
+    if (focusLeft !== null && Number.isFinite(focusLeft)) {
+      return Math.max(0, focusLeft - leftMarginPx - FOCUS_COVER_GAP_PX);
+    }
+    const viewerLeft = getViewerLeftEdge();
+    return Math.max(0, viewerLeft - leftMarginPx - FOCUS_COVER_GAP_PX);
+  };
+
+  const notifyFocusCardLayoutChanged = () => {
+    window.dispatchEvent(new CustomEvent("focus-card-layout-changed"));
+  };
+
+  const applySmallPlayerPlacement = () => {
+    if (isFullscreenMode) {
+      notifyFocusCardLayoutChanged();
+      return;
+    }
+    const inlineAvailableWidth = getInlineAvailableWidth();
+    const shouldCenterBelow =
+      inlineAvailableWidth < PLAYER_CENTER_BREAKPOINT_PX;
+    const placementWidth =
+      smallPlayerWidth && smallPlayerWidth > 0
+        ? smallPlayerWidth
+        : DEFAULT_SMALL_PLAYER_WIDTH;
+    const focusRect = getFocusCoverRect();
+
+    if (shouldCenterBelow) {
+      if (focusRect) {
+        const viewportWidth =
+          window.innerWidth ||
+          document.documentElement?.clientWidth ||
+          placementWidth;
+        const centerX = focusRect.left + focusRect.width / 2;
+        const desiredLeft = centerX - placementWidth / 2;
+        const maxLeft = viewportWidth - placementWidth - SMALL_PLAYER_MARGIN_PX;
+        const safeLeft = clampValue(
+          roundDownPx(desiredLeft),
+          SMALL_PLAYER_MARGIN_PX,
+          Math.max(SMALL_PLAYER_MARGIN_PX, roundDownPx(maxLeft)),
+        );
+        const topPx = roundDownPx(
+          focusRect.bottom + FOCUS_COVER_VERTICAL_GAP_PX,
+        );
+        wrapper.style.top = `${topPx}px`;
+        wrapper.style.left = `${safeLeft}px`;
+      } else {
+        wrapper.style.top = `${roundDownPx(
+          SMALL_PLAYER_MARGIN_PX + 250 + FOCUS_COVER_VERTICAL_GAP_PX,
+        )}px`;
+        wrapper.style.left = SMALL_PLAYER_MARGIN;
+      }
+      notifyFocusCardLayoutChanged();
+      return;
+    }
+
+    wrapper.style.top = SMALL_PLAYER_MARGIN;
+    wrapper.style.left = SMALL_PLAYER_MARGIN;
+    notifyFocusCardLayoutChanged();
   };
 
   const updateSmallPlayerDimensions = () => {
     if (isFullscreenMode) return;
     ensureFocusCoverObservers();
-    const focusLeft = getFocusCoverLeftEdge();
-    const leftMarginPx = SMALL_PLAYER_MARGIN_PX;
-    let width = smallPlayerWidth || DEFAULT_SMALL_PLAYER_WIDTH;
-    if (focusLeft !== null && Number.isFinite(focusLeft)) {
-      const computedWidth = focusLeft - leftMarginPx - FOCUS_COVER_GAP_PX;
-      if (computedWidth > 0) {
-        width = computedWidth;
-      }
-    }
+    const inlineWidth = getInlineAvailableWidth();
+    let width =
+      inlineWidth > 0
+        ? inlineWidth
+        : smallPlayerWidth || DEFAULT_SMALL_PLAYER_WIDTH;
     if (!Number.isFinite(width) || width <= 0) {
       width = DEFAULT_SMALL_PLAYER_WIDTH;
     }
-    smallPlayerWidth = width;
-    viewport.style.width = `${width}px`;
-    playerSize.style.width = `${width}px`;
-    playerSize.style.height = `${width * SMALL_PLAYER_HEIGHT_RATIO}px`;
+    width = Math.max(width, MIN_SMALL_PLAYER_WIDTH_PX);
+    const sanitizedWidth = roundDownPx(width);
+    smallPlayerWidth =
+      sanitizedWidth > 0 ? sanitizedWidth : DEFAULT_SMALL_PLAYER_WIDTH;
+    const playerHeight = roundDownPx(
+      smallPlayerWidth * SMALL_PLAYER_HEIGHT_RATIO,
+    );
+    viewport.style.width = `${smallPlayerWidth}px`;
+    playerSize.style.width = `${smallPlayerWidth}px`;
+    playerSize.style.height = `${playerHeight}px`;
     updateViewport();
+    applySmallPlayerPlacement();
   };
 
   updateSmallPlayerDimensions();
@@ -926,12 +1016,13 @@ export function createYouTubePlayer(): YouTubeBridge {
 
         Object.assign(wrapper.style, {
           position: "absolute",
-          top: "1.5rem",
-          left: "1.5rem",
+          top: SMALL_PLAYER_MARGIN,
+          left: SMALL_PLAYER_MARGIN,
           width: "auto",
           height: "auto",
           zIndex: SMALL_PLAYER_Z_INDEX,
         });
+        applySmallPlayerPlacement();
 
         const appDiv = document.getElementById("app");
         if (appDiv) {
