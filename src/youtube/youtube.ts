@@ -105,7 +105,6 @@ export function createYouTubePlayer(): YouTubeBridge {
   const SMALL_PLAYER_MARGIN = `${SMALL_PLAYER_MARGIN_PX}px`;
   const SMALL_PLAYER_HEIGHT_RATIO = 2;
   const FOCUS_COVER_GAP_PX = 20;
-  const PLAYER_CENTER_BREAKPOINT_PX = 300;
   const MIN_SMALL_PLAYER_WIDTH_PX = 250;
   const FOCUS_COVER_VERTICAL_GAP_PX = 16;
 
@@ -339,6 +338,14 @@ export function createYouTubePlayer(): YouTubeBridge {
   let observedFocusCover: HTMLElement | null = null;
   let focusCoverResizeObserver: ResizeObserver | null = null;
   let focusCoverMutationObserver: MutationObserver | null = null;
+  let focusCardIsCompact = false;
+  let cachedFocusCoverRect: {
+    left: number;
+    right: number;
+    width: number;
+    bottom: number;
+  } | null = null;
+  let cachedFocusCoverLayout: "compact" | "center" | null = null;
 
   const roundDownPx = (value: number) => {
     if (!Number.isFinite(value)) return 0;
@@ -392,8 +399,25 @@ export function createYouTubePlayer(): YouTubeBridge {
 
   const getFocusCoverRect = () => {
     const element = getFocusCoverElement();
-    if (!element) return null;
-    return element.getBoundingClientRect();
+    if (!element) {
+      if (
+        cachedFocusCoverLayout &&
+        ((cachedFocusCoverLayout === "compact" && focusCardIsCompact) ||
+          (cachedFocusCoverLayout === "center" && !focusCardIsCompact))
+      ) {
+        return cachedFocusCoverRect;
+      }
+      return null;
+    }
+    const rect = element.getBoundingClientRect();
+    cachedFocusCoverRect = {
+      left: rect.left,
+      right: rect.right,
+      width: rect.width,
+      bottom: rect.bottom,
+    };
+    cachedFocusCoverLayout = focusCardIsCompact ? "compact" : "center";
+    return cachedFocusCoverRect;
   };
 
   const ensureFocusCoverObservers = () => {
@@ -471,6 +495,11 @@ export function createYouTubePlayer(): YouTubeBridge {
 
   const getInlineAvailableWidth = () => {
     const leftMarginPx = SMALL_PLAYER_MARGIN_PX;
+    if (focusCardIsCompact) {
+      // When the focus card is left/stacked, don't clamp to the cover; use the viewer edge instead.
+      const viewerLeft = getViewerLeftEdge();
+      return Math.max(0, viewerLeft - leftMarginPx - FOCUS_COVER_GAP_PX);
+    }
     const focusLeft = getFocusCoverLeftEdge();
     if (focusLeft !== null && Number.isFinite(focusLeft)) {
       return Math.max(0, focusLeft - leftMarginPx - FOCUS_COVER_GAP_PX);
@@ -488,9 +517,8 @@ export function createYouTubePlayer(): YouTubeBridge {
       notifyFocusCardLayoutChanged();
       return;
     }
-    const inlineAvailableWidth = getInlineAvailableWidth();
-    const shouldCenterBelow =
-      inlineAvailableWidth < PLAYER_CENTER_BREAKPOINT_PX;
+    const forceBelow = focusCardIsCompact;
+    const shouldCenterBelow = forceBelow;
     const placementWidth =
       smallPlayerWidth && smallPlayerWidth > 0
         ? smallPlayerWidth
@@ -498,30 +526,13 @@ export function createYouTubePlayer(): YouTubeBridge {
     const focusRect = getFocusCoverRect();
 
     if (shouldCenterBelow) {
-      if (focusRect) {
-        const viewportWidth =
-          window.innerWidth ||
-          document.documentElement?.clientWidth ||
-          placementWidth;
-        const centerX = focusRect.left + focusRect.width / 2;
-        const desiredLeft = centerX - placementWidth / 2;
-        const maxLeft = viewportWidth - placementWidth - SMALL_PLAYER_MARGIN_PX;
-        const safeLeft = clampValue(
-          roundDownPx(desiredLeft),
-          SMALL_PLAYER_MARGIN_PX,
-          Math.max(SMALL_PLAYER_MARGIN_PX, roundDownPx(maxLeft)),
-        );
-        const topPx = roundDownPx(
-          focusRect.bottom + FOCUS_COVER_VERTICAL_GAP_PX,
-        );
-        wrapper.style.top = `${topPx}px`;
-        wrapper.style.left = `${safeLeft}px`;
-      } else {
-        wrapper.style.top = `${roundDownPx(
-          SMALL_PLAYER_MARGIN_PX + 250 + FOCUS_COVER_VERTICAL_GAP_PX,
-        )}px`;
-        wrapper.style.left = SMALL_PLAYER_MARGIN;
-      }
+      const focusBottom = focusRect
+        ? focusRect.bottom
+        : SMALL_PLAYER_MARGIN_PX + 250;
+      const topPx = roundDownPx(focusBottom + FOCUS_COVER_VERTICAL_GAP_PX);
+      // Left-align under the card in compact mode
+      wrapper.style.top = `${topPx}px`;
+      wrapper.style.left = `${SMALL_PLAYER_MARGIN_PX}px`;
       notifyFocusCardLayoutChanged();
       return;
     }
@@ -534,13 +545,35 @@ export function createYouTubePlayer(): YouTubeBridge {
   const updateSmallPlayerDimensions = () => {
     if (isFullscreenMode) return;
     ensureFocusCoverObservers();
-    const inlineWidth = getInlineAvailableWidth();
+    const inlineWidth = focusCardIsCompact
+      ? Math.max(
+          (window.innerWidth ||
+            document.documentElement?.clientWidth ||
+            DEFAULT_SMALL_PLAYER_WIDTH) -
+            SMALL_PLAYER_MARGIN_PX * 2,
+          0,
+        )
+      : (() => {
+          const inline = getInlineAvailableWidth();
+          return inline > 0 ? inline : DEFAULT_SMALL_PLAYER_WIDTH;
+        })();
+    const fallbackViewportWidth =
+      window.innerWidth ||
+      document.documentElement?.clientWidth ||
+      DEFAULT_SMALL_PLAYER_WIDTH;
+    // Fall back to viewport width when inline width isn't measurable (e.g., instant snap/tiling)
     let width =
       inlineWidth > 0
         ? inlineWidth
-        : smallPlayerWidth || DEFAULT_SMALL_PLAYER_WIDTH;
+        : Math.max(fallbackViewportWidth - SMALL_PLAYER_MARGIN_PX * 2, 0);
     if (!Number.isFinite(width) || width <= 0) {
       width = DEFAULT_SMALL_PLAYER_WIDTH;
+    }
+    if (focusCardIsCompact) {
+      const focusRect = getFocusCoverRect();
+      const coverWidth = focusRect?.width ?? 250;
+      // Compact layout: cap width to cover width to avoid oversized player on initial load/snap
+      width = Math.min(width, coverWidth);
     }
     width = Math.max(width, MIN_SMALL_PLAYER_WIDTH_PX);
     const sanitizedWidth = roundDownPx(width);
@@ -556,11 +589,31 @@ export function createYouTubePlayer(): YouTubeBridge {
     applySmallPlayerPlacement();
   };
 
+  let pendingPlayerResizeFrame: number | null = null;
+  const requestPlayerResize = () => {
+    if (pendingPlayerResizeFrame !== null) {
+      cancelAnimationFrame(pendingPlayerResizeFrame);
+    }
+    pendingPlayerResizeFrame = requestAnimationFrame(() => {
+      pendingPlayerResizeFrame = null;
+      updateSmallPlayerDimensions();
+      updateViewportForAspectRatio();
+    });
+  };
+
   updateSmallPlayerDimensions();
   updateViewportForAspectRatio();
   window.addEventListener("resize", () => {
+    requestPlayerResize();
+  });
+  window.addEventListener("focus-card-layout-updated", (event: any) => {
+    const compact = Boolean(event?.detail?.compact);
+    focusCardIsCompact = compact;
+    // Apply immediately to avoid stale sizing when toggling layouts
     updateSmallPlayerDimensions();
     updateViewportForAspectRatio();
+    // And once more after layout settles in the next frame
+    requestPlayerResize();
   });
 
   // Register callback for aspect ratio changes

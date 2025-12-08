@@ -10,13 +10,17 @@ import { getOrCacheAlbumCover } from "../utils/albumCoverCache";
 
 export const FOCUS_VINYL_BASE_SCALE = 1.0;
 export const VINYL_DRAG_THRESHOLD = 38;
+// Focus card scaling (kept separate from the library viewer so it can stay larger)
+export const FOCUS_CARD_BASE_WIDTH = 1200;
+export const FOCUS_CARD_MIN_SCALE = 0.9;
 
 // Calculate the focus card scale factor (same logic as in domSetup.ts)
 export function getFocusCardScale(): number {
   const viewportWidth = window.innerWidth;
-  const baseWidth = 1400;
-  const minScale = 0.6;
-  return Math.max(minScale, Math.min(1, viewportWidth / baseWidth));
+  return Math.max(
+    FOCUS_CARD_MIN_SCALE,
+    Math.min(1, viewportWidth / FOCUS_CARD_BASE_WIDTH),
+  );
 }
 
 export function getFocusVinylScale(cameraRig: CameraRig): number {

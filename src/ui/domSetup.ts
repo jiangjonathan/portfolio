@@ -6,6 +6,10 @@ import {
   LINK_COLOR,
   LINK_HOVER_COLOR,
 } from "../utils/config";
+import {
+  FOCUS_CARD_BASE_WIDTH,
+  FOCUS_CARD_MIN_SCALE,
+} from "../vinyl/vinylHelpers";
 
 // Navigation controls styling - used on page load and when switching pages
 export const GLOBAL_CONTROLS_DEFAULT = {
@@ -160,8 +164,11 @@ export function setupDOM(): DOMElements {
   const updateVinylViewerScale = () => {
     const viewportWidth = window.innerWidth;
     const baseWidth = 1400;
-    const minScale = 0.6;
-    const scale = Math.max(minScale, Math.min(1, viewportWidth / baseWidth));
+    const minScale = 0.8;
+    const isCompact = document.body.classList.contains("focus-card-compact");
+    const scale = isCompact
+      ? minScale
+      : Math.max(minScale, Math.min(1, viewportWidth / baseWidth));
     vinylViewerContainer.style.setProperty(
       "--vinyl-widget-scale",
       scale.toString(),
@@ -293,12 +300,18 @@ export function setupDOM(): DOMElements {
     element.style.top = `${top}px`;
   };
 
-  let focusCardLastCompact = window.innerWidth <= 900;
+  // Keep player + focus card from overlapping: threshold matches player minimum size
+  const PLAYER_MIN_WIDTH_PX = 250;
+  const PLAYER_MARGIN_PX = 20;
+  const PLAYER_GAP_PX = 20;
+
+  let focusCardLastCompact = false;
   const applyFocusCardScale = () => {
     const viewportWidth = window.innerWidth;
-    const baseWidth = 1400;
-    const minScale = 0.6;
-    const scale = Math.max(minScale, Math.min(1, viewportWidth / baseWidth));
+    const scale = Math.max(
+      FOCUS_CARD_MIN_SCALE,
+      Math.min(1, viewportWidth / FOCUS_CARD_BASE_WIDTH),
+    );
 
     // Scale both containers
     focusCardCoverContainer.style.transform = `scale(${scale})`;
@@ -315,7 +328,15 @@ export function setupDOM(): DOMElements {
     const scaledCoverHeight = coverHeight * scale;
     const scaledGap = gap * scale;
     const topOffset = 20;
-    const isCompactLayout = viewportWidth <= 900;
+
+    // Predict whether the player would overlap the centered card; if so, switch to compact (left) layout
+    const centerX = viewportWidth * 0.525;
+    const coverLeftCentered = centerX - offsetFromCenter * scale;
+    const inlineWidthIfCentered =
+      coverLeftCentered - PLAYER_MARGIN_PX - PLAYER_GAP_PX;
+    const isCompactLayout =
+      inlineWidthIfCentered <
+      PLAYER_MIN_WIDTH_PX + PLAYER_MARGIN_PX + PLAYER_GAP_PX;
     const wasCompact = focusCardLastCompact;
     const layoutChanged = isCompactLayout !== wasCompact;
     focusCardLastCompact = isCompactLayout;
@@ -326,10 +347,9 @@ export function setupDOM(): DOMElements {
 
     let coverLeft: number;
     if (isCompactLayout) {
-      coverLeft = 20;
+      coverLeft = PLAYER_MARGIN_PX;
     } else {
-      const centerX = viewportWidth * 0.525;
-      coverLeft = centerX - offsetFromCenter * scale;
+      coverLeft = coverLeftCentered;
     }
 
     const infoLeft = coverLeft + scaledCoverWidth + scaledGap;
