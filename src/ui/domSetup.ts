@@ -336,12 +336,8 @@ export function setupDOM(): DOMElements {
     const coverCenterX = coverLeft + scaledCoverWidth / 2;
     const coverCenterY = topOffset + scaledCoverHeight / 2;
 
-    // Only animate when transitioning from centered (desktop) to compact left layout
-    const allowMovementAnimation =
-      layoutChanged &&
-      !wasCompact &&
-      isCompactLayout &&
-      focusCardAnimationReady;
+    // Animate when crossing between compact and centered layouts (both directions)
+    const allowMovementAnimation = layoutChanged && focusCardAnimationReady;
     animateFocusCardPosition(
       focusCardCoverContainer,
       coverLeft,
