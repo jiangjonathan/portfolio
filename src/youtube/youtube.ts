@@ -525,7 +525,11 @@ export function createYouTubePlayer(): YouTubeBridge {
       const focusBottom = focusRect
         ? focusRect.bottom
         : SMALL_PLAYER_MARGIN_PX + 250;
-      const topPx = roundDownPx(focusBottom + FOCUS_COVER_VERTICAL_GAP_PX);
+      const verticalGap = Math.max(
+        FOCUS_COVER_VERTICAL_GAP_PX,
+        SMALL_PLAYER_MARGIN_PX,
+      );
+      const topPx = roundDownPx(focusBottom + verticalGap);
       // Left-align under the card in compact mode
       wrapper.style.top = `${topPx}px`;
       wrapper.style.left = `${SMALL_PLAYER_MARGIN_PX}px`;
@@ -567,8 +571,8 @@ export function createYouTubePlayer(): YouTubeBridge {
     if (!Number.isFinite(width) || width <= 0) {
       width = DEFAULT_SMALL_PLAYER_WIDTH;
     }
-    // Cap width when compact or when cover data is stale/missing to avoid runaway sizing
-    if (focusCardIsCompact || !focusRect) {
+    // Cap width when compact to avoid runaway sizing
+    if (focusCardIsCompact) {
       width = Math.min(width, coverWidth);
     }
     width = Math.max(width, MIN_SMALL_PLAYER_WIDTH_PX);
@@ -605,10 +609,25 @@ export function createYouTubePlayer(): YouTubeBridge {
   window.addEventListener("focus-card-layout-updated", (event: any) => {
     const compact = Boolean(event?.detail?.compact);
     focusCardIsCompact = compact;
+    cachedFocusCoverRect = null;
+    cachedFocusCoverLayout = null;
     // Apply immediately to avoid stale sizing when toggling layouts
     updateSmallPlayerDimensions();
     updateViewportForAspectRatio();
     // And once more after layout settles in the next frame
+    requestPlayerResize();
+  });
+
+  // Also react to the end of the focus-card slide animation so widths snap to the final position
+  window.addEventListener("focus-card-motion", (event: any) => {
+    const animating = Boolean(event?.detail?.animating);
+    if (animating) {
+      return;
+    }
+    cachedFocusCoverRect = null;
+    cachedFocusCoverLayout = null;
+    updateSmallPlayerDimensions();
+    updateViewportForAspectRatio();
     requestPlayerResize();
   });
 
