@@ -1035,38 +1035,36 @@ export class VinylLibraryViewer {
               flex-direction 0.35s ease, gap 0.35s ease;
           }
 
-          /* Hide album text when window is narrow */
-          @media (max-width: 900px) {
-            .vinyl-viewer-widget .album-info {
-              display: none !important;
-            }
+          /* Hide album text when focus card is compact (left) */
+          body.focus-card-compact .vinyl-viewer-widget .album-info {
+            display: none !important;
+          }
 
-            .vinyl-viewer-widget .album-metadata {
-              display: none !important;
-            }
+          body.focus-card-compact .vinyl-viewer-widget .album-metadata {
+            display: none !important;
+          }
 
-            .vinyl-viewer-widget .album-card {
-              width: var(--cover-size, 250px) !important;
-            }
+          body.focus-card-compact .vinyl-viewer-widget .album-card {
+            width: var(--cover-size, 250px) !important;
+          }
 
-            .vinyl-viewer-widget .filter-controls {
-              width: var(--cover-size, 250px) !important;
-              max-width: var(--cover-size, 250px) !important;
-              flex-direction: column;
-              align-items: stretch;
-              gap: calc(0.4rem * var(--font-scale, 1));
-            }
+          body.focus-card-compact .vinyl-viewer-widget .filter-controls {
+            width: var(--cover-size, 250px) !important;
+            max-width: var(--cover-size, 250px) !important;
+            flex-direction: column;
+            align-items: stretch;
+            gap: calc(0.4rem * var(--font-scale, 1));
+          }
 
-            .vinyl-viewer-widget .filter-buttons {
-              gap: calc(0.3rem * var(--font-scale, 1)) !important;
-              width: 100%;
-              justify-content: flex-start;
-              flex-wrap: wrap;
-            }
+          body.focus-card-compact .vinyl-viewer-widget .filter-buttons {
+            gap: calc(0.3rem * var(--font-scale, 1)) !important;
+            width: 100%;
+            justify-content: flex-start;
+            flex-wrap: wrap;
+          }
 
-            .vinyl-viewer-widget .search-container {
-              width: 100%;
-            }
+          body.focus-card-compact .vinyl-viewer-widget .search-container {
+            width: 100%;
           }
 
           .vinyl-viewer-widget .filter-btn {

@@ -519,10 +519,6 @@ export function createYouTubePlayer(): YouTubeBridge {
     }
     const forceBelow = focusCardIsCompact;
     const shouldCenterBelow = forceBelow;
-    const placementWidth =
-      smallPlayerWidth && smallPlayerWidth > 0
-        ? smallPlayerWidth
-        : DEFAULT_SMALL_PLAYER_WIDTH;
     const focusRect = getFocusCoverRect();
 
     if (shouldCenterBelow) {
@@ -545,6 +541,7 @@ export function createYouTubePlayer(): YouTubeBridge {
   const updateSmallPlayerDimensions = () => {
     if (isFullscreenMode) return;
     ensureFocusCoverObservers();
+    const focusRect = getFocusCoverRect();
     const inlineWidth = focusCardIsCompact
       ? Math.max(
           (window.innerWidth ||
@@ -561,6 +558,7 @@ export function createYouTubePlayer(): YouTubeBridge {
       window.innerWidth ||
       document.documentElement?.clientWidth ||
       DEFAULT_SMALL_PLAYER_WIDTH;
+    const coverWidth = focusRect?.width ?? DEFAULT_SMALL_PLAYER_WIDTH;
     // Fall back to viewport width when inline width isn't measurable (e.g., instant snap/tiling)
     let width =
       inlineWidth > 0
@@ -569,10 +567,8 @@ export function createYouTubePlayer(): YouTubeBridge {
     if (!Number.isFinite(width) || width <= 0) {
       width = DEFAULT_SMALL_PLAYER_WIDTH;
     }
-    if (focusCardIsCompact) {
-      const focusRect = getFocusCoverRect();
-      const coverWidth = focusRect?.width ?? 250;
-      // Compact layout: cap width to cover width to avoid oversized player on initial load/snap
+    // Cap width when compact or when cover data is stale/missing to avoid runaway sizing
+    if (focusCardIsCompact || !focusRect) {
       width = Math.min(width, coverWidth);
     }
     width = Math.max(width, MIN_SMALL_PLAYER_WIDTH_PX);

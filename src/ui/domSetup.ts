@@ -180,6 +180,9 @@ export function setupDOM(): DOMElements {
   window.addEventListener("resize", () => {
     updateVinylViewerScale();
   });
+  window.addEventListener("focus-card-layout-updated", () => {
+    updateVinylViewerScale();
+  });
 
   // Create hide/show library button
   const hideLibraryBtn = document.createElement("button");
