@@ -113,6 +113,7 @@ import { createBusinessCardAnimation } from "./scene/businessCardAnimation";
 import {
   getFocusVinylScale,
   applyFocusVinylScale,
+  getFocusCardScale,
   cloneLabelVisuals,
   getSelectionCoverUrl,
   applyLabelTextureQuality,
@@ -956,7 +957,7 @@ const setTurntableUIVisible = (visible: boolean) => {
     activePage === "turntable" &&
     !isFreeLookMode;
   vinylViewerContainer.style.opacity = effective ? "1" : "0";
-  vinylViewerContainer.style.pointerEvents = effective ? "auto" : "none";
+  // Keep pointer-events none on container - the widget inside has pointer-events auto
   hideLibraryBtn.style.opacity = effective ? "1" : "0";
   hideLibraryBtn.style.pointerEvents = effective ? "auto" : "none";
   focusCardContainers.forEach((container) => {
@@ -2266,7 +2267,9 @@ window.addEventListener("update-aspect-ratio", (event: any) => {
 });
 
 // Listen for focus card album cover hover to shift vinyl (with animation)
-const FOCUS_VINYL_HOVER_DISTANCE = 5;
+const FOCUS_VINYL_HOVER_DISTANCE_BASE = 5;
+const getFocusVinylHoverDistance = () =>
+  FOCUS_VINYL_HOVER_DISTANCE_BASE * getFocusCardScale();
 const FOCUS_VINYL_HOVER_ANIMATION_SPEED = 0.25;
 // FOCUS_VINYL_CLICK_ANIMATION_SPEED now imported from vinylInteractions.ts
 const FOCUS_COVER_CLICK_CLASS = "focus-cover-click-active";
@@ -2293,7 +2296,9 @@ const applyFocusCoverHoverState = () => {
     focusCoverHoverOverride !== null
       ? focusCoverHoverOverride
       : focusCoverHoverActive;
-  focusVinylHoverOffsetTarget = effectiveHover ? FOCUS_VINYL_HOVER_DISTANCE : 0;
+  focusVinylHoverOffsetTarget = effectiveHover
+    ? getFocusVinylHoverDistance()
+    : 0;
 };
 
 const updateFocusVinylVisibility = () => {
@@ -2371,7 +2376,7 @@ const beginFocusCoverFallbackSequence = () => {
   const run = async () => {
     focusCoverHoverOverride = true;
     applyFocusCoverHoverState();
-    await waitForFocusVinylOffset(FOCUS_VINYL_HOVER_DISTANCE, animationKey);
+    await waitForFocusVinylOffset(getFocusVinylHoverDistance(), animationKey);
     if (focusCoverFallbackAnimationKey !== animationKey) {
       return;
     }
@@ -3260,6 +3265,7 @@ const pickPortfolioPaperUnderPointer = (
   const { requireScrollable = false } = options;
   const paperMeshes = portfolioPapersManager.getPaperMeshes();
   const currentPaperId = portfolioPapersManager.getCurrentPaperId();
+  const topLeftStackPaperId = portfolioPapersManager.getTopLeftStackPaperId();
   const papersById = new Map(
     portfolioPapersManager.getPapers().map((paper) => [paper.id, paper]),
   );
@@ -3284,7 +3290,15 @@ const pickPortfolioPaperUnderPointer = (
       isMarkdownPaperConfig(paper) || isResumePaperConfig(paper);
     const isLeftStack = portfolioPapersManager.isPaperInLeftStack(paperId);
     const isCurrentPaper = paperId === currentPaperId;
-    if (!allowLeftStackInteraction && (!isCurrentPaper || isLeftStack)) {
+    const isTopLeftStackPaper = paperId === topLeftStackPaperId;
+    if (isLeftStack) {
+      if (!allowLeftStackInteraction) {
+        continue;
+      }
+      if (!isTopLeftStackPaper) {
+        continue;
+      }
+    } else if (!isCurrentPaper) {
       continue;
     }
     const hit = hits[0];
@@ -3518,24 +3532,54 @@ loadPortfolioModel()
     console.error("Failed to load portfolio model:", error);
   });
 
-const updateFocusCardPosition = () => {
+const getLiveFocusCoverCenter = (): { x: number; y: number } | null => {
+  const coverElement = document.querySelector(
+    ".focus-card-cover-container .album-cover",
+  ) as HTMLElement | null;
+  if (!coverElement) {
+    return null;
+  }
+  const rect = coverElement.getBoundingClientRect();
+  return {
+    x: rect.left + rect.width / 2,
+    y: rect.top + rect.height / 2,
+  };
+};
+
+const updateFocusCardPosition = (override?: {
+  screenX: number;
+  screenY: number;
+}) => {
   if (!shouldTrackFocusCard || !focusVinylState) {
     return;
   }
 
-  const focusCardElement = document.querySelector(
-    ".focus-card-cover-container .album-cover",
-  ) as HTMLElement;
-  if (!focusCardElement) {
+  let screenX: number | null = null;
+  let screenY: number | null = null;
+
+  if (override) {
+    screenX = override.screenX;
+    screenY = override.screenY;
+  } else {
+    const liveCenter = getLiveFocusCoverCenter();
+    if (liveCenter) {
+      screenX = liveCenter.x;
+      screenY = liveCenter.y;
+      focusCardScreenHint = liveCenter;
+    } else if (focusCardScreenHint) {
+      screenX = focusCardScreenHint.x;
+      screenY = focusCardScreenHint.y;
+    } else {
+      return;
+    }
+  }
+
+  if (screenX === null || screenY === null) {
     return;
   }
 
-  const rect = focusCardElement.getBoundingClientRect();
-  const centerX = rect.left + rect.width / 2;
-  const centerY = rect.top + rect.height / 2;
-
-  const ndcX = (centerX / window.innerWidth) * 2 - 1;
-  const ndcY = -(centerY / window.innerHeight) * 2 + 1;
+  const ndcX = (screenX / window.innerWidth) * 2 - 1;
+  const ndcY = -(screenY / window.innerHeight) * 2 + 1;
 
   const trackingRaycaster = new Raycaster();
   trackingRaycaster.setFromCamera(new Vector2(ndcX, ndcY), camera);
@@ -3565,6 +3609,137 @@ const updateFocusCardPosition = () => {
     applyFocusVinylScale(focusVinylState?.model ?? null, cameraRig);
   }
 };
+
+let focusCardScreenHint: { x: number; y: number } | null = null;
+let focusCardMotionFrame: number | null = null;
+let pendingFocusVinylRevealFrame: number | null = null;
+let isFocusCardAnimationActive = false;
+const cancelPendingFocusVinylReveal = () => {
+  if (pendingFocusVinylRevealFrame !== null) {
+    cancelAnimationFrame(pendingFocusVinylRevealFrame);
+    pendingFocusVinylRevealFrame = null;
+  }
+};
+const hideFocusVinyl = () => {
+  cancelPendingFocusVinylReveal();
+  focusVinylManuallyHidden = true;
+  if (focusVinylState?.model) {
+    focusVinylState.model.visible = false;
+  }
+};
+const scheduleFocusVinylReveal = (framesRemaining: number = 1) => {
+  cancelPendingFocusVinylReveal();
+  const step = () => {
+    const liveCenter = getLiveFocusCoverCenter();
+    if (liveCenter) {
+      focusCardScreenHint = liveCenter;
+      updateFocusCardPosition({ screenX: liveCenter.x, screenY: liveCenter.y });
+    } else {
+      updateFocusCardPosition();
+    }
+    if (framesRemaining > 0) {
+      framesRemaining -= 1;
+      pendingFocusVinylRevealFrame = requestAnimationFrame(step);
+    } else {
+      pendingFocusVinylRevealFrame = null;
+      focusVinylManuallyHidden = false;
+      updateFocusVinylVisibility();
+    }
+  };
+  pendingFocusVinylRevealFrame = requestAnimationFrame(step);
+};
+const stopFocusCardMotionLoop = () => {
+  if (focusCardMotionFrame !== null) {
+    cancelAnimationFrame(focusCardMotionFrame);
+    focusCardMotionFrame = null;
+  }
+};
+const runFocusCardMotionLoop = () => {
+  const liveCenter = getLiveFocusCoverCenter();
+  if (liveCenter) {
+    focusCardScreenHint = liveCenter;
+    updateFocusCardPosition({ screenX: liveCenter.x, screenY: liveCenter.y });
+  } else {
+    updateFocusCardPosition();
+  }
+  updateFocusVinylVisibility();
+  focusCardMotionFrame = requestAnimationFrame(runFocusCardMotionLoop);
+};
+
+window.addEventListener("focus-card-motion", (event: any) => {
+  const animating = Boolean(event.detail?.animating);
+  if (animating) {
+    isFocusCardAnimationActive = true;
+    hideFocusVinyl();
+    const liveCenter = getLiveFocusCoverCenter();
+    if (liveCenter) {
+      focusCardScreenHint = liveCenter;
+    }
+    // Re-anchor vinyl to the current cover position when the slide begins
+    if (
+      focusVinylState?.model &&
+      shouldTrackFocusCard &&
+      vinylDragPointerId === null
+    ) {
+      updateFocusCardPosition(
+        liveCenter
+          ? { screenX: liveCenter.x, screenY: liveCenter.y }
+          : undefined,
+      );
+      resetVinylAnimationState(focusCardAnchorPosition, "focus");
+      vinylAnimationState.cameraRelativeOffsetValid = false;
+    }
+    if (focusCardMotionFrame === null) {
+      runFocusCardMotionLoop();
+    }
+    return;
+  }
+
+  stopFocusCardMotionLoop();
+  isFocusCardAnimationActive = false;
+  if (
+    focusVinylState?.model &&
+    shouldTrackFocusCard &&
+    vinylDragPointerId === null
+  ) {
+    const liveCenter = getLiveFocusCoverCenter();
+    updateFocusCardPosition(
+      liveCenter ? { screenX: liveCenter.x, screenY: liveCenter.y } : undefined,
+    );
+    resetVinylAnimationState(focusCardAnchorPosition, "focus");
+    vinylAnimationState.cameraRelativeOffsetValid = false;
+    swingState.targetX = 0;
+    swingState.targetZ = 0;
+    swingState.currentX = 0;
+    swingState.currentZ = 0;
+  }
+  scheduleFocusVinylReveal(2);
+});
+
+window.addEventListener("focus-card-layout-updated", (event: any) => {
+  const { coverCenterX, coverCenterY, layoutChanged } = event.detail || {};
+  const hasCoords =
+    typeof coverCenterX === "number" && typeof coverCenterY === "number";
+  if (!hasCoords) {
+    return;
+  }
+
+  focusCardScreenHint = { x: coverCenterX, y: coverCenterY };
+  updateFocusCardPosition({ screenX: coverCenterX, screenY: coverCenterY });
+  if (
+    focusVinylState?.model &&
+    shouldTrackFocusCard &&
+    vinylDragPointerId === null
+  ) {
+    resetVinylAnimationState(focusCardAnchorPosition, "focus");
+    vinylAnimationState.cameraRelativeOffsetValid = false;
+  }
+
+  if (!isFocusCardAnimationActive && layoutChanged) {
+    hideFocusVinyl();
+    scheduleFocusVinylReveal(2);
+  }
+});
 
 const updateCameraTargetsForWindowSize = () => {
   const canvas = document.querySelector("canvas");
@@ -3617,6 +3792,29 @@ cameraRig.onAnimationComplete(() => {
   updateFocusCardPosition();
 });
 
+const updateFocusVinylForResize = () => {
+  // Update focus vinyl scale and position during resize - treat like first click
+  if (focusVinylState?.model && shouldTrackFocusCard) {
+    // Update the global scale factor
+    vinylScaleFactor = getFocusVinylScale(cameraRig);
+    // Apply scale to model immediately
+    focusVinylState.model.scale.setScalar(vinylScaleFactor);
+    // Update hover offset to match new scale
+    const wasHovering = focusVinylHoverOffsetTarget > 0;
+    if (wasHovering) {
+      const newHoverDistance = getFocusVinylHoverDistance();
+      focusVinylHoverOffsetTarget = newHoverDistance;
+      focusVinylHoverOffset = newHoverDistance;
+    }
+    // Invalidate camera-relative offset to force recalculation
+    vinylAnimationState.cameraRelativeOffsetValid = false;
+    // Update focus card position (this updates focusCardAnchorPosition)
+    updateFocusCardPosition();
+    // Reset ALL vinyl animation state to the new anchor position (like first click)
+    resetVinylAnimationState(focusCardAnchorPosition, "focus");
+  }
+};
+
 const setSize = () => {
   const width = root.clientWidth || window.innerWidth;
   const height = root.clientHeight || window.innerHeight;
@@ -3628,6 +3826,12 @@ const setSize = () => {
 
   // Update camera positions for new window size
   updateCameraTargetsForWindowSize();
+
+  // Defer vinyl position update to ensure CSS transforms have been applied
+  // This handles the case where focus card scale changes on resize
+  requestAnimationFrame(() => {
+    updateFocusVinylForResize();
+  });
 };
 
 window.addEventListener("resize", setSize);

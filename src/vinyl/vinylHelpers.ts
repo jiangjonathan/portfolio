@@ -11,10 +11,20 @@ import { getOrCacheAlbumCover } from "../utils/albumCoverCache";
 export const FOCUS_VINYL_BASE_SCALE = 1.0;
 export const VINYL_DRAG_THRESHOLD = 38;
 
+// Calculate the focus card scale factor (same logic as in domSetup.ts)
+export function getFocusCardScale(): number {
+  const viewportWidth = window.innerWidth;
+  const baseWidth = 1400;
+  const minScale = 0.6;
+  return Math.max(minScale, Math.min(1, viewportWidth / baseWidth));
+}
+
 export function getFocusVinylScale(cameraRig: CameraRig): number {
   const baseScale = FOCUS_VINYL_BASE_SCALE / cameraRig.getZoomFactor();
   const referenceHeight = 900; // Assumed reference viewport height for base scale.
-  return baseScale * (referenceHeight / window.innerHeight);
+  const heightScale = baseScale * (referenceHeight / window.innerHeight);
+  // Also apply the focus card scale so vinyl matches the scaled album cover
+  return heightScale * getFocusCardScale();
 }
 
 export function applyFocusVinylScale(

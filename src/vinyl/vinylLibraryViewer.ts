@@ -324,6 +324,18 @@ export class VinylLibraryViewer {
             background: transparent;
             border: none;
             min-height: auto;
+            user-select: none;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            pointer-events: auto;
+            width: fit-content;
+            margin-left: auto;
+            --card-scale: var(--vinyl-widget-scale, 1);
+            --card-width: calc(430px * var(--card-scale));
+            --cover-size: calc(250px * var(--card-scale));
+            --card-gap: calc(0.75rem * var(--card-scale));
+            --font-scale: var(--card-scale);
           }
 
           .vinyl-viewer-widget h3 {
@@ -356,11 +368,12 @@ export class VinylLibraryViewer {
             overflow: visible;
             border: none;
             cursor: default;
-            width: 430px;
+            width: var(--card-width, 430px);
             flex-shrink: 0;
-            margin-bottom: 0.75rem;
+            margin-bottom: var(--card-gap, 0.75rem);
             content-visibility: auto;
-            contain-intrinsic-size: 430px 292px;
+            contain-intrinsic-size: var(--card-width, 430px) calc(var(--cover-size, 250px) + 42px);
+            transition: width 0.4s ease;
           }
 
           .vinyl-viewer-widget .album-main {
@@ -798,12 +811,11 @@ export class VinylLibraryViewer {
 
           .vinyl-viewer-widget .album-cover-wrapper {
             position: relative;
-            width: 250px;
-            height: 250px;
+            width: var(--cover-size, 250px);
+            height: var(--cover-size, 250px);
             flex-shrink: 0;
             border-radius: 2px;
             overflow: visible;
-            // box-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
           }
 
           .vinyl-viewer-widget .plastic-overlay {
@@ -821,13 +833,13 @@ export class VinylLibraryViewer {
           }
 
           .vinyl-viewer-widget .album-info {
-            padding: 0 0.5rem;
+            padding: 0 calc(0.5rem * var(--font-scale, 1));
             display: flex;
             flex-direction: column;
             background: transparent;
             justify-content: center;
             min-width: 0;
-            width: 180px;
+            width: calc(180px * var(--card-scale, 1));
             flex-shrink: 0;
             overflow: hidden;
           }
@@ -842,22 +854,22 @@ export class VinylLibraryViewer {
           }
 
           .vinyl-viewer-widget .album-artist {
-            font-size: 0.7rem;
+            font-size: calc(0.7rem * var(--font-scale, 1));
             color: #000;
-            margin-bottom: -0.25rem;
+            margin-bottom: calc(-0.25rem * var(--font-scale, 1));
             line-height: 1.4;
             font-weight: normal;
           }
 
           .vinyl-viewer-widget .album-song {
             font-weight: 500;
-            font-size: 0.8rem;
+            font-size: calc(0.8rem * var(--font-scale, 1));
             color: #000;
             line-height: 1.4;
           }
 
           .vinyl-viewer-widget .album-year {
-            font-size: 0.65rem;
+            font-size: calc(0.65rem * var(--font-scale, 1));
             color: #888;
             margin-top: 0rem;
             line-height: 1.1;
@@ -891,19 +903,15 @@ export class VinylLibraryViewer {
 
           /* Only animate the inner text spans, not the container */
           .vinyl-viewer-widget
-            .album-card:hover
             .album-artist.overflowing
             .album-artist-text,
           .vinyl-viewer-widget
-            .album-card:hover
             .album-artist.overflowing
             .album-artist-text[aria-hidden="true"],
           .vinyl-viewer-widget
-            .album-card:hover
             .album-song.overflowing
             .album-song-text,
           .vinyl-viewer-widget
-            .album-card:hover
             .album-song.overflowing
             .album-song-text[aria-hidden="true"] {
             animation: scroll-text 10s linear infinite;
@@ -1013,15 +1021,52 @@ export class VinylLibraryViewer {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 1rem;
+            margin-bottom: calc(1rem * var(--font-scale, 1));
             gap: 0;
             position: sticky;
             top: 0;
             background: transparent;
             z-index: 100;
-            padding: 0.5rem 0;
-            width: 430px;
-            max-width: 430px;
+            padding: calc(0.5rem * var(--font-scale, 1)) 0;
+            width: var(--card-width, 430px);
+            max-width: var(--card-width, 430px);
+            font-size: calc(0.85rem * var(--font-scale, 1));
+            transition: width 0.35s ease, max-width 0.35s ease,
+              flex-direction 0.35s ease, gap 0.35s ease;
+          }
+
+          /* Hide album text when window is narrow */
+          @media (max-width: 900px) {
+            .vinyl-viewer-widget .album-info {
+              display: none !important;
+            }
+
+            .vinyl-viewer-widget .album-metadata {
+              display: none !important;
+            }
+
+            .vinyl-viewer-widget .album-card {
+              width: var(--cover-size, 250px) !important;
+            }
+
+            .vinyl-viewer-widget .filter-controls {
+              width: var(--cover-size, 250px) !important;
+              max-width: var(--cover-size, 250px) !important;
+              flex-direction: column;
+              align-items: stretch;
+              gap: calc(0.4rem * var(--font-scale, 1));
+            }
+
+            .vinyl-viewer-widget .filter-buttons {
+              gap: calc(0.3rem * var(--font-scale, 1)) !important;
+              width: 100%;
+              justify-content: flex-start;
+              flex-wrap: wrap;
+            }
+
+            .vinyl-viewer-widget .search-container {
+              width: 100%;
+            }
           }
 
           .vinyl-viewer-widget .filter-btn {
@@ -1029,6 +1074,7 @@ export class VinylLibraryViewer {
             display: inline-block;
             vertical-align: baseline;
             line-height: 1.2;
+            font-size: calc(0.85rem * var(--font-scale, 1)) !important;
           }
 
           .vinyl-viewer-widget .filter-btn.active {
@@ -1052,16 +1098,16 @@ export class VinylLibraryViewer {
             left: 0;
             background: white;
             border: 1px solid #ddd;
-            margin-top: 0.25rem;
-            min-width: 120px;
+            margin-top: calc(0.25rem * var(--font-scale, 1));
+            min-width: calc(120px * var(--font-scale, 1));
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
             z-index: 1000;
           }
 
           .vinyl-viewer-widget .sort-option {
-            padding: 0.5rem 1rem;
+            padding: calc(0.5rem * var(--font-scale, 1)) calc(1rem * var(--font-scale, 1));
             cursor: pointer;
-            font-size: 0.85rem;
+            font-size: calc(0.85rem * var(--font-scale, 1));
             transition: background 0.2s;
           }
 
@@ -1080,7 +1126,7 @@ export class VinylLibraryViewer {
           }
 
           .vinyl-viewer-widget .search-label {
-            font-size: var(--vinyl-link-font-size);
+            font-size: calc(0.85rem * var(--font-scale, 1));
             color: var(--vinyl-link-color);
             text-shadow: var(--vinyl-link-text-shadow);
             -webkit-font-smoothing: none;
@@ -1092,10 +1138,10 @@ export class VinylLibraryViewer {
             padding: 0;
             border: none;
             background: transparent;
-            font-size: 0.85rem;
+            font-size: calc(0.85rem * var(--font-scale, 1));
             font-family: inherit;
             flex: 1;
-            min-width: 60px;
+            min-width: calc(60px * var(--font-scale, 1));
             -webkit-font-smoothing: none;
             -moz-osx-font-smoothing: grayscale;
             line-height: 1;
@@ -1109,6 +1155,8 @@ export class VinylLibraryViewer {
             gap: 0.5rem;
             flex-shrink: 0;
             align-items: baseline;
+            transition: gap 0.35s ease, flex-wrap 0.35s ease,
+              justify-content 0.35s ease, width 0.35s ease;
           }
 
           .vinyl-viewer-widget .search-input::placeholder {
@@ -1124,7 +1172,7 @@ export class VinylLibraryViewer {
             background: transparent;
             border: none;
             cursor: pointer;
-            font-size: 1rem;
+            font-size: calc(1rem * var(--font-scale, 1));
             line-height: 1;
             color: #666;
             padding: 0;

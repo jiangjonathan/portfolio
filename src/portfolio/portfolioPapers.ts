@@ -1060,6 +1060,13 @@ export class PortfolioPapersManager {
     return this.leftStackPapers.includes(paperId);
   }
 
+  getTopLeftStackPaperId(): string | null {
+    if (this.leftStackPapers.length === 0) {
+      return null;
+    }
+    return this.leftStackPapers[this.leftStackPapers.length - 1];
+  }
+
   setHoveredScrollablePaper(paperId: string | null): void {
     if (this.hoveredScrollablePaperId === paperId) {
       return;

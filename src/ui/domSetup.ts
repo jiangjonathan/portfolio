@@ -143,6 +143,7 @@ export function setupDOM(): DOMElements {
     top: 0;
     right: -20px;
     bottom: 0;
+    width: fit-content;
     max-width: ${VIEWER_MAX_WIDTH};
     z-index: ${UI_Z_INDEX};
     overflow-y: auto;
@@ -150,9 +151,9 @@ export function setupDOM(): DOMElements {
     -ms-overflow-style: none;
     transition: opacity 0.45s ease, transform 0.45s ease;
     opacity: 0;
-    transform-origin: top right;
-    transform: var(--vinyl-viewer-translate, translateY(8px)) scale(var(--vinyl-widget-scale, 1));
+    transform: var(--vinyl-viewer-translate, translateY(8px));
     padding: 20px 40px 20px 20px;
+    margin-left: auto;
   `;
   vinylViewerContainer.style.pointerEvents = "none";
 
@@ -167,63 +168,11 @@ export function setupDOM(): DOMElements {
     );
   };
 
-  const FOCUS_INFO_VIEWER_GAP = 48;
-  const FOCUS_INFO_SHRINK_PADDING = 120;
-  const FOCUS_INFO_COMFORT_MIN_WIDTH = 260;
-  let focusInfoDefaultWidth = 0;
-  let focusInfoUpdateHandle: number | null = null;
-
-  const applyFocusInfoMaxWidth = () => {
-    focusInfoUpdateHandle = null;
-    const viewerRect = vinylViewerContainer.getBoundingClientRect();
-    const infoRect = focusCardInfoContainer.getBoundingClientRect();
-    if (!viewerRect.width) return;
-
-    if (!focusInfoDefaultWidth && infoRect.width) {
-      focusInfoDefaultWidth = infoRect.width;
-    }
-    const baseLimit =
-      focusInfoDefaultWidth ||
-      parseFloat(getComputedStyle(focusCardInfoContainer).width) ||
-      420;
-
-    const rawAvailable =
-      viewerRect.left - infoRect.left - FOCUS_INFO_VIEWER_GAP;
-    const maxNonOverlap = Math.max(0, Math.floor(rawAvailable));
-    const desiredWidth = Math.max(
-      FOCUS_INFO_COMFORT_MIN_WIDTH,
-      maxNonOverlap - FOCUS_INFO_SHRINK_PADDING,
-    );
-    const preferredWidth = Math.min(baseLimit, desiredWidth);
-    const safeWidth = Math.max(0, Math.min(maxNonOverlap, preferredWidth));
-    const nextWidth =
-      safeWidth > 0
-        ? safeWidth
-        : Math.min(
-            baseLimit,
-            Math.max(FOCUS_INFO_COMFORT_MIN_WIDTH, maxNonOverlap),
-          );
-
-    document.documentElement.style.setProperty(
-      "--vinyl-focus-info-max-width",
-      `${Math.max(0, Math.floor(nextWidth))}px`,
-    );
-  };
-
-  const scheduleFocusInfoMaxWidthUpdate = () => {
-    if (focusInfoUpdateHandle !== null) {
-      cancelAnimationFrame(focusInfoUpdateHandle);
-    }
-    focusInfoUpdateHandle = requestAnimationFrame(applyFocusInfoMaxWidth);
-  };
-
-  const handleViewportChange = () => {
+  // Initial scale update for vinyl viewer only (focus cards created later)
+  updateVinylViewerScale();
+  window.addEventListener("resize", () => {
     updateVinylViewerScale();
-    scheduleFocusInfoMaxWidthUpdate();
-  };
-
-  handleViewportChange();
-  window.addEventListener("resize", handleViewportChange);
+  });
 
   // Create hide/show library button
   const hideLibraryBtn = document.createElement("button");
@@ -291,6 +240,137 @@ export function setupDOM(): DOMElements {
   focusCardInfoContainer.className =
     "focus-card-container focus-card-info-container";
   root.appendChild(focusCardInfoContainer);
+  // Focus card scaling/movement
+  let focusCardAnimationReady = false;
+  let focusCardAnimationCount = 0;
+  const notifyFocusCardMotion = (animating: boolean) => {
+    window.dispatchEvent(
+      new CustomEvent("focus-card-motion", { detail: { animating } }),
+    );
+  };
+  const handleAnimationDone = () => {
+    focusCardAnimationCount = Math.max(0, focusCardAnimationCount - 1);
+    if (focusCardAnimationCount === 0) {
+      notifyFocusCardMotion(false);
+    }
+  };
+  const animateFocusCardPosition = (
+    element: HTMLElement,
+    left: number,
+    top: number,
+    allowAnimation: boolean,
+  ) => {
+    const computed = window.getComputedStyle(element);
+    const currentLeft = parseFloat(computed.left);
+    const currentTop = parseFloat(computed.top);
+    const hasNumericPositions =
+      Number.isFinite(currentLeft) && Number.isFinite(currentTop);
+    const shouldAnimate =
+      focusCardAnimationReady &&
+      allowAnimation &&
+      hasNumericPositions &&
+      (Math.abs(currentLeft - left) > 0.5 || Math.abs(currentTop - top) > 0.5);
+
+    if (shouldAnimate) {
+      const animation = element.animate(
+        [
+          { left: `${currentLeft}px`, top: `${currentTop}px` },
+          { left: `${left}px`, top: `${top}px` },
+        ],
+        { duration: 450, easing: "ease-in-out" },
+      );
+      if (focusCardAnimationCount === 0) {
+        notifyFocusCardMotion(true);
+      }
+      focusCardAnimationCount += 1;
+      animation.addEventListener("finish", handleAnimationDone, { once: true });
+      animation.addEventListener("cancel", handleAnimationDone, {
+        once: true,
+      });
+    }
+
+    element.style.left = `${left}px`;
+    element.style.top = `${top}px`;
+  };
+
+  let focusCardLastCompact = window.innerWidth <= 900;
+  const applyFocusCardScale = () => {
+    const viewportWidth = window.innerWidth;
+    const baseWidth = 1400;
+    const minScale = 0.6;
+    const scale = Math.max(minScale, Math.min(1, viewportWidth / baseWidth));
+
+    // Scale both containers
+    focusCardCoverContainer.style.transform = `scale(${scale})`;
+    focusCardCoverContainer.style.transformOrigin = "top left";
+    focusCardInfoContainer.style.transform = `scale(${scale})`;
+    focusCardInfoContainer.style.transformOrigin = "top left";
+
+    const coverWidth = 250;
+    const gap = 16; // 1rem
+    const coverHeight = 250;
+    const totalWidth = 700; // approximate combined width
+    const offsetFromCenter = totalWidth / 2; // 350px at scale=1
+    const scaledCoverWidth = coverWidth * scale;
+    const scaledCoverHeight = coverHeight * scale;
+    const scaledGap = gap * scale;
+    const topOffset = 20;
+    const isCompactLayout = viewportWidth <= 900;
+    const wasCompact = focusCardLastCompact;
+    const layoutChanged = isCompactLayout !== wasCompact;
+    focusCardLastCompact = isCompactLayout;
+
+    // Hide/show the name text depending on layout
+    nameText.style.opacity = isCompactLayout ? "0" : "1";
+    document.body.classList.toggle("focus-card-compact", isCompactLayout);
+
+    let coverLeft: number;
+    if (isCompactLayout) {
+      coverLeft = 20;
+    } else {
+      const centerX = viewportWidth * 0.525;
+      coverLeft = centerX - offsetFromCenter * scale;
+    }
+
+    const infoLeft = coverLeft + scaledCoverWidth + scaledGap;
+    const coverCenterX = coverLeft + scaledCoverWidth / 2;
+    const coverCenterY = topOffset + scaledCoverHeight / 2;
+
+    // Only animate when transitioning from centered (desktop) to compact left layout
+    const allowMovementAnimation =
+      layoutChanged &&
+      !wasCompact &&
+      isCompactLayout &&
+      focusCardAnimationReady;
+    animateFocusCardPosition(
+      focusCardCoverContainer,
+      coverLeft,
+      topOffset,
+      allowMovementAnimation,
+    );
+    animateFocusCardPosition(
+      focusCardInfoContainer,
+      infoLeft,
+      topOffset,
+      allowMovementAnimation,
+    );
+
+    if (!focusCardAnimationReady) {
+      focusCardAnimationReady = true;
+    }
+    window.dispatchEvent(
+      new CustomEvent("focus-card-layout-updated", {
+        detail: {
+          compact: isCompactLayout,
+          coverCenterX,
+          coverCenterY,
+          layoutChanged,
+        },
+      }),
+    );
+  };
+  applyFocusCardScale();
+  window.addEventListener("resize", applyFocusCardScale);
 
   // Create show focus button
   const showFocusBtn = document.createElement("button");
@@ -327,6 +407,10 @@ export function setupDOM(): DOMElements {
       --vinyl-link-font-size: 0.85rem;
       --vinyl-link-text-shadow: 0.2px 0 0 rgba(255, 0, 0, 0.5), -0.2px 0 0 rgba(0, 100, 200, 0.5);
       --vinyl-focus-info-max-width: 420px;
+    }
+
+    body.focus-card-compact #jonathan-jiang-name {
+      opacity: 0 !important;
     }
 
     .vinyl-hyperlink {
