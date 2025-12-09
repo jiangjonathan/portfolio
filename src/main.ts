@@ -713,26 +713,53 @@ document.addEventListener("mousemove", (event) => {
       raycaster.setFromCamera(pointerNDC, camera);
       hoveredPaper = pickPortfolioPaperUnderPointer();
     }
+    const currentPaperId = portfolioPapersManager.getCurrentPaperId();
     const hoveredScrollablePaperId =
       hoveredPaper &&
       portfolioPapersManager.isPaperScrollable(hoveredPaper.paperId)
         ? hoveredPaper.paperId
         : null;
-    portfolioPapersManager.setHoveredScrollablePaper(hoveredScrollablePaperId);
+    // Highlight scrollbar for the hovered scrollable paper, otherwise fall back to current
+    if (hoveredScrollablePaperId) {
+      portfolioPapersManager.setHoveredScrollablePaper(
+        hoveredScrollablePaperId,
+      );
+    } else if (
+      currentPaperId &&
+      portfolioPapersManager.isPaperScrollable(currentPaperId)
+    ) {
+      portfolioPapersManager.setHoveredScrollablePaper(currentPaperId);
+    } else {
+      portfolioPapersManager.setHoveredScrollablePaper(null);
+    }
     let isHoveringPaper = false;
     if (hoveredPaper) {
       const { paperId, hit } = hoveredPaper;
-      isHoveringPaper = true;
-      if (hit.uv) {
-        const linkUrl = portfolioPapersManager.checkLinkAtUV(
+      const canvasCoords = hit.uv
+        ? portfolioPapersManager.uvToCanvasCoords(paperId, {
+            x: hit.uv.x,
+            y: hit.uv.y,
+          })
+        : null;
+      const onScrollbar =
+        canvasCoords &&
+        portfolioPapersManager.isPointerOnScrollbar(
           paperId,
-          hit.uv.x,
-          hit.uv.y,
+          canvasCoords.x,
+          canvasCoords.y,
         );
-        if (linkUrl) {
-          isHoveringPaper = true;
-        }
-      }
+      const nearScrollbar =
+        canvasCoords &&
+        portfolioPapersManager.isPointerNearScrollbar(
+          paperId,
+          canvasCoords.x,
+          canvasCoords.y,
+          24,
+        );
+      const linkUrl =
+        hit.uv &&
+        portfolioPapersManager.checkLinkAtUV(paperId, hit.uv.x, hit.uv.y);
+      isHoveringPaper = Boolean(linkUrl || onScrollbar || nearScrollbar);
     }
     canvas.style.cursor = isHoveringPaper ? "pointer" : "auto";
   } else {
@@ -957,7 +984,9 @@ const setTurntableUIVisible = (visible: boolean) => {
     activePage === "turntable" &&
     !isFreeLookMode;
   vinylViewerContainer.style.opacity = effective ? "1" : "0";
-  // Keep pointer-events none on container - the widget inside has pointer-events auto
+  vinylViewerContainer.style.pointerEvents = effective ? "auto" : "none";
+  vinylViewerContainer.style.visibility = effective ? "visible" : "hidden";
+  vinylViewerContainer.style.display = effective ? "block" : "none";
   hideLibraryBtn.style.opacity = effective ? "1" : "0";
   hideLibraryBtn.style.pointerEvents = effective ? "auto" : "none";
   focusCardContainers.forEach((container) => {
@@ -1699,6 +1728,7 @@ type FlyawayVinyl = {
   lifetime: number;
   initialScale: number;
   textures: LabelTextures;
+  selection: VinylSelectionDetail;
 };
 const flyawayVinyls: FlyawayVinyl[] = [];
 // isFullscreenMode now managed by TurntableStateManager
@@ -2557,6 +2587,7 @@ let vinylDragExceededThreshold = false;
 // ON_TURNTABLE state now managed by TurntableStateManager
 // VINYL_DRAG_THRESHOLD now imported from vinylInteractions.ts
 let isReturningToFocusCard = false; // Separate state for returning to focus card
+let scrollbarDragPointerId: number | null = null;
 function setVinylOnTurntable(onTurntable: boolean) {
   if (onTurntable === turntableStateManager.isOnTurntable()) {
     return;
@@ -2633,7 +2664,8 @@ const startTurntableVinylFlyaway = () => {
   if (!turntableVinylState) {
     return;
   }
-  const { model, labelTextures } = turntableVinylState;
+  const { model, labelTextures, selection } = turntableVinylState;
+
   flyawayVinyls.push({
     model,
     velocity: new Vector3(
@@ -2649,6 +2681,7 @@ const startTurntableVinylFlyaway = () => {
     lifetime: 0,
     initialScale: model.scale.x,
     textures: labelTextures,
+    selection: selection,
   });
   turntableVinylState = null;
   turntableStateManager.setOnTurntable(false);
@@ -2659,6 +2692,7 @@ const startTurntableVinylFlyaway = () => {
   yt.pause();
   loadedSelectionVideoId = null;
   isTonearmInPlayArea = false;
+  turntableStateManager.setTonearmInPlayArea(false);
   yt.setControlsVisible(false);
   yt.updateButtonVisibility();
   const viewport = root.querySelector(
@@ -2841,6 +2875,8 @@ canvas.addEventListener("pointerdown", (event) => {
             )
           ) {
             portfolioPapersManager?.startScrollbarDrag(paperId, canvasCoords.y);
+            scrollbarDragPointerId = event.pointerId;
+            canvas.setPointerCapture(event.pointerId);
             return;
           }
 
@@ -2860,6 +2896,74 @@ canvas.addEventListener("pointerdown", (event) => {
           console.log(`[Portfolio] Opening PDF in new window: ${paper.url}`);
           window.open(paper.url, "_blank");
           return;
+        }
+
+        // Fallback: try client-coordinate hit on scrollbar for hovered paper (works for left stack)
+        if (portfolioPapersManager?.isPaperScrollable(paperId)) {
+          const canvasCoords = portfolioPapersManager.clientToCanvasCoords(
+            paperId,
+            event.clientX,
+            event.clientY,
+            canvas,
+          );
+          if (
+            canvasCoords &&
+            portfolioPapersManager.isPointerOnScrollbar(
+              paperId,
+              canvasCoords.x,
+              canvasCoords.y,
+            )
+          ) {
+            portfolioPapersManager.startScrollbarDrag(paperId, canvasCoords.y);
+            portfolioPapersManager.setHoveredScrollablePaper(paperId);
+            scrollbarDragPointerId = event.pointerId;
+            canvas.setPointerCapture(event.pointerId);
+            return;
+          } else if (
+            canvasCoords &&
+            portfolioPapersManager.isPointerNearScrollbar(
+              paperId,
+              canvasCoords.x,
+              canvasCoords.y,
+              24,
+            )
+          ) {
+            portfolioPapersManager.startScrollbarDrag(paperId, canvasCoords.y);
+            portfolioPapersManager.setHoveredScrollablePaper(paperId);
+            scrollbarDragPointerId = event.pointerId;
+            canvas.setPointerCapture(event.pointerId);
+            return;
+          }
+        }
+      } else {
+        // No hovered paper: attempt scrollbar drag on the current scrollable paper
+        const currentPaperId = portfolioPapersManager?.getCurrentPaperId();
+        if (
+          currentPaperId &&
+          portfolioPapersManager?.isPaperScrollable(currentPaperId)
+        ) {
+          const canvasCoords = portfolioPapersManager.clientToCanvasCoords(
+            currentPaperId,
+            event.clientX,
+            event.clientY,
+            canvas,
+          );
+          if (
+            canvasCoords &&
+            portfolioPapersManager.isPointerOnScrollbar(
+              currentPaperId,
+              canvasCoords.x,
+              canvasCoords.y,
+            )
+          ) {
+            portfolioPapersManager.startScrollbarDrag(
+              currentPaperId,
+              canvasCoords.y,
+            );
+            scrollbarDragPointerId = event.pointerId;
+            canvas.setPointerCapture(event.pointerId);
+            return;
+          }
         }
       }
     }
@@ -2987,18 +3091,39 @@ canvas.addEventListener("pointermove", (event) => {
   if (portfolioPapersManager && portfolioPapersManager.isDraggingScrollbar()) {
     if (updatePointer(event, pointerNDC, canvas)) {
       raycaster.setFromCamera(pointerNDC, camera);
+      const draggingPaperId =
+        portfolioPapersManager.getDraggingScrollbarPaperId();
       const paperMeshes = portfolioPapersManager.getPaperMeshes();
-      for (const [paperId, mesh] of paperMeshes) {
+      const mesh =
+        draggingPaperId !== null ? paperMeshes.get(draggingPaperId) : null;
+      if (draggingPaperId && mesh) {
         const hits = raycaster.intersectObject(mesh, true);
         if (hits.length > 0 && hits[0].uv) {
           const canvasCoords = portfolioPapersManager.uvToCanvasCoords(
-            paperId,
+            draggingPaperId,
             { x: hits[0].uv.x, y: hits[0].uv.y },
           );
           if (canvasCoords) {
             portfolioPapersManager.updateScrollbarDrag(canvasCoords.y);
           }
-          break;
+        }
+      }
+    } else {
+      // Fallback to dragging paper using client coords if raycast misses
+      const currentPaperId =
+        portfolioPapersManager.getDraggingScrollbarPaperId();
+      if (
+        currentPaperId &&
+        portfolioPapersManager.isPaperScrollable(currentPaperId)
+      ) {
+        const canvasCoords = portfolioPapersManager.clientToCanvasCoords(
+          currentPaperId,
+          event.clientX,
+          event.clientY,
+          canvas,
+        );
+        if (canvasCoords) {
+          portfolioPapersManager.updateScrollbarDrag(canvasCoords.y);
         }
       }
     }
@@ -3244,11 +3369,18 @@ const endScrollbarDrag = () => {
   if (portfolioPapersManager) {
     portfolioPapersManager.endScrollbarDrag();
   }
+  if (scrollbarDragPointerId !== null) {
+    try {
+      canvas.releasePointerCapture(scrollbarDragPointerId);
+    } catch (e) {
+      // ignore
+    }
+    scrollbarDragPointerId = null;
+  }
 };
 
 canvas.addEventListener("pointerup", endScrollbarDrag);
 canvas.addEventListener("pointercancel", endScrollbarDrag);
-canvas.addEventListener("pointerleave", endScrollbarDrag);
 
 type PortfolioPaperHit = {
   paperId: string;
@@ -3314,19 +3446,25 @@ const handlePortfolioPaperScroll = (event: WheelEvent): boolean => {
     return false;
   }
 
-  if (!updatePointer(event, pointerNDC, canvas)) {
-    return false;
+  let hoveredPaper: PortfolioPaperHit | null = null;
+  if (updatePointer(event, pointerNDC, canvas)) {
+    raycaster.setFromCamera(pointerNDC, camera);
+    hoveredPaper = pickPortfolioPaperUnderPointer();
   }
-  raycaster.setFromCamera(pointerNDC, camera);
-  const hoveredPaper = pickPortfolioPaperUnderPointer({
-    requireScrollable: true,
-  });
-  if (!hoveredPaper) {
-    portfolioPapersManager.setHoveredScrollablePaper(null);
-    return false;
+
+  const targetPaperId =
+    hoveredPaper &&
+    portfolioPapersManager.isPaperScrollable(hoveredPaper.paperId)
+      ? hoveredPaper.paperId
+      : null;
+
+  if (targetPaperId) {
+    portfolioPapersManager.setHoveredScrollablePaper(targetPaperId);
+    return portfolioPapersManager.scrollPaper(targetPaperId, event.deltaY);
   }
-  portfolioPapersManager.setHoveredScrollablePaper(hoveredPaper.paperId);
-  return portfolioPapersManager.scrollPaper(hoveredPaper.paperId, event.deltaY);
+
+  portfolioPapersManager.setHoveredScrollablePaper(null);
+  return false;
 };
 
 // Scroll wheel camera orbit on home page and scroll papers on portfolio page
@@ -4067,10 +4205,29 @@ const animate = (time: number) => {
     );
     entry.model.scale.setScalar(scaleFactor);
     if (entry.lifetime > 1.5 || scaleFactor <= 0.01) {
+      // Check if this flyaway vinyl matches the current focus card
+      const focusCardContainer = document.getElementById(
+        "vinyl-focus-card-cover-root",
+      );
+      const hasFocusCard =
+        focusCardContainer && focusCardContainer.childElementCount > 0;
+
+      // Simply check if there's a focus card and no focus vinyl currently loaded
+      const shouldReloadToFocus = hasFocusCard && !focusVinylState;
+
       heroGroup.remove(entry.model);
       entry.textures.sideA.dispose();
       entry.textures.sideB.dispose();
       flyawayVinyls.splice(i, 1);
+
+      // Reload the vinyl to focus position after cleanup
+      if (shouldReloadToFocus) {
+        console.log(
+          "[Flyaway] Reloading vinyl to focus position:",
+          entry.selection.songName,
+        );
+        void handleFocusSelection(entry.selection);
+      }
     }
   }
 

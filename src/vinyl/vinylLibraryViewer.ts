@@ -406,12 +406,12 @@ export class VinylLibraryViewer {
           .focus-card-info-container {
             left: calc(52.5% - 350px + 250px + 1rem);
             width: min(
-              var(--vinyl-focus-info-max-width, calc(700px - 250px - 1rem)),
-              calc(700px - 250px - 1rem)
+              var(--vinyl-focus-info-max-width, calc(850px - 250px - 1rem)),
+              calc(600px - 250px - 1rem)
             );
             max-width: min(
-              var(--vinyl-focus-info-max-width, calc(700px - 250px - 1rem)),
-              calc(700px - 250px - 1rem)
+              var(--vinyl-focus-info-max-width, calc(850px - 250px - 1rem)),
+              calc(600px - 250px - 1rem)
             );
             min-width: 0;
           }
@@ -465,7 +465,6 @@ export class VinylLibraryViewer {
           }
 
           .focus-card-info-container .album-info-container {
-            transition: transform 0.3s ease;
             position: relative;
             flex: 1;
             display: flex;
@@ -476,15 +475,19 @@ export class VinylLibraryViewer {
             z-index: 10000;
           }
 
-          .focus-card-info-container.cover-hovered .album-info-container:not(.shift-disabled) {
+          .focus-card-info-container .album-info-container .album-info {
+            transition: transform 0.3s ease;
+          }
+
+          .focus-card-info-container.cover-hovered .album-info-container:not(.shift-disabled) .album-info {
             transform: translateX(50px);
           }
 
-          .focus-card-info-container.cover-clicked .album-info-container {
+          .focus-card-info-container.cover-clicked .album-info-container .album-info {
             transform: none;
           }
 
-          .focus-card-info-container .album-info-container.shift-disabled {
+          .focus-card-info-container .album-info-container.shift-disabled .album-info {
             transform: none !important;
           }
 
@@ -523,8 +526,8 @@ export class VinylLibraryViewer {
             justify-content: center;
             min-width: 0;
             width: auto;
-            flex: 1 1 180px;
-            min-width: 160px;
+            flex: 0 0 150px;
+            max-width: 160px;
             overflow: visible;
             position: relative;
             height: 100%;
@@ -641,6 +644,9 @@ export class VinylLibraryViewer {
             flex-shrink: 0;
             max-width: 200px;
             margin-left: auto;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            overflow: hidden;
           }
 
           .vinyl-viewer-widget .album-metadata {
@@ -881,7 +887,7 @@ export class VinylLibraryViewer {
               transform: translateX(0);
             }
             100% {
-              transform: translateX(calc(-50% - 1rem));
+              transform: translateX(-100%);
             }
           }
 
@@ -897,24 +903,28 @@ export class VinylLibraryViewer {
           .vinyl-viewer-widget .album-artist-text,
           .vinyl-viewer-widget .album-song-text {
             display: inline-block;
-            padding-right: 2rem;
+            padding-right: 3rem;
             will-change: transform;
           }
 
-          /* Only animate the inner text spans, not the container */
-          .vinyl-viewer-widget
-            .album-artist.overflowing
-            .album-artist-text,
-          .vinyl-viewer-widget
-            .album-artist.overflowing
-            .album-artist-text[aria-hidden="true"],
-          .vinyl-viewer-widget
-            .album-song.overflowing
-            .album-song-text,
+          /* Default state: no animation, text at start with transition - SONG ONLY */
+          .vinyl-viewer-widget .album-song.overflowing .album-song-text,
           .vinyl-viewer-widget
             .album-song.overflowing
             .album-song-text[aria-hidden="true"] {
-            animation: scroll-text 10s linear infinite;
+            animation: none;
+            transform: translateX(0);
+            transition: transform 0.3s ease-out;
+          }
+
+          /* Only run marquee when the card is hovered and text overflows - SONG ONLY */
+          .vinyl-viewer-widget .album-card:hover .album-song.overflowing .album-song-text,
+          .vinyl-viewer-widget
+            .album-card:hover
+            .album-song.overflowing
+            .album-song-text[aria-hidden="true"] {
+            animation: scroll-text 12s linear infinite;
+            transition: none;
           }
 
 
@@ -1349,30 +1359,37 @@ export class VinylLibraryViewer {
     }
 
     // Check for text overflow and mark overflowing elements
-    this.markOverflowingText();
+    this.markOverflowingText(this.scrollContainer);
+    // Re-check overflow on hover (handles late-loaded assets/fonts)
+    this.scrollContainer.querySelectorAll(".album-card").forEach((card) => {
+      card.addEventListener("mouseenter", () => {
+        this.markOverflowingText(card);
+      });
+    });
   }
 
   /**
    * Mark text elements that overflow their container and add duplicate for scrolling
+   * Only applies to song titles, not artist names
    */
-  private markOverflowingText(): void {
-    const artistElements = document.querySelectorAll(
-      ".vinyl-viewer-widget .album-artist",
-    );
-    const songElements = document.querySelectorAll(
+  private markOverflowingText(root: ParentNode = document): void {
+    // Only check song elements, not artist elements
+    const songElements = root.querySelectorAll(
       ".vinyl-viewer-widget .album-song",
     );
 
-    [...artistElements, ...songElements].forEach((element) => {
+    songElements.forEach((element) => {
       const el = element as HTMLElement;
-      const textSpan = el.querySelector(
-        ".album-artist-text, .album-song-text",
-      ) as HTMLElement;
+      const textSpan = el.querySelector(".album-song-text") as HTMLElement;
 
       if (!textSpan) return;
 
-      // Check if content is wider than container
-      if (el.scrollWidth > el.clientWidth) {
+      // Add a threshold to prevent slight overflows from triggering scrolling
+      // Only mark as overflowing if text is at least 10px wider than container
+      const overflowThreshold = 20;
+      const isOverflowing = el.scrollWidth > el.clientWidth + overflowThreshold;
+
+      if (isOverflowing) {
         el.classList.add("overflowing");
 
         // Add duplicate text for seamless scrolling if not already present

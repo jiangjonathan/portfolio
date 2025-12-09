@@ -1060,6 +1060,33 @@ export class PortfolioPapersManager {
     return this.leftStackPapers.includes(paperId);
   }
 
+  getDisplayCanvasForPaper(paperId: string): HTMLCanvasElement | null {
+    const state = this.scrollablePaperStates.get(paperId);
+    return state?.displayCanvas ?? null;
+  }
+
+  getDraggingScrollbarPaperId(): string | null {
+    return this.draggingScrollbarPaperId;
+  }
+
+  clientToCanvasCoords(
+    paperId: string,
+    clientX: number,
+    clientY: number,
+    viewportCanvas: HTMLCanvasElement,
+  ): { x: number; y: number } | null {
+    const scrollable = this.scrollablePaperStates.get(paperId);
+    if (!scrollable) return null;
+    const rect = viewportCanvas.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return null;
+    const normalizedX = (clientX - rect.left) / rect.width;
+    const normalizedY = (clientY - rect.top) / rect.height;
+    return {
+      x: normalizedX * scrollable.displayCanvas.width,
+      y: normalizedY * scrollable.displayCanvas.height,
+    };
+  }
+
   getTopLeftStackPaperId(): string | null {
     if (this.leftStackPapers.length === 0) {
       return null;
@@ -1199,6 +1226,28 @@ export class PortfolioPapersManager {
       canvasX <= trackX + width &&
       canvasY >= trackY &&
       canvasY <= trackY + trackHeight
+    );
+  }
+
+  isPointerNearScrollbar(
+    paperId: string,
+    canvasX: number,
+    canvasY: number,
+    padding: number = 16,
+  ): boolean {
+    const scrollable = this.scrollablePaperStates.get(paperId);
+    if (!scrollable || scrollable.maxScroll <= 0) return false;
+
+    const { width, trackX, trackY, trackHeight } = this.getScrollbarGeometry(
+      scrollable.displayCanvas,
+      scrollable,
+    );
+
+    return (
+      canvasX >= trackX - padding &&
+      canvasX <= trackX + width + padding &&
+      canvasY >= trackY - padding &&
+      canvasY <= trackY + trackHeight + padding
     );
   }
 
