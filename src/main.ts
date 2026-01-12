@@ -2627,9 +2627,9 @@ window.addEventListener("focus-cover-hover", (event: any) => {
   const { hovered } = event.detail;
   focusCoverHoverActive = Boolean(hovered);
   applyFocusCoverHoverState();
-  console.log(
-    `[main] Focus cover hover: ${hovered}, target offset: ${focusVinylHoverOffsetTarget}`,
-  );
+  // console.log(
+  //   `[main] Focus cover hover: ${hovered}, target offset: ${focusVinylHoverOffsetTarget}`,
+  // );
 });
 
 window.addEventListener("focus-cover-click", (event: any) => {
