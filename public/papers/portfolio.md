@@ -8,7 +8,7 @@
 ### Overview
 My portfolio website uses vanilla TypeScript, Three.js for 3D, and Vite for frontend tooling. The visual language for the site is intentionally minimal, with the purpose to emphasize the interaction with 3D models. UI text uses artificial subpixel colour fringing and disabled font smoothing to mimic rough, chromatic text seen on older monitors mid to early 2000s.
 
-The site is organized into multiple "pages", each corresponding to a specific 3D object. The "Home" page is the default view, and provides an orbiting view of all objects I have currently built. At the moment, there are three completed pages: the turntable, portfolio, and contact (business card). All pages share a single Three.js scen; they are differentiated by page-specific camera positions, model visibility, and DOM layouts. 
+The site is organized into multiple "pages", each corresponding to a specific 3D object. The "Home" page is the default view, and provides an orbiting view of all objects I have currently built. At the moment, there are three completed pages: the turntable, portfolio, and contact (business card). All pages share a single Three.js scene; they are differentiated by page-specific camera positions, model visibility, and DOM layouts. 
 
 
 ### Turntable Page
@@ -58,7 +58,7 @@ Please enjoy.
 
 
 *Disclaimer*
-- *All models were modeled by me*
+- *All models were modeled by hand by me*
 - *Album artwork and metadata are obtained from MusicBrainz under its public licensing terms*
 - *All audio playback is delivered via official YouTube embed iframes, accessing content made publicly available on the YouTube platform*
 - *This project is entirely non-commercial, non-profit, and used solely for personal and educational purposes*

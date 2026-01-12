@@ -134,6 +134,7 @@ import {
 } from "./ui/domSetup";
 import { PortfolioPapersManager } from "./portfolio/portfolioPapers";
 import type { PaperConfig } from "./portfolio/portfolioPapers";
+import { PortfolioNavigationController } from "./portfolio/portfolioNavigation";
 
 declare global {
   interface Window {
@@ -923,7 +924,7 @@ const updatePaperLinkActiveState = (activeId?: string | null) => {
   paperLinkElements.forEach((link, id) => {
     const isActive = id === currentId;
     link.style.opacity = isActive ? "1" : "0.65";
-    link.style.textDecoration = "underline";
+    link.style.textDecoration = isActive ? "underline" : "none";
     link.style.color = "#000";
   });
 };
@@ -947,10 +948,17 @@ const buildPortfolioPaperLinks = () => {
     link.addEventListener("mouseenter", () => {
       link.style.opacity = "1";
       link.style.color = "var(--vinyl-link-hover-color)";
+      link.style.textDecoration = "underline";
     });
     link.addEventListener("mouseleave", () => {
       updatePaperLinkActiveState();
       link.style.color = "var(--vinyl-link-color)";
+      if (
+        !portfolioPapersManager ||
+        portfolioPapersManager.getCurrentPaperId() !== paper.id
+      ) {
+        link.style.textDecoration = "none";
+      }
     });
     link.addEventListener("click", (event) => {
       event.preventDefault();
@@ -1070,7 +1078,9 @@ const setTurntableUIVisible = (visible: boolean) => {
   vinylViewerContainer.style.opacity = effective ? "1" : "0";
   vinylViewerContainer.style.pointerEvents = effective ? "auto" : "none";
   vinylViewerContainer.style.visibility = effective ? "visible" : "hidden";
-  vinylViewerContainer.style.display = effective ? "block" : "none";
+  vinylViewerContainer.style.transform = effective
+    ? "translateY(0)"
+    : "translateY(8px)";
   hideLibraryBtn.style.opacity = effective ? "1" : "0";
   hideLibraryBtn.style.pointerEvents = effective ? "auto" : "none";
   focusCardContainers.forEach((container) => {
@@ -1333,64 +1343,22 @@ const createPapersUI = () => {
   });
 };
 
-const openPortfolioPage = async (
-  options: {
-    startAtPaperIndex?: number;
-    waitForEntryAnimations?: boolean;
-  } = {},
-) => {
-  const { startAtPaperIndex, waitForEntryAnimations = false } = options;
-  setActiveScenePage("portfolio");
-  const coverFlipPromise = animatePortfolioCoverFlip();
-  const coverDelayPromise = waitForEntryAnimations
-    ? new Promise<void>((resolve) => {
-        window.setTimeout(resolve, PORTFOLIO_COVER_WATERFALL_DELAY_MS);
-      })
-    : null;
-  if (!waitForEntryAnimations) {
-    void coverFlipPromise;
-  }
-
+const showPortfolioUI = () => {
   portfolioPapersContainer.style.display = "flex";
   portfolioPaperLinksBar.style.display = "flex";
+};
+
+const ensurePortfolioLinksReady = () => {
   if (paperLinkElements.size === 0) {
     buildPortfolioPaperLinks();
   } else {
     updatePaperLinkActiveState();
   }
+};
+
+const ensurePortfolioPanelReady = () => {
   if (portfolioPapersContainer.children.length === 0) {
     createPapersUI();
-  }
-
-  if (portfolioPapersManager) {
-    const loadPromise = portfolioPapersManager.loadAllPapers();
-    if (!waitForEntryAnimations) {
-      void loadPromise;
-    }
-    if (waitForEntryAnimations) {
-      if (coverDelayPromise) {
-        await Promise.all([coverDelayPromise, loadPromise]);
-      } else {
-        await loadPromise;
-      }
-    }
-    if (typeof startAtPaperIndex === "number" && startAtPaperIndex >= 0) {
-      const papers = portfolioPapersManager.getPapers();
-      const targetPaper = papers[startAtPaperIndex];
-      if (targetPaper) {
-        const goPromise =
-          startAtPaperIndex === 1
-            ? portfolioPapersManager.nextPaper()
-            : portfolioPapersManager.goToPaper(targetPaper.id);
-        if (waitForEntryAnimations) {
-          await goPromise;
-        } else {
-          void goPromise;
-        }
-      }
-    }
-  } else if (waitForEntryAnimations && coverDelayPromise) {
-    await coverDelayPromise;
   }
 };
 
@@ -1404,14 +1372,14 @@ turntableNavButton.addEventListener("click", () => {
 });
 
 portfolioNavButton.addEventListener("click", () => {
-  void openPortfolioPage({
+  void portfolioNavigationController.openPortfolioPage({
     startAtPaperIndex: 1,
     waitForEntryAnimations: true,
   });
 });
 
 portfolioResumeButton.addEventListener("click", () => {
-  void openPortfolioPage();
+  void portfolioNavigationController.openPortfolioPage();
 });
 
 resetTutorialButton.addEventListener("click", () => {
@@ -1529,6 +1497,9 @@ const setActiveScenePage = (page: ScenePage) => {
   } else {
     portfolioPaperLinksBar.style.display = "none";
   }
+  if (page === "turntable") {
+    ensureFocusVinylPreloaded();
+  }
 
   activePage = page;
   turntableStateManager.setActivePage(page);
@@ -1566,6 +1537,7 @@ const setActiveScenePage = (page: ScenePage) => {
     isTonearmInPlayArea = false;
     turntableStateManager.setTonearmInPlayArea(false);
     yt?.updateButtonVisibility();
+    clearPreloadedFocusVinyl();
   }
 
   // Reposition buttons based on page
@@ -1677,6 +1649,16 @@ const setActiveScenePage = (page: ScenePage) => {
     placeholderBInfo.style.pointerEvents = "none";
   }
 };
+
+const portfolioNavigationController = new PortfolioNavigationController({
+  setActiveScenePage,
+  animateCoverFlip: animatePortfolioCoverFlip,
+  showPortfolioUI,
+  ensurePortfolioLinks: ensurePortfolioLinksReady,
+  ensurePortfolioPanel: ensurePortfolioPanelReady,
+  getManager: () => portfolioPapersManager,
+  coverWaterfallDelayMs: PORTFOLIO_COVER_WATERFALL_DELAY_MS,
+});
 
 // findPageForObject now imported from pageNavigation.ts
 
@@ -1869,6 +1851,10 @@ let turntableSceneRoot: Object3D | null = null;
 const turntableBounds = new Box3();
 const turntableBoundsSize = new Vector3();
 const turntableBoundsCenter = new Vector3();
+let preloadedFocusVinylModel: Object3D | null = null;
+let preloadedFocusVinylPromise: Promise<Object3D | null> | null = null;
+const preloadedFocusVinylAnchor = new Vector3();
+let focusVinylPreloadToken = 0;
 // VinylSource type now imported from vinylInteractions.ts
 let activeVinylSource: VinylSource | null = null;
 let currentDragSource: VinylSource | null = null;
@@ -1938,6 +1924,9 @@ const disposeFocusVinyl = () => {
   shouldTrackFocusCard = false;
   if (activeVinylSource === "focus") {
     setActiveVinylSource(turntableVinylState ? "turntable" : null);
+  }
+  if (activePage === "turntable") {
+    ensureFocusVinylPreloaded();
   }
 };
 
@@ -2387,14 +2376,33 @@ async function handleFocusSelection(selection: VinylSelectionDetail) {
   // Duration will be shown when the vinyl is placed on the turntable
 
   try {
-    const model = await loadVinylModel(vinylNormalTexture);
+    let model: Object3D | null = null;
+    if (preloadedFocusVinylModel) {
+      model = preloadedFocusVinylModel;
+      preloadedFocusVinylModel = null;
+    } else if (preloadedFocusVinylPromise) {
+      const resolved = await preloadedFocusVinylPromise;
+      preloadedFocusVinylPromise = null;
+      if (resolved && !focusVinylState) {
+        model = resolved;
+      }
+    }
+    if (!model) {
+      model = await loadVinylModel(vinylNormalTexture);
+    }
     if (loadToken !== focusVinylLoadToken) {
       heroGroup.remove(model);
+      if (!preloadedFocusVinylModel) {
+        preloadedFocusVinylModel = model;
+        model.visible = false;
+      }
       return;
     }
     focusVinylState = { model, selection };
     model.visible = false;
-    heroGroup.add(model);
+    if (!model.parent) {
+      heroGroup.add(model);
+    }
     applyLabelTextures(model, focusLabelTextures, labelOptions, labelVisuals);
     applyFocusVinylScale(focusVinylState?.model ?? null, cameraRig);
     setActiveVinylSource("focus");
@@ -2991,7 +2999,7 @@ canvas.addEventListener("pointerdown", (event) => {
             );
             if (page && page !== "home") {
               if (page === "portfolio") {
-                void openPortfolioPage();
+                void portfolioNavigationController.openPortfolioPage();
               } else {
                 setActiveScenePage(page);
               }
@@ -3825,6 +3833,82 @@ let focusCardScreenHint: { x: number; y: number } | null = null;
 let focusCardMotionFrame: number | null = null;
 let pendingFocusVinylRevealFrame: number | null = null;
 let isFocusCardAnimationActive = false;
+
+const projectScreenPointToWorld = (
+  screenX: number,
+  screenY: number,
+  distanceFromCamera = 100,
+) => {
+  const ndcX = (screenX / window.innerWidth) * 2 - 1;
+  const ndcY = -(screenY / window.innerHeight) * 2 + 1;
+  const raycaster = new Raycaster();
+  raycaster.setFromCamera(new Vector2(ndcX, ndcY), camera);
+  return raycaster.ray.origin
+    .clone()
+    .add(raycaster.ray.direction.clone().multiplyScalar(distanceFromCamera));
+};
+
+const getFocusCardContainerCenter = (): { x: number; y: number } | null => {
+  const rect = focusCardCoverContainer.getBoundingClientRect();
+  if (rect.width === 0 && rect.height === 0) {
+    return null;
+  }
+  return {
+    x: rect.left + rect.width / 2,
+    y: rect.top + rect.height / 2,
+  };
+};
+
+const clearPreloadedFocusVinyl = () => {
+  focusVinylPreloadToken += 1;
+  preloadedFocusVinylPromise = null;
+  if (preloadedFocusVinylModel) {
+    heroGroup.remove(preloadedFocusVinylModel);
+    preloadedFocusVinylModel = null;
+  }
+};
+
+const ensureFocusVinylPreloaded = () => {
+  if (
+    focusVinylState ||
+    preloadedFocusVinylModel ||
+    preloadedFocusVinylPromise
+  ) {
+    return;
+  }
+  const liveCenter = getLiveFocusCoverCenter();
+  const fallbackCenter = liveCenter ?? getFocusCardContainerCenter();
+  if (!fallbackCenter) {
+    return;
+  }
+  const anchor = projectScreenPointToWorld(fallbackCenter.x, fallbackCenter.y);
+  preloadedFocusVinylAnchor.copy(anchor);
+  const preloadToken = ++focusVinylPreloadToken;
+  preloadedFocusVinylPromise = loadVinylModel(vinylNormalTexture)
+    .then((model) => {
+      if (preloadToken !== focusVinylPreloadToken) {
+        heroGroup.remove(model);
+        return null;
+      }
+      preloadedFocusVinylPromise = null;
+      if (focusVinylState) {
+        heroGroup.remove(model);
+        return null;
+      }
+      preloadedFocusVinylModel = model;
+      model.visible = false;
+      model.position.copy(preloadedFocusVinylAnchor);
+      applyFocusVinylScale(model, cameraRig);
+      heroGroup.add(model);
+      return model;
+    })
+    .catch((error) => {
+      console.error("[Focus Vinyl] Failed to preload vinyl model:", error);
+      preloadedFocusVinylPromise = null;
+      return null;
+    });
+};
+
 const cancelPendingFocusVinylReveal = () => {
   if (pendingFocusVinylRevealFrame !== null) {
     cancelAnimationFrame(pendingFocusVinylRevealFrame);

@@ -49,14 +49,14 @@ type LinkRegion = {
 export const PAPERS: PaperConfig[] = [
   {
     id: "resume-pdf",
-    name: "Resume PDF",
+    name: "resume",
     type: "pdf",
     url: "/JonathanJiangResume.pdf",
     description: "Resume PDF",
   },
   {
     id: "portfolio",
-    name: "Portfolio Overview",
+    name: "portfolio",
     type: "html",
     url: "/papers/portfolio.md",
     description: "Portfolio markdown rendered onto canvas",

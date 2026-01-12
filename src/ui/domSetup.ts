@@ -446,7 +446,7 @@ export function setupDOM(): DOMElements {
       transition: color 0.15s;
       letter-spacing: 0;
       text-transform: none;
-      text-decoration: underline;
+      text-decoration: none;
       font-family: inherit;
       -webkit-font-smoothing: none;
       -moz-osx-font-smoothing: grayscale;
@@ -456,6 +456,7 @@ export function setupDOM(): DOMElements {
     .vinyl-hyperlink:hover {
       background: transparent;
       color: var(--vinyl-link-hover-color);
+      text-decoration: underline;
     }
 
     .vinyl-hyperlink:disabled {
@@ -482,7 +483,7 @@ export function setupDOM(): DOMElements {
       transition: color 0.15s;
       letter-spacing: 0;
       text-transform: none;
-      text-decoration: underline;
+      text-decoration: none;
       font-family: inherit;
       -webkit-font-smoothing: none;
       -moz-osx-font-smoothing: grayscale;
@@ -492,6 +493,7 @@ export function setupDOM(): DOMElements {
     #global-controls button:hover {
       background: transparent;
       color: var(--vinyl-link-hover-color);
+      text-decoration: underline;
     }
 
     #global-controls button:disabled {
@@ -597,20 +599,24 @@ export function setupDOM(): DOMElements {
   portfolioPaperLinksBar.id = "portfolio-paper-links";
   Object.assign(portfolioPaperLinksBar.style, {
     position: "fixed",
-    bottom: "32px",
-    left: "32px",
+    bottom: GLOBAL_CONTROLS_TURNTABLE.bottom,
+    left: "20px",
     transform: "none",
     display: "none",
-    gap: "1.25rem",
+    gap: GLOBAL_CONTROLS_TURNTABLE.gap,
     fontFamily: "inherit",
     fontSize: "var(--vinyl-link-font-size)",
     color: "var(--vinyl-link-color)",
     zIndex: `${UI_Z_INDEX}`,
     pointerEvents: "auto",
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent: "flex-start",
+    flexDirection: GLOBAL_CONTROLS_TURNTABLE.flexDirection,
     textTransform: "none",
     letterSpacing: "0.02em",
+    flexWrap: "wrap",
+    maxWidth: "40vw",
+    textAlign: "left",
   } as CSSStyleDeclaration);
   root.appendChild(portfolioPaperLinksBar);
 
