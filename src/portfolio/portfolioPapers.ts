@@ -10,6 +10,7 @@ import {
   EdgesGeometry,
   LineSegments,
   LineBasicMaterial,
+  MathUtils,
 } from "three";
 import * as pdfjsLib from "pdfjs-dist";
 
@@ -67,6 +68,13 @@ export const PAPERS: PaperConfig[] = [
     url: "",
     description: "Placeholder C example",
   },
+  {
+    id: "placeholder-d",
+    name: "Placeholder D",
+    type: "html",
+    url: "",
+    description: "Placeholder D example",
+  },
 ];
 
 export class PortfolioPapersManager {
@@ -77,18 +85,21 @@ export class PortfolioPapersManager {
   private whitepaperMesh: Mesh | null = null;
   private renderer: WebGLRenderer | null = null;
   private isAnimating = false; // Prevent overlapping animations
-  private readonly PAPER_STACK_HEIGHT_OFFSET = 0.04; // Height between stacked papers
+  private readonly PAPER_STACK_HEIGHT_OFFSET = 0.02; // Height between stacked papers
   private readonly BASE_PAPER_HEIGHT = 0.05; // Base height above whitepaper
   private readonly LEFT_STACK_X_OFFSET = -23.5; // X offset for left stack
   private readonly MAX_RANDOM_ROTATION = (2 * Math.PI) / 180; // ±2 degrees in radians
   private leftStackPapers: string[] = []; // Papers that have been moved to left stack (in order moved)
   private scrollablePaperStates: Map<string, ScrollablePaperState> = new Map();
-  private hoveredScrollablePaperId: string | null = null;
   private pendingRedraws: Set<string> = new Set(); // Batch scroll redraws
   private redrawAnimationFrameId: number | null = null;
-  private draggingScrollbarPaperId: string | null = null;
-  private scrollbarDragStartY: number = 0;
-  private scrollbarDragStartOffset: number = 0;
+  private draggingPaperId: string | null = null;
+  private paperDragStartY: number = 0;
+  private paperDragStartOffset: number = 0;
+  private rotationAnimationHandles: Map<string, number> = new Map();
+  private currentPaperListeners: Array<(paperId: string | null) => void> = [];
+  private pendingStackHideTimeout: number | null = null;
+  private stackHiddenUntilReopen = false;
 
   constructor(_container: HTMLElement, renderer?: WebGLRenderer) {
     this.renderer = renderer || null;
@@ -102,9 +113,116 @@ export class PortfolioPapersManager {
     });
   }
 
+  private generateRandomRotation(): number {
+    return (Math.random() - 0.5) * 2 * this.MAX_RANDOM_ROTATION;
+  }
+
   setWhitepaperMesh(mesh: Mesh): void {
     this.whitepaperMesh = mesh;
     // console.log("[PortfolioPapers] Whitepaper mesh set:", mesh.name);
+  }
+
+  private setCurrentPaper(
+    paperId: string | null,
+    options: {
+      applyRotationForCurrent?: boolean;
+      applyRotationForPrevious?: boolean;
+    } = {},
+  ): void {
+    const { applyRotationForCurrent = true, applyRotationForPrevious = true } =
+      options;
+    const previousPaperId = this.currentPaperId;
+    this.currentPaperId = paperId;
+
+    if (
+      applyRotationForPrevious &&
+      previousPaperId &&
+      previousPaperId !== paperId
+    ) {
+      this.applyRotationForPaper(previousPaperId);
+    }
+
+    if (paperId && applyRotationForCurrent) {
+      this.applyRotationForPaper(paperId);
+    }
+
+    this.currentPaperListeners.forEach((listener) => {
+      try {
+        listener(this.currentPaperId);
+      } catch (error) {
+        console.error(
+          "[PortfolioPapers] Error in paper change listener:",
+          error,
+        );
+      }
+    });
+  }
+
+  private applyRotationForPaper(paperId: string): void {
+    const mesh = this.paperMeshes.get(paperId);
+    if (!mesh) {
+      return;
+    }
+    mesh.rotation.z = this.getRotationForPaper(paperId);
+  }
+
+  private getRotationForPaper(paperId: string): number {
+    if (this.isRightStackTop(paperId)) {
+      return 0;
+    }
+    return this.paperRotations.get(paperId) ?? 0;
+  }
+
+  private isRightStackTop(paperId: string): boolean {
+    return (
+      paperId === this.currentPaperId && !this.leftStackPapers.includes(paperId)
+    );
+  }
+
+  private stopRotationAnimation(paperId: string): void {
+    const handle = this.rotationAnimationHandles.get(paperId);
+    if (handle !== undefined) {
+      cancelAnimationFrame(handle);
+      this.rotationAnimationHandles.delete(paperId);
+    }
+  }
+
+  private animatePaperRotationTo(
+    paperId: string,
+    targetRotation: number,
+    duration: number = 500,
+  ): void {
+    const mesh = this.paperMeshes.get(paperId);
+    if (!mesh) return;
+
+    const startRotation = mesh.rotation.z;
+    if (Math.abs(startRotation - targetRotation) < 0.0001 || duration <= 0) {
+      mesh.rotation.z = targetRotation;
+      this.stopRotationAnimation(paperId);
+      return;
+    }
+
+    this.stopRotationAnimation(paperId);
+    const startTime = performance.now();
+
+    const animate = (currentTime: number) => {
+      const elapsed = currentTime - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const easeProgress = 1 - Math.pow(1 - progress, 3);
+      mesh.rotation.z =
+        startRotation + (targetRotation - startRotation) * easeProgress;
+
+      if (progress < 1) {
+        const handle = requestAnimationFrame(animate);
+        this.rotationAnimationHandles.set(paperId, handle);
+      } else {
+        mesh.rotation.z = targetRotation;
+        this.rotationAnimationHandles.delete(paperId);
+      }
+    };
+
+    const handle = requestAnimationFrame(animate);
+    this.rotationAnimationHandles.set(paperId, handle);
   }
 
   private getPaperStackIndex(paperId: string): number {
@@ -151,7 +269,7 @@ export class PortfolioPapersManager {
     }
 
     console.log(`[PortfolioPapers] Loading paper: ${paper.name}`);
-    this.currentPaperId = paperId;
+    this.setCurrentPaper(paperId);
 
     const existingMesh = this.paperMeshes.get(paperId);
     if (existingMesh) {
@@ -184,7 +302,73 @@ export class PortfolioPapersManager {
     }
     // Set the first paper as current
     if (papersList.length > 0) {
-      this.currentPaperId = papersList[0].id;
+      this.setCurrentPaper(papersList[0].id);
+    }
+  }
+
+  async goToPaper(targetPaperId: string): Promise<void> {
+    const papersList = this.getPapers();
+    const targetIndex = papersList.findIndex(
+      (paper) => paper.id === targetPaperId,
+    );
+    if (targetIndex === -1) {
+      console.warn(
+        `[PortfolioPapers] goToPaper: unknown id "${targetPaperId}"`,
+      );
+      return;
+    }
+
+    if (!this.currentPaperId) {
+      await this.loadPaper(targetPaperId);
+      return;
+    }
+
+    const currentIndex = papersList.findIndex(
+      (paper) => paper.id === this.currentPaperId,
+    );
+    if (currentIndex === -1) {
+      await this.loadPaper(targetPaperId);
+      return;
+    }
+    if (currentIndex === targetIndex) {
+      return;
+    }
+
+    const stepCount = Math.abs(targetIndex - currentIndex);
+    const direction = targetIndex > currentIndex ? "next" : "previous";
+    const WATERFALL_DELAY = 220;
+    const WATERFALL_DURATION = 520;
+    this.isAnimating = true;
+    const pendingTransitions: Promise<void>[] = [];
+
+    try {
+      for (let i = 0; i < stepCount; i++) {
+        if (direction === "next") {
+          pendingTransitions.push(
+            this.nextPaper({ skipLock: true, durationMs: WATERFALL_DURATION }),
+          );
+        } else {
+          pendingTransitions.push(
+            this.previousPaper({
+              skipLock: true,
+              durationMs: WATERFALL_DURATION,
+            }),
+          );
+        }
+        if (i < stepCount - 1) {
+          await new Promise((resolve) => setTimeout(resolve, WATERFALL_DELAY));
+        }
+      }
+
+      if (pendingTransitions.length) {
+        await Promise.all(pendingTransitions);
+      }
+
+      if (this.currentPaperId !== targetPaperId) {
+        await this.loadPaper(targetPaperId);
+      }
+    } finally {
+      this.isAnimating = false;
     }
   }
 
@@ -920,8 +1104,7 @@ export class PortfolioPapersManager {
 
     // Generate random rotation for this paper if not already set
     if (!this.paperRotations.has(paperId)) {
-      const randomRotation =
-        (Math.random() - 0.5) * 2 * this.MAX_RANDOM_ROTATION;
+      const randomRotation = this.generateRandomRotation();
       this.paperRotations.set(paperId, randomRotation);
     }
 
@@ -1013,11 +1196,7 @@ export class PortfolioPapersManager {
       return false;
     }
 
-    const scrollRange = Math.max(
-      scrollable.maxScroll,
-      scrollable.fullCanvas.height - scrollable.displayCanvas.height,
-    );
-    scrollable.maxScroll = scrollRange;
+    const scrollRange = this.getScrollRange(scrollable);
     if (scrollRange <= 0) {
       return false;
     }
@@ -1065,8 +1244,12 @@ export class PortfolioPapersManager {
     return state?.displayCanvas ?? null;
   }
 
-  getDraggingScrollbarPaperId(): string | null {
-    return this.draggingScrollbarPaperId;
+  getDraggingPaperId(): string | null {
+    return this.draggingPaperId;
+  }
+
+  isDraggingPaper(): boolean {
+    return this.draggingPaperId !== null;
   }
 
   clientToCanvasCoords(
@@ -1094,24 +1277,16 @@ export class PortfolioPapersManager {
     return this.leftStackPapers[this.leftStackPapers.length - 1];
   }
 
-  setHoveredScrollablePaper(paperId: string | null): void {
-    if (this.hoveredScrollablePaperId === paperId) {
-      return;
-    }
-    const previous = this.hoveredScrollablePaperId;
-    this.hoveredScrollablePaperId = paperId;
-    if (previous && this.scrollablePaperStates.has(previous)) {
-      this.redrawScrollablePaper(previous, false);
-    }
-    if (paperId && this.scrollablePaperStates.has(paperId)) {
-      this.redrawScrollablePaper(paperId, true);
-    }
+  onCurrentPaperChange(listener: (paperId: string | null) => void): () => void {
+    this.currentPaperListeners.push(listener);
+    return () => {
+      this.currentPaperListeners = this.currentPaperListeners.filter(
+        (fn) => fn !== listener,
+      );
+    };
   }
 
-  private redrawScrollablePaper(
-    paperId: string,
-    forceShowScrollbar?: boolean,
-  ): void {
+  private redrawScrollablePaper(paperId: string): void {
     const scrollable = this.scrollablePaperStates.get(paperId);
     if (!scrollable) {
       return;
@@ -1136,61 +1311,54 @@ export class PortfolioPapersManager {
       displayCanvas.height,
     );
 
-    const shouldShowScrollbar =
-      forceShowScrollbar !== undefined
-        ? forceShowScrollbar
-        : this.hoveredScrollablePaperId === paperId;
-    if (shouldShowScrollbar && scrollable.maxScroll > 0) {
-      this.drawScrollbar(displayCtx, scrollable);
+    const scrollRange = this.getScrollRange(scrollable);
+    if (scrollRange > 0) {
+      this.drawScrollIndicator(displayCtx, scrollable);
     }
 
     texture.needsUpdate = true;
   }
 
-  private getScrollbarGeometry(
-    canvas: HTMLCanvasElement,
-    scrollable: ScrollablePaperState,
-  ) {
-    const width = Math.max(Math.floor(canvas.width * 0.012), 12);
-    const margin = Math.max(Math.floor(width * 1.2), 16);
-    const trackX = canvas.width - width - margin;
-    const trackY = Math.floor(canvas.height * 0.04);
-    const trackHeight = canvas.height - trackY * 2;
+  private getScrollRange(scrollable: ScrollablePaperState): number {
+    const scrollRange = Math.max(
+      scrollable.maxScroll,
+      scrollable.fullCanvas.height - scrollable.displayCanvas.height,
+      0,
+    );
+    scrollable.maxScroll = scrollRange;
+    return scrollRange;
+  }
 
+  private drawScrollIndicator(
+    ctx: CanvasRenderingContext2D,
+    scrollable: ScrollablePaperState,
+  ): void {
+    const width = Math.max(Math.round(ctx.canvas.width * 0.01), 8);
+    const margin = Math.max(Math.round(width * 1.5), 18);
+    const trackX = ctx.canvas.width - width - margin;
+    const trackY = Math.round(ctx.canvas.height * 0.04);
+    const trackHeight = ctx.canvas.height - trackY * 2;
+    const thumbHeight = Math.max(
+      Math.round(
+        (ctx.canvas.height / scrollable.fullCanvas.height) * trackHeight,
+      ),
+      Math.round(trackHeight * 0.15),
+    );
     const scrollRatio =
       scrollable.maxScroll === 0
         ? 0
         : scrollable.scrollOffset / scrollable.maxScroll;
-    const thumbHeight = Math.max(
-      trackHeight * (canvas.height / scrollable.fullCanvas.height),
-      Math.floor(canvas.height * 0.08),
-    );
-    const thumbY =
-      trackY +
-      (trackHeight - thumbHeight) * Math.min(Math.max(scrollRatio, 0), 1);
-
-    return { width, trackX, trackY, trackHeight, thumbY, thumbHeight };
-  }
-
-  private drawScrollbar(
-    ctx: CanvasRenderingContext2D,
-    scrollable: ScrollablePaperState,
-  ): void {
-    const { width, trackX, trackY, trackHeight, thumbY, thumbHeight } =
-      this.getScrollbarGeometry(ctx.canvas, scrollable);
+    const thumbTravel = Math.max(trackHeight - thumbHeight, 0);
+    const thumbY = trackY + thumbTravel * Math.min(Math.max(scrollRatio, 0), 1);
 
     ctx.save();
-
-    // Draw track (background) - rectangular, subtle grey
-    ctx.globalAlpha = 0.15;
-    ctx.fillStyle = "#888888";
+    ctx.globalAlpha = 0.08;
+    ctx.fillStyle = "#000";
     ctx.fillRect(trackX, trackY, width, trackHeight);
 
-    // Draw thumb (scrollbar handle) - rectangular, medium grey
-    ctx.globalAlpha = 0.6;
-    ctx.fillStyle = "#666666";
+    ctx.globalAlpha = 0.8;
+    ctx.fillStyle = "#7a7a7a";
     ctx.fillRect(trackX, thumbY, width, thumbHeight);
-
     ctx.restore();
   }
 
@@ -1208,87 +1376,44 @@ export class PortfolioPapersManager {
     return { x: canvasX, y: canvasY };
   }
 
-  isPointerOnScrollbar(
-    paperId: string,
-    canvasX: number,
-    canvasY: number,
-  ): boolean {
-    const scrollable = this.scrollablePaperStates.get(paperId);
-    if (!scrollable || scrollable.maxScroll <= 0) return false;
-
-    const { width, trackX, trackY, trackHeight } = this.getScrollbarGeometry(
-      scrollable.displayCanvas,
-      scrollable,
-    );
-
-    return (
-      canvasX >= trackX &&
-      canvasX <= trackX + width &&
-      canvasY >= trackY &&
-      canvasY <= trackY + trackHeight
-    );
-  }
-
-  isPointerNearScrollbar(
-    paperId: string,
-    canvasX: number,
-    canvasY: number,
-    padding: number = 16,
-  ): boolean {
-    const scrollable = this.scrollablePaperStates.get(paperId);
-    if (!scrollable || scrollable.maxScroll <= 0) return false;
-
-    const { width, trackX, trackY, trackHeight } = this.getScrollbarGeometry(
-      scrollable.displayCanvas,
-      scrollable,
-    );
-
-    return (
-      canvasX >= trackX - padding &&
-      canvasX <= trackX + width + padding &&
-      canvasY >= trackY - padding &&
-      canvasY <= trackY + trackHeight + padding
-    );
-  }
-
-  startScrollbarDrag(paperId: string, canvasY: number): void {
+  startPaperDrag(paperId: string, canvasY: number): void {
     const scrollable = this.scrollablePaperStates.get(paperId);
     if (!scrollable) return;
 
-    this.draggingScrollbarPaperId = paperId;
-    this.scrollbarDragStartY = canvasY;
-    this.scrollbarDragStartOffset = scrollable.scrollOffset;
+    const scrollRange = this.getScrollRange(scrollable);
+    if (scrollRange <= 0) {
+      return;
+    }
+
+    this.draggingPaperId = paperId;
+    this.paperDragStartY = canvasY;
+    this.paperDragStartOffset = scrollable.scrollOffset;
   }
 
-  updateScrollbarDrag(canvasY: number): void {
-    if (!this.draggingScrollbarPaperId) return;
+  updatePaperDrag(canvasY: number): void {
+    if (!this.draggingPaperId) return;
 
-    const scrollable = this.scrollablePaperStates.get(
-      this.draggingScrollbarPaperId,
-    );
+    const scrollable = this.scrollablePaperStates.get(this.draggingPaperId);
     if (!scrollable) return;
 
-    const { trackHeight, thumbHeight } = this.getScrollbarGeometry(
-      scrollable.displayCanvas,
-      scrollable,
-    );
+    const scrollRange = this.getScrollRange(scrollable);
+    if (scrollRange <= 0) {
+      return;
+    }
 
-    const deltaY = canvasY - this.scrollbarDragStartY;
-    const scrollableTrackHeight = trackHeight - thumbHeight;
-    const scrollDelta = (deltaY / scrollableTrackHeight) * scrollable.maxScroll;
-
+    const deltaY = canvasY - this.paperDragStartY;
     const newOffset = Math.max(
       0,
-      Math.min(
-        scrollable.maxScroll,
-        this.scrollbarDragStartOffset + scrollDelta,
-      ),
+      Math.min(scrollRange, this.paperDragStartOffset + deltaY),
     );
+
+    if (newOffset === scrollable.scrollOffset) {
+      return;
+    }
 
     scrollable.scrollOffset = newOffset;
 
-    // Batch redraw
-    this.pendingRedraws.add(this.draggingScrollbarPaperId);
+    this.pendingRedraws.add(this.draggingPaperId);
     if (this.redrawAnimationFrameId === null) {
       this.redrawAnimationFrameId = requestAnimationFrame(() => {
         this.processPendingRedraws();
@@ -1296,12 +1421,12 @@ export class PortfolioPapersManager {
     }
   }
 
-  endScrollbarDrag(): void {
-    this.draggingScrollbarPaperId = null;
-  }
-
-  isDraggingScrollbar(): boolean {
-    return this.draggingScrollbarPaperId !== null;
+  endPaperDrag(): void {
+    const previous = this.draggingPaperId;
+    this.draggingPaperId = null;
+    if (previous && this.scrollablePaperStates.has(previous)) {
+      this.redrawScrollablePaper(previous);
+    }
   }
 
   hidePaper(paperId: string): void {
@@ -1325,6 +1450,11 @@ export class PortfolioPapersManager {
   }
 
   showAllPapers(): void {
+    if (this.pendingStackHideTimeout !== null) {
+      clearTimeout(this.pendingStackHideTimeout);
+      this.pendingStackHideTimeout = null;
+    }
+    this.stackHiddenUntilReopen = false;
     this.paperMeshes.forEach((mesh) => {
       mesh.visible = true;
     });
@@ -1362,6 +1492,27 @@ export class PortfolioPapersManager {
     return this.paperMeshes;
   }
 
+  private hidePapersBelowTopPaper(): void {
+    const papersList = this.getPapers();
+    if (papersList.length === 0) {
+      return;
+    }
+    const topPaperId = papersList[0].id;
+    const bottomPaperId = papersList[papersList.length - 1]?.id;
+
+    this.paperMeshes.forEach((mesh, paperId) => {
+      const shouldRemainVisible =
+        paperId === topPaperId || paperId === bottomPaperId;
+      if (!shouldRemainVisible && mesh.visible) {
+        mesh.visible = false;
+      } else if (shouldRemainVisible && !mesh.visible) {
+        mesh.visible = true;
+      }
+    });
+
+    this.stackHiddenUntilReopen = true;
+  }
+
   private positionMeshOnWhitepaper(mesh: Mesh, paperId?: string): void {
     if (!this.whitepaperMesh) {
       return;
@@ -1377,8 +1528,9 @@ export class PortfolioPapersManager {
     }
 
     // Apply rotation: -90 degrees on X-axis (to lay flat) + random Z rotation
-    const randomRotation = paperId ? this.paperRotations.get(paperId) || 0 : 0;
-    mesh.rotation.set(-Math.PI / 2, 0, randomRotation);
+    const rotationZ =
+      paperId !== undefined ? this.getRotationForPaper(paperId) : 0;
+    mesh.rotation.set(-Math.PI / 2, 0, rotationZ);
     mesh.scale.set(1, 1, 1);
   }
 
@@ -1386,16 +1538,21 @@ export class PortfolioPapersManager {
     mesh: Mesh,
     targetPosition: Vector3,
     duration: number = 500,
+    targetRotationZ?: number,
   ): Promise<void> {
     return new Promise((resolve) => {
       const startPosition = mesh.position.clone();
       const startRotationZ = mesh.rotation.z;
-      const rotationLimit = this.MAX_RANDOM_ROTATION; // ±2 degrees hard limit
-      // Random rotation within the limit
-      const randomRotation = (Math.random() - 0.5) * 2 * rotationLimit;
-      const targetRotationZ = randomRotation;
+      const finalRotationZ =
+        targetRotationZ !== undefined ? targetRotationZ : startRotationZ;
       const peakHeight = startPosition.y + 1; // Rise up 1 units
       const stageDuration = duration / 3; // Split time into three stages
+      const applyRotation = (progress: number) => {
+        mesh.rotation.z =
+          startRotationZ +
+          (finalRotationZ - startRotationZ) *
+            Math.min(Math.max(progress, 0), 1);
+      };
 
       // Stage 1: Rise in Y
       const stage1Start = performance.now();
@@ -1406,10 +1563,15 @@ export class PortfolioPapersManager {
         const progress = Math.min(elapsed / stageDuration, 1);
 
         // Ease out cubic for smooth rise
-        const easeProgress = 1 - Math.pow(1 - progress, 3);
+        const easeProgress = MathUtils.smoothstep(progress, 0, 1);
 
-        mesh.position.y =
-          startPosition.y + (peakHeight - startPosition.y) * easeProgress;
+        mesh.position.y = MathUtils.lerp(
+          startPosition.y,
+          peakHeight,
+          easeProgress,
+        );
+        // Begin rotation immediately so it feels in sync with the flip
+        applyRotation(easeProgress * 0.5);
 
         if (currentTime < stage1End) {
           requestAnimationFrame(animateStage1);
@@ -1423,20 +1585,23 @@ export class PortfolioPapersManager {
             const progress = Math.min(elapsed / stageDuration, 1);
 
             // Ease out cubic for smooth horizontal movement
-            const easeProgress = 1 - Math.pow(1 - progress, 3);
+            const easeProgress = MathUtils.smoothstep(progress, 0, 1);
 
-            mesh.position.x =
-              startPosition.x +
-              (targetPosition.x - startPosition.x) * easeProgress;
-            mesh.position.z =
-              startPosition.z +
-              (targetPosition.z - startPosition.z) * easeProgress;
+            mesh.position.x = MathUtils.lerp(
+              startPosition.x,
+              targetPosition.x,
+              easeProgress,
+            );
+            mesh.position.z = MathUtils.lerp(
+              startPosition.z,
+              targetPosition.z,
+              easeProgress,
+            );
             // Keep Y at peak height during X/Z movement
             mesh.position.y = peakHeight;
             // Rotate simultaneously with X movement
-            mesh.rotation.z =
-              startRotationZ +
-              (targetRotationZ - startRotationZ) * easeProgress;
+            // Continue rotation through the middle of the flip
+            applyRotation(0.5 + easeProgress * 0.5);
 
             if (currentTime < stage2End) {
               requestAnimationFrame(animateStage2);
@@ -1450,16 +1615,21 @@ export class PortfolioPapersManager {
                 const progress = Math.min(elapsed / stageDuration, 1);
 
                 // Ease out cubic for smooth fall
-                const easeProgress = 1 - Math.pow(1 - progress, 3);
+                const easeProgress = MathUtils.smoothstep(progress, 0, 1);
 
-                mesh.position.y =
-                  peakHeight + (targetPosition.y - peakHeight) * easeProgress;
+                mesh.position.y = MathUtils.lerp(
+                  peakHeight,
+                  targetPosition.y,
+                  easeProgress,
+                );
+                // Keep final rotation locked on landing
+                applyRotation(1);
 
                 if (currentTime < stage3End) {
                   requestAnimationFrame(animateStage3);
                 } else {
                   mesh.position.copy(targetPosition);
-                  mesh.rotation.z = targetRotationZ;
+                  mesh.rotation.z = finalRotationZ;
                   resolve();
                 }
               };
@@ -1476,12 +1646,14 @@ export class PortfolioPapersManager {
     });
   }
 
-  async nextPaper(): Promise<void> {
-    // Prevent overlapping animations
-    if (this.isAnimating) {
-      // console.log("[PortfolioPapers] Animation in progress, ignoring next");
+  async nextPaper(
+    options: { skipLock?: boolean; durationMs?: number } = {},
+  ): Promise<void> {
+    const { skipLock = false, durationMs } = options;
+    if (this.isAnimating && !skipLock) {
       return;
     }
+    const shouldLock = !skipLock;
 
     const papersList = this.getPapers();
     if (papersList.length === 0) return;
@@ -1492,49 +1664,72 @@ export class PortfolioPapersManager {
 
     // Don't do anything if we're at the last paper
     if (currentIndex >= papersList.length - 1) {
-      // console.log("[PortfolioPapers] Already at last paper, next does nothing");
       return;
     }
+    if (shouldLock) {
+      this.isAnimating = true;
+    }
 
-    this.isAnimating = true;
-
-    // Clear hover state to hide scrollbar during navigation
-    this.setHoveredScrollablePaper(null);
-
+    const animationDuration = durationMs ?? 500;
     try {
       const nextIndex = currentIndex + 1;
       const nextPaper = papersList[nextIndex];
+      const previousPaperId = this.currentPaperId;
+      this.setCurrentPaper(nextPaper.id, {
+        applyRotationForCurrent: false,
+        applyRotationForPrevious: false,
+      });
+
+      // Smoothly rotate the upcoming top paper toward flat while the current top moves away
+      if (this.paperMeshes.has(nextPaper.id)) {
+        this.animatePaperRotationTo(nextPaper.id, 0, animationDuration);
+      }
 
       // Animate current paper (top of right stack) to left stack top
-      const currentMesh = this.currentPaperId
-        ? this.paperMeshes.get(this.currentPaperId)
+      const currentMesh = previousPaperId
+        ? this.paperMeshes.get(previousPaperId)
         : null;
+      let performedAnimation = false;
 
-      if (currentMesh && this.whitepaperMesh && this.currentPaperId) {
+      if (currentMesh && this.whitepaperMesh && previousPaperId) {
+        this.stopRotationAnimation(previousPaperId);
         // Calculate proper left stack height
-        const leftStackHeight = this.getLeftStackHeightForPaper(
-          this.currentPaperId,
-        );
+        const leftStackHeight =
+          this.getLeftStackHeightForPaper(previousPaperId);
         const targetPosition = this.whitepaperMesh.position.clone();
         targetPosition.x += this.LEFT_STACK_X_OFFSET;
         targetPosition.y += leftStackHeight;
         targetPosition.z = this.whitepaperMesh.position.z;
 
         console.log(
-          `[PortfolioPapers] Moving ${this.currentPaperId} to left stack at Y=${targetPosition.y.toFixed(2)}`,
+          `[PortfolioPapers] Moving ${previousPaperId} to left stack at Y=${targetPosition.y.toFixed(
+            2,
+          )}`,
         );
 
         // Add to left stack tracking
-        this.leftStackPapers.push(this.currentPaperId);
+        this.leftStackPapers.push(previousPaperId);
+
+        // Determine new resting rotation for left stack and persist it
+        const newRotation = this.generateRandomRotation();
+        this.paperRotations.set(previousPaperId, newRotation);
 
         // Use two-stage animation: rise first, then move horizontally
-        await this.animatePaperTwoStage(currentMesh, targetPosition);
+        performedAnimation = true;
+        await this.animatePaperTwoStage(
+          currentMesh,
+          targetPosition,
+          animationDuration,
+          newRotation,
+        );
       }
-
-      // Update current paper
-      this.currentPaperId = nextPaper.id;
+      if (!performedAnimation) {
+        this.animatePaperRotationTo(nextPaper.id, 0, animationDuration);
+      }
     } finally {
-      this.isAnimating = false;
+      if (shouldLock) {
+        this.isAnimating = false;
+      }
     }
   }
 
@@ -1552,12 +1747,20 @@ export class PortfolioPapersManager {
     const papersToReset = [...this.leftStackPapers].reverse();
     const CASCADE_DELAY = 150; // milliseconds between each paper animation
     const animationPromises: Promise<void>[] = [];
+    const ANIMATION_DURATION = 400;
+    const HIDE_LEAD_MS = 260;
+
+    if (this.pendingStackHideTimeout !== null) {
+      clearTimeout(this.pendingStackHideTimeout);
+      this.pendingStackHideTimeout = null;
+    }
 
     for (let i = 0; i < papersToReset.length; i++) {
       const paperId = papersToReset[i];
       const mesh = this.paperMeshes.get(paperId);
 
       if (mesh) {
+        this.stopRotationAnimation(paperId);
         // Boost render priority during reset animation to ensure it renders above whitepaper and cover
         mesh.renderOrder = 250;
 
@@ -1573,9 +1776,31 @@ export class PortfolioPapersManager {
         );
 
         // Start the two-stage animation and retain the promise so we can wait for completion after the cascade.
+        const restingRotation = this.generateRandomRotation();
+        this.paperRotations.set(paperId, restingRotation);
         animationPromises.push(
-          this.animatePaperTwoStage(mesh, targetPosition, 400),
+          this.animatePaperTwoStage(
+            mesh,
+            targetPosition,
+            ANIMATION_DURATION,
+            restingRotation,
+          ),
         );
+
+        if (i === papersToReset.length - 1) {
+          const delayBeforeHide = Math.max(
+            ANIMATION_DURATION - HIDE_LEAD_MS,
+            0,
+          );
+          if (delayBeforeHide === 0) {
+            this.hidePapersBelowTopPaper();
+          } else {
+            this.pendingStackHideTimeout = window.setTimeout(() => {
+              this.pendingStackHideTimeout = null;
+              this.hidePapersBelowTopPaper();
+            }, delayBeforeHide);
+          }
+        }
 
         // Wait before starting next animation
         if (i < papersToReset.length - 1) {
@@ -1586,6 +1811,16 @@ export class PortfolioPapersManager {
 
     if (animationPromises.length > 0) {
       await Promise.all(animationPromises);
+    }
+
+    if (this.pendingStackHideTimeout !== null) {
+      clearTimeout(this.pendingStackHideTimeout);
+      this.pendingStackHideTimeout = null;
+      if (!this.stackHiddenUntilReopen) {
+        this.hidePapersBelowTopPaper();
+      }
+    } else if (!this.stackHiddenUntilReopen) {
+      this.hidePapersBelowTopPaper();
     }
 
     // Restore normal render priority after animation completes
@@ -1602,7 +1837,7 @@ export class PortfolioPapersManager {
     // Reset to first paper
     const papersList = this.getPapers();
     if (papersList.length > 0) {
-      this.currentPaperId = papersList[0].id;
+      this.setCurrentPaper(papersList[0].id);
     }
   }
 
@@ -1610,15 +1845,20 @@ export class PortfolioPapersManager {
     mesh: Mesh,
     targetPosition: Vector3,
     duration: number = 500,
+    targetRotationZ?: number,
   ): Promise<void> {
     return new Promise((resolve) => {
       const startPosition = mesh.position.clone();
       const startRotationZ = mesh.rotation.z;
-      const rotationLimit = this.MAX_RANDOM_ROTATION; // ±2 degrees hard limit
-      // Random rotation within the limit
-      const randomRotation = (Math.random() - 0.5) * 2 * rotationLimit;
-      const targetRotationZ = randomRotation;
+      const finalRotationZ =
+        targetRotationZ !== undefined ? targetRotationZ : startRotationZ;
       const stageDuration = duration / 2; // Split time between stages
+      const applyRotation = (progress: number) => {
+        mesh.rotation.z =
+          startRotationZ +
+          (finalRotationZ - startRotationZ) *
+            Math.min(Math.max(progress, 0), 1);
+      };
 
       // Stage 1: Move in X
       const stage1Start = performance.now();
@@ -1629,15 +1869,20 @@ export class PortfolioPapersManager {
         const progress = Math.min(elapsed / stageDuration, 1);
 
         // Ease out cubic for smooth movement
-        const easeProgress = 1 - Math.pow(1 - progress, 3);
+        const easeProgress = MathUtils.smoothstep(progress, 0, 1);
 
-        mesh.position.x =
-          startPosition.x + (targetPosition.x - startPosition.x) * easeProgress;
-        mesh.position.z =
-          startPosition.z + (targetPosition.z - startPosition.z) * easeProgress;
-        // Rotate simultaneously with X movement
-        mesh.rotation.z =
-          startRotationZ + (targetRotationZ - startRotationZ) * easeProgress;
+        mesh.position.x = MathUtils.lerp(
+          startPosition.x,
+          targetPosition.x,
+          easeProgress,
+        );
+        mesh.position.z = MathUtils.lerp(
+          startPosition.z,
+          targetPosition.z,
+          easeProgress,
+        );
+        // Rotate simultaneously with X movement, covering first half of progress
+        applyRotation(easeProgress * 0.5);
 
         if (currentTime < stage1End) {
           requestAnimationFrame(animateStage1);
@@ -1647,29 +1892,28 @@ export class PortfolioPapersManager {
           const stage2End = stage2Start + stageDuration;
           const xAtEnd = mesh.position.x;
           const zAtEnd = mesh.position.z;
-          const rotationAtEnd = mesh.rotation.z;
-
           const animateStage2 = (currentTime: number) => {
             const elapsed = currentTime - stage2Start;
             const progress = Math.min(elapsed / stageDuration, 1);
 
             // Ease out cubic for smooth descent
-            const easeProgress = 1 - Math.pow(1 - progress, 3);
+            const easeProgress = MathUtils.smoothstep(progress, 0, 1);
 
-            // Keep X/Z steady during Y movement
             mesh.position.x = xAtEnd;
             mesh.position.z = zAtEnd;
-            mesh.position.y =
-              startPosition.y +
-              (targetPosition.y - startPosition.y) * easeProgress;
-            // Keep rotation steady during stage 2
-            mesh.rotation.z = rotationAtEnd;
+            mesh.position.y = MathUtils.lerp(
+              startPosition.y,
+              targetPosition.y,
+              easeProgress,
+            );
+            // Continue rotation through the landing portion
+            applyRotation(0.5 + easeProgress * 0.5);
 
             if (currentTime < stage2End) {
               requestAnimationFrame(animateStage2);
             } else {
               mesh.position.copy(targetPosition);
-              mesh.rotation.z = targetRotationZ;
+              mesh.rotation.z = finalRotationZ;
               resolve();
             }
           };
@@ -1682,12 +1926,14 @@ export class PortfolioPapersManager {
     });
   }
 
-  async previousPaper(): Promise<void> {
-    // Prevent overlapping animations
-    if (this.isAnimating) {
-      // console.log("[PortfolioPapers] Animation in progress, ignoring previous");
+  async previousPaper(
+    options: { skipLock?: boolean; durationMs?: number } = {},
+  ): Promise<void> {
+    const { skipLock = false, durationMs } = options;
+    if (this.isAnimating && !skipLock) {
       return;
     }
+    const shouldLock = !skipLock;
 
     const papersList = this.getPapers();
     if (papersList.length === 0) return;
@@ -1698,25 +1944,43 @@ export class PortfolioPapersManager {
 
     // Don't do anything if we're at the first paper
     if (currentIndex <= 0) {
-      console.log(
-        "[PortfolioPapers] Already at first paper, previous does nothing",
-      );
       return;
     }
+    if (shouldLock) {
+      this.isAnimating = true;
+    }
 
-    this.isAnimating = true;
-
-    // Clear hover state to hide scrollbar during navigation
-    this.setHoveredScrollablePaper(null);
-
+    const animationDuration = durationMs ?? 500;
     try {
       const prevIndex = currentIndex - 1;
       const prevPaper = papersList[prevIndex];
+      const outgoingTopId = this.currentPaperId;
+      this.setCurrentPaper(prevPaper.id, {
+        applyRotationForCurrent: false,
+        applyRotationForPrevious: false,
+      });
+
+      // As the current top will no longer be on top, ease it back to its stored tilt
+      if (outgoingTopId && this.paperMeshes.has(outgoingTopId)) {
+        const storedRotation =
+          this.paperRotations.get(outgoingTopId) ??
+          this.generateRandomRotation();
+        this.paperRotations.set(outgoingTopId, storedRotation);
+        this.animatePaperRotationTo(
+          outgoingTopId,
+          storedRotation,
+          animationDuration,
+        );
+      }
 
       // Animate previous paper (top of left stack) back to right stack top
       const prevMesh = this.paperMeshes.get(prevPaper.id);
+      const newRestingRotation = this.generateRandomRotation();
+      this.paperRotations.set(prevPaper.id, newRestingRotation);
+      let performedAnimation = false;
 
       if (prevMesh && this.whitepaperMesh) {
+        this.stopRotationAnimation(prevPaper.id);
         // Calculate where it should be on the right stack (back to its original position)
         const targetPosition = this.whitepaperMesh.position.clone();
         const stackHeight = this.getStackHeightForPaper(prevPaper.id);
@@ -1735,13 +1999,21 @@ export class PortfolioPapersManager {
         }
 
         // Use two-stage animation: move X first, then Y
-        await this.animatePaperXThenY(prevMesh, targetPosition);
+        performedAnimation = true;
+        await this.animatePaperXThenY(
+          prevMesh,
+          targetPosition,
+          animationDuration,
+          0,
+        );
       }
-
-      // Update current paper
-      this.currentPaperId = prevPaper.id;
+      if (!performedAnimation) {
+        this.animatePaperRotationTo(prevPaper.id, 0, animationDuration);
+      }
     } finally {
-      this.isAnimating = false;
+      if (shouldLock) {
+        this.isAnimating = false;
+      }
     }
   }
 

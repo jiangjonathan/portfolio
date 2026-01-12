@@ -43,6 +43,7 @@ export interface DOMElements {
   homeNavButton: HTMLButtonElement;
   turntableNavButton: HTMLButtonElement;
   portfolioNavButton: HTMLButtonElement;
+  portfolioResumeButton: HTMLButtonElement;
   resetTutorialButton: HTMLButtonElement;
   freeLookButton: HTMLButtonElement;
   contactButton: HTMLButtonElement;
@@ -52,6 +53,7 @@ export interface DOMElements {
   portfolioNextArrow: HTMLButtonElement;
   placeholderAInfo: HTMLDivElement;
   placeholderBInfo: HTMLDivElement;
+  portfolioPaperLinksBar: HTMLDivElement;
 }
 
 export function setupDOM(): DOMElements {
@@ -528,6 +530,10 @@ export function setupDOM(): DOMElements {
   portfolioNavButton.textContent = "portfolio";
   globalControls.appendChild(portfolioNavButton);
 
+  const portfolioResumeButton = document.createElement("button");
+  portfolioResumeButton.textContent = "resume";
+  globalControls.appendChild(portfolioResumeButton);
+
   const contactButton = document.createElement("button");
   contactButton.id = "contact-button";
   contactButton.textContent = "contact";
@@ -586,6 +592,27 @@ export function setupDOM(): DOMElements {
     minWidth: "180px",
   });
   // root.appendChild(portfolioPapersContainer); // Debug UI - disabled
+
+  const portfolioPaperLinksBar = document.createElement("div");
+  portfolioPaperLinksBar.id = "portfolio-paper-links";
+  Object.assign(portfolioPaperLinksBar.style, {
+    position: "fixed",
+    bottom: "32px",
+    left: "32px",
+    transform: "none",
+    display: "none",
+    gap: "1.25rem",
+    fontFamily: "inherit",
+    fontSize: "var(--vinyl-link-font-size)",
+    color: "var(--vinyl-link-color)",
+    zIndex: `${UI_Z_INDEX}`,
+    pointerEvents: "auto",
+    alignItems: "center",
+    justifyContent: "center",
+    textTransform: "none",
+    letterSpacing: "0.02em",
+  } as CSSStyleDeclaration);
+  root.appendChild(portfolioPaperLinksBar);
 
   const arrowBaseStyles: Partial<CSSStyleDeclaration> = {
     position: "fixed",
@@ -686,6 +713,7 @@ export function setupDOM(): DOMElements {
     homeNavButton,
     turntableNavButton,
     portfolioNavButton,
+    portfolioResumeButton,
     resetTutorialButton,
     freeLookButton,
     contactButton,
@@ -695,5 +723,6 @@ export function setupDOM(): DOMElements {
     portfolioNextArrow,
     placeholderAInfo,
     placeholderBInfo,
+    portfolioPaperLinksBar,
   };
 }
