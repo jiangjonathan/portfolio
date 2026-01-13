@@ -2,7 +2,7 @@ import { Object3D } from "three";
 import type { LabelTextures, LabelVisualOptions } from "./labels";
 
 // Types
-export type VinylSource = "focus" | "turntable";
+export type VinylSource = "focus" | "turntable" | "dropping";
 
 export type VinylSelectionDetail = {
   entryId?: string | null;

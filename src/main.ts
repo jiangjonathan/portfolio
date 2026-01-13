@@ -18,7 +18,11 @@ import {
 } from "three";
 import type { Intersection } from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { loadVinylModel } from "./vinyl/vinyl";
+import {
+  loadVinylModel,
+  applyVinylColor,
+  DEFAULT_VINYL_COLOR,
+} from "./vinyl/vinyl";
 import {
   applyLabelTextures,
   createLabelTextures,
@@ -58,7 +62,10 @@ import {
 } from "./vinyl/vinylAnimation";
 import { VinylLibraryManager } from "./vinyl/vinylLibraryManager";
 import { VinylLibraryViewer } from "./vinyl/vinylLibraryViewer";
-import { extractDominantColor } from "./utils/colorUtils";
+import {
+  extractDominantColor,
+  deriveVinylColorFromBackground,
+} from "./utils/colorUtils";
 import { initializeCache } from "./utils/albumCoverCache";
 import type { VideoMetadata } from "./youtube/youtube";
 import { TutorialManager } from "./turntable/tutorialManager";
@@ -139,8 +146,13 @@ import { PortfolioNavigationController } from "./portfolio/portfolioNavigation";
 declare global {
   interface Window {
     PLAYING_SOUND: boolean;
+    sfx_on: boolean;
   }
 }
+
+let coloredVinylsEnabled = true;
+let sfx_on = true;
+window.sfx_on = sfx_on;
 
 // Setup DOM and get element references
 const dom = setupDOM();
@@ -163,6 +175,10 @@ const {
   portfolioResumeButton,
   resetTutorialButton,
   freeLookButton,
+  settingsButton,
+  settingsPanel,
+  coloredVinylsCheckbox,
+  sfxCheckbox,
   contactButton,
   // cameraDebugPanel, // Debug UI - disabled
   portfolioPrevArrow,
@@ -180,6 +196,56 @@ portfolioResumeButton.style.display = "block";
 contactButton.style.display = "block";
 resetTutorialButton.style.display = "none";
 freeLookButton.style.display = "none";
+settingsButton.style.display = "none";
+settingsPanel.style.display = "none";
+coloredVinylsCheckbox.checked = coloredVinylsEnabled;
+sfxCheckbox.checked = sfx_on;
+
+let isSettingsPanelVisible = false;
+const setSettingsPanelVisible = (visible: boolean) => {
+  isSettingsPanelVisible = visible;
+  settingsPanel.style.display = visible ? "flex" : "none";
+  settingsButton.setAttribute("aria-expanded", visible ? "true" : "false");
+};
+settingsButton.setAttribute("aria-haspopup", "true");
+
+settingsButton.addEventListener("click", (event) => {
+  event.stopPropagation();
+  if (settingsButton.style.display === "none") {
+    return;
+  }
+  setSettingsPanelVisible(!isSettingsPanelVisible);
+});
+
+settingsPanel.addEventListener("click", (event) => {
+  event.stopPropagation();
+});
+
+document.addEventListener("click", (event) => {
+  if (!isSettingsPanelVisible) {
+    return;
+  }
+  const target = event.target as Node | null;
+  if (
+    target &&
+    (settingsPanel.contains(target) || settingsButton.contains(target))
+  ) {
+    return;
+  }
+  setSettingsPanelVisible(false);
+});
+
+coloredVinylsCheckbox.addEventListener("change", () => {
+  coloredVinylsEnabled = coloredVinylsCheckbox.checked;
+  updateFocusVinylColorFromDerived();
+  updateTurntableVinylColorFromDerived();
+  restoreDroppingVinylAppearance("coloredVinylToggle");
+});
+
+sfxCheckbox.addEventListener("change", () => {
+  sfx_on = sfxCheckbox.checked;
+  window.sfx_on = sfx_on;
+});
 
 // Initialize IndexedDB cache for album covers
 initializeCache().catch((error) => {
@@ -1515,7 +1581,12 @@ const setActiveScenePage = (page: ScenePage) => {
   const shouldShowFocusVinyl = page === "turntable";
   focusVinylManuallyHidden = !shouldShowFocusVinyl;
   if (!shouldShowFocusVinyl && focusVinylState?.model) {
-    focusVinylState.model.visible = false;
+    setVinylModelVisibility(
+      focusVinylState.model,
+      "focus",
+      false,
+      "scene-change hide",
+    );
     setFocusCoverClickBodyClass(false);
   }
   updateFocusVinylVisibility();
@@ -1538,6 +1609,10 @@ const setActiveScenePage = (page: ScenePage) => {
     turntableStateManager.setTonearmInPlayArea(false);
     yt?.updateButtonVisibility();
     clearPreloadedFocusVinyl();
+    // Clean up any dropping vinyl
+    disposeDroppingVinyl();
+    isReturningVinyl = false;
+    setPendingPromotionSource(null, "leaving turntable page");
   }
 
   // Reposition buttons based on page
@@ -1554,6 +1629,10 @@ const setActiveScenePage = (page: ScenePage) => {
     contactButton.style.display = page === "business_card" ? "none" : "block";
     resetTutorialButton.style.display = page === "turntable" ? "block" : "none";
     freeLookButton.style.display = page === "turntable" ? "block" : "none";
+    settingsButton.style.display = page === "turntable" ? "block" : "none";
+    if (page !== "turntable") {
+      setSettingsPanelVisible(false);
+    }
   };
 
   if (isPositionChanging) {
@@ -1763,6 +1842,14 @@ let labelOptions: LabelApplicationOptions = {
   offsetY: 0,
 };
 
+const DEFAULT_VINYL_BODY_COLOR = DEFAULT_VINYL_COLOR;
+const getInitialDerivedColor = () =>
+  labelVisuals.background || DEFAULT_VINYL_BODY_COLOR;
+let focusVinylDerivedColor = getInitialDerivedColor();
+let turntableVinylDerivedColor = focusVinylDerivedColor;
+let focusVinylBodyColor: string | null = focusVinylDerivedColor;
+let turntableVinylBodyColor: string | null = turntableVinylDerivedColor;
+
 // const RAD2DEG = 180 / Math.PI;
 
 const heroGroup = new Group();
@@ -1846,6 +1933,16 @@ let vinylModel: Object3D | null = null;
 // FocusVinylState and TurntableVinylState now imported from vinylInteractions.ts
 let focusVinylState: FocusVinylState | null = null;
 let turntableVinylState: TurntableVinylState | null = null;
+// Dropping vinyl: a vinyl mid-animation that will become the turntable vinyl
+// This allows a new focus vinyl to be created while the old one finishes its drop animation
+type DroppingVinylState = {
+  model: Object3D;
+  selection: VinylSelectionDetail;
+  labelTextures: LabelTextures;
+  labelVisuals: LabelVisualOptions;
+  derivedColor: string;
+};
+let droppingVinylState: DroppingVinylState | null = null;
 let focusVinylLoadToken = 0;
 let turntableSceneRoot: Object3D | null = null;
 const turntableBounds = new Box3();
@@ -1859,6 +1956,20 @@ let focusVinylPreloadToken = 0;
 let activeVinylSource: VinylSource | null = null;
 let currentDragSource: VinylSource | null = null;
 let pendingPromotionSource: VinylSource | null = null;
+
+function setPendingPromotionSource(
+  value: VinylSource | null,
+  reason: string,
+): void {
+  const prev = pendingPromotionSource ?? "null";
+  const next = value ?? "null";
+  if (prev === next) {
+    console.log(`[pendingPromotion] stays ${next} (${reason})`);
+  } else {
+    console.log(`[pendingPromotion] ${prev} -> ${next} (${reason})`);
+  }
+  pendingPromotionSource = value;
+}
 type FlyawayVinyl = {
   model: Object3D;
   velocity: Vector3;
@@ -1871,6 +1982,76 @@ type FlyawayVinyl = {
 const flyawayVinyls: FlyawayVinyl[] = [];
 // isFullscreenMode now managed by TurntableStateManager
 let fullscreenVinylRestoreTimeout: number | null = null;
+
+function applyFocusVinylColorToModel(): void {
+  if (focusVinylState?.model) {
+    applyVinylColor(focusVinylState.model, focusVinylBodyColor);
+  }
+}
+
+function applyTurntableVinylColorToModel(): void {
+  if (turntableVinylState?.model) {
+    applyVinylColor(turntableVinylState.model, turntableVinylBodyColor);
+  }
+}
+
+function getEffectiveVinylColor(derivedColor: string): string | null {
+  return coloredVinylsEnabled ? derivedColor : null;
+}
+
+function updateFocusVinylColorFromDerived(): void {
+  focusVinylBodyColor = getEffectiveVinylColor(focusVinylDerivedColor);
+  applyFocusVinylColorToModel();
+}
+
+function updateTurntableVinylColorFromDerived(): void {
+  turntableVinylBodyColor = getEffectiveVinylColor(turntableVinylDerivedColor);
+  applyTurntableVinylColorToModel();
+}
+
+function restoreDroppingVinylAppearance(context?: string): void {
+  if (!droppingVinylState) {
+    console.log(
+      `[droppingVinyl] restore skipped (no state)${context ? ` context=${context}` : ""}`,
+    );
+    return;
+  }
+  console.log(
+    `[droppingVinyl] Restoring appearance for ${droppingVinylState.selection.songName}${context ? ` (${context})` : ""}`,
+  );
+  applyLabelTextures(
+    droppingVinylState.model,
+    droppingVinylState.labelTextures,
+    labelOptions,
+    droppingVinylState.labelVisuals,
+  );
+  applyVinylColor(
+    droppingVinylState.model,
+    getEffectiveVinylColor(droppingVinylState.derivedColor),
+  );
+}
+
+function setVinylModelVisibility(
+  model: Object3D | null | undefined,
+  tag: string,
+  visible: boolean,
+  reason: string,
+): void {
+  if (!model) {
+    console.log(`[vinylVisibility] ${tag} missing model (${reason})`);
+    return;
+  }
+  if (model.visible === visible) {
+    console.log(
+      `[vinylVisibility] ${tag} already ${visible ? "visible" : "hidden"} (${reason})`,
+    );
+    return;
+  }
+  model.visible = visible;
+  console.log(
+    `[vinylVisibility] ${tag} -> ${visible ? "visible" : "hidden"} (${reason})`,
+  );
+}
 
 const syncAnimationStateToModel = (model: Object3D) => {
   if (model === focusVinylState?.model) {
@@ -1908,6 +2089,12 @@ const setActiveVinylSource = (
     if (vinylModel && syncState) {
       syncAnimationStateToModel(vinylModel);
     }
+  } else if (source === "dropping") {
+    vinylModel = droppingVinylState?.model ?? null;
+    console.log(
+      `[setActiveVinylSource] Set to dropping: vinylModel=${vinylModel ? "exists" : "null"}`,
+    );
+    // Don't sync state - dropping vinyl continues its animation
   } else {
     vinylModel = null;
   }
@@ -1930,17 +2117,33 @@ const disposeFocusVinyl = () => {
   }
 };
 
-const disposeTurntableVinyl = () => {
+const disposeTurntableVinyl = (reason: string = "unknown") => {
   if (!turntableVinylState) {
+    console.log(`[turntableVinyl] dispose skipped (no state) reason=${reason}`);
     return;
   }
+  console.log(
+    `[turntableVinyl] Disposing ${turntableVinylState.selection.songName} (reason=${reason})`,
+  );
   heroGroup.remove(turntableVinylState.model);
   turntableVinylState.labelTextures.sideA.dispose();
   turntableVinylState.labelTextures.sideB.dispose();
   turntableVinylState = null;
+  turntableVinylDerivedColor = DEFAULT_VINYL_BODY_COLOR;
+  turntableVinylBodyColor = getEffectiveVinylColor(turntableVinylDerivedColor);
   if (activeVinylSource === "turntable") {
     setActiveVinylSource(focusVinylState ? "focus" : null);
   }
+};
+
+const disposeDroppingVinyl = () => {
+  if (!droppingVinylState) {
+    return;
+  }
+  heroGroup.remove(droppingVinylState.model);
+  droppingVinylState.labelTextures.sideA.dispose();
+  droppingVinylState.labelTextures.sideB.dispose();
+  droppingVinylState = null;
 };
 
 const detachFocusTexturesForTurntable = (): LabelTextures => {
@@ -2143,6 +2346,7 @@ function rebuildLabelTextures() {
       labelVisuals,
     );
   }
+  restoreDroppingVinylAppearance("rebuildLabelTextures");
 }
 
 const metadataController = createMetadataController({
@@ -2184,6 +2388,13 @@ let currentVideoLoad: Promise<void> | null = null;
 const applySelectionVisualsToVinyl = async (
   selection: VinylSelectionDetail,
 ) => {
+  const refreshFocusVinylColor = () => {
+    focusVinylDerivedColor = deriveVinylColorFromBackground(
+      labelVisuals.background,
+    );
+    updateFocusVinylColorFromDerived();
+  };
+
   applyMetadataToLabels(
     {
       artist: selection.artistName,
@@ -2202,12 +2413,14 @@ const applySelectionVisualsToVinyl = async (
       return;
     }
     labelVisuals.background = dominantColor;
+    refreshFocusVinylColor();
   } catch (error) {
     if (updateId !== selectionVisualUpdateId) {
       return;
     }
     console.warn("Failed to extract dominant color, using fallback", error);
     labelVisuals.background = FALLBACK_BACKGROUND_COLOR;
+    refreshFocusVinylColor();
   }
   if (updateId === selectionVisualUpdateId) {
     rebuildLabelTextures();
@@ -2261,9 +2474,22 @@ const loadVideoForCurrentSelection = async () => {
         song: selection.songName,
         album: videoMetadata?.album || "",
       };
-      applyMetadataToLabels(correctedMetadata, true);
+      const focusMatchesSelection =
+        focusVinylState?.selection.videoId === selection.videoId;
+      if (!focusVinylState || focusMatchesSelection) {
+        applyMetadataToLabels(correctedMetadata, true);
+      }
       if (turntableVinylState) {
-        updateTurntableVinylVisuals(labelVisuals);
+        const updatedTurntableVisuals: LabelVisualOptions = {
+          ...turntableVinylState.labelVisuals,
+          title1:
+            correctedMetadata.artist || turntableVinylState.labelVisuals.title1,
+          title2:
+            correctedMetadata.song || turntableVinylState.labelVisuals.title2,
+          title3:
+            correctedMetadata.album ?? turntableVinylState.labelVisuals.title3,
+        };
+        updateTurntableVinylVisuals(updatedTurntableVisuals);
       }
 
       const duration = youtubePlayer.getDuration();
@@ -2353,24 +2579,124 @@ async function handleFocusSelection(selection: VinylSelectionDetail) {
   console.log(
     `[handleFocusSelection] Starting for ${selection.artistName} - ${selection.songName}`,
   );
+  console.log(
+    `[handleFocusSelection] State: isReturningVinyl=${isReturningVinyl}, focusVinylState=${focusVinylState ? "exists" : "null"}, pendingPromotionSource=${pendingPromotionSource}, activeVinylSource=${activeVinylSource}`,
+  );
   const loadToken = ++focusVinylLoadToken;
   vinylDragPointerId = null;
-  isReturningVinyl = false;
-  isReturningToFocusCard = false;
 
-  // Hide vinyl immediately when loading a new selection to prevent flash
+  // If a vinyl is currently returning to the turntable (mid-animation),
+  // transfer it to the dropping state so it can continue its animation independently
+  // This allows the new focus vinyl to be created without interrupting the drop animation
+  //
+  // Case 1: Focus vinyl is still animating (hasn't been promoted yet)
+  // Case 2: Vinyl was already promoted to turntable but isReturningVinyl is still true
+  const focusVinylIsReturning =
+    isReturningVinyl && focusVinylState && pendingPromotionSource === "focus";
+  const turntableVinylIsReturning =
+    isReturningVinyl &&
+    turntableVinylState &&
+    activeVinylSource === "turntable";
+
+  if (focusVinylIsReturning && focusVinylState) {
+    console.log(
+      `[handleFocusSelection] Transferring returning FOCUS vinyl to dropping state: ${focusVinylState.selection.songName}`,
+    );
+    // Dispose any existing dropping vinyl first (max 2 vinyls rule)
+    disposeDroppingVinyl();
+    // Transfer the focus vinyl to dropping state with its own textures
+    const droppingTextures = detachFocusTexturesForTurntable();
+    droppingVinylState = {
+      model: focusVinylState.model,
+      selection: focusVinylState.selection,
+      labelTextures: droppingTextures,
+      labelVisuals: cloneLabelVisuals(labelVisuals),
+      derivedColor: focusVinylDerivedColor,
+    };
+    // Ensure dropping vinyl remains visible during animation
+    setVinylModelVisibility(
+      droppingVinylState.model,
+      "dropping",
+      true,
+      "transferred from focus to dropping",
+    );
+    // Clear focus state without disposing the model (it's now in dropping state)
+    focusVinylState = null;
+    // Switch to dropping source - this keeps vinylModel pointing to the dropping vinyl
+    setActiveVinylSource("dropping");
+  } else if (turntableVinylIsReturning && turntableVinylState) {
+    console.log(
+      `[handleFocusSelection] Transferring returning TURNTABLE vinyl to dropping state: ${turntableVinylState.selection.songName}`,
+    );
+    // Dispose any existing dropping vinyl first (max 2 vinyls rule)
+    disposeDroppingVinyl();
+    // Transfer the turntable vinyl to dropping state - it keeps its own textures
+    droppingVinylState = {
+      model: turntableVinylState.model,
+      selection: turntableVinylState.selection,
+      labelTextures: turntableVinylState.labelTextures,
+      labelVisuals: turntableVinylState.labelVisuals,
+      derivedColor: turntableVinylDerivedColor,
+    };
+    // Ensure dropping vinyl remains visible during animation
+    setVinylModelVisibility(
+      droppingVinylState.model,
+      "dropping",
+      true,
+      "transferred from turntable to dropping",
+    );
+    // Clear turntable state without disposing (model is now in dropping state)
+    turntableVinylState = null;
+    turntableStateManager.setOnTurntable(false);
+    turntableStateManager.setTurntableVinylState(null);
+    // Switch to dropping source
+    setActiveVinylSource("dropping");
+  } else {
+    // Not mid-animation, just dispose normally
+    isReturningVinyl = false;
+    isReturningToFocusCard = false;
+  }
+  setPendingPromotionSource(null, "handleFocusSelection-start");
+
+  // Hide focus vinyl immediately when loading a new selection to prevent flash
+  // (turntable vinyl should remain untouched and visible)
   focusVinylManuallyHidden = true;
   updateFocusVinylVisibility();
+
+  // Log turntable vinyl state before applying visuals
+  if (turntableVinylState?.model) {
+    console.log(
+      `[handleFocusSelection] Turntable vinyl BEFORE visuals: visible=${turntableVinylState.model.visible}, song=${turntableVinylState.selection.songName}`,
+    );
+  } else {
+    console.log(
+      `[handleFocusSelection] No turntable vinyl state BEFORE visuals`,
+    );
+  }
 
   console.log(`[handleFocusSelection] Applying selection visuals...`);
   await applySelectionVisualsToVinyl(selection);
   console.log(`[handleFocusSelection] Selection visuals applied`);
+  restoreDroppingVinylAppearance("focusSelection");
   if (turntableVinylState) {
     updateTurntableVinylVisuals(turntableVinylState.labelVisuals);
   }
 
-  // Always dispose old focus vinyl
-  disposeFocusVinyl();
+  // Log turntable vinyl state after applying visuals
+  if (turntableVinylState?.model) {
+    console.log(
+      `[handleFocusSelection] Turntable vinyl AFTER visuals: visible=${turntableVinylState.model.visible}, song=${turntableVinylState.selection.songName}`,
+    );
+  } else {
+    console.log(
+      `[handleFocusSelection] No turntable vinyl state AFTER visuals`,
+    );
+  }
+
+  // Dispose old focus vinyl if it wasn't transferred to dropping state
+  if (focusVinylState) {
+    disposeFocusVinyl();
+  }
   shouldTrackFocusCard = true;
 
   // Duration will be shown when the vinyl is placed on the turntable
@@ -2378,13 +2704,30 @@ async function handleFocusSelection(selection: VinylSelectionDetail) {
   try {
     let model: Object3D | null = null;
     if (preloadedFocusVinylModel) {
-      model = preloadedFocusVinylModel;
-      preloadedFocusVinylModel = null;
+      // CRITICAL: Ensure preloaded model is not the turntable vinyl's model
+      if (preloadedFocusVinylModel === turntableVinylState?.model) {
+        console.warn(
+          "[handleFocusSelection] Preloaded model is turntable vinyl! Loading fresh model.",
+        );
+        preloadedFocusVinylModel = null;
+        model = await loadVinylModel(vinylNormalTexture);
+      } else {
+        model = preloadedFocusVinylModel;
+        preloadedFocusVinylModel = null;
+      }
     } else if (preloadedFocusVinylPromise) {
       const resolved = await preloadedFocusVinylPromise;
       preloadedFocusVinylPromise = null;
       if (resolved && !focusVinylState) {
-        model = resolved;
+        // CRITICAL: Ensure resolved model is not the turntable vinyl's model
+        if (resolved === turntableVinylState?.model) {
+          console.warn(
+            "[handleFocusSelection] Resolved preload is turntable vinyl! Loading fresh model.",
+          );
+          model = await loadVinylModel(vinylNormalTexture);
+        } else {
+          model = resolved;
+        }
       }
     }
     if (!model) {
@@ -2394,32 +2737,78 @@ async function handleFocusSelection(selection: VinylSelectionDetail) {
       heroGroup.remove(model);
       if (!preloadedFocusVinylModel) {
         preloadedFocusVinylModel = model;
-        model.visible = false;
+        setVinylModelVisibility(
+          model,
+          "focus-preload",
+          false,
+          "focus load token mismatch cached",
+        );
       }
       return;
     }
     focusVinylState = { model, selection };
-    model.visible = false;
+    applyFocusVinylColorToModel();
+    setVinylModelVisibility(
+      model,
+      "focus",
+      false,
+      "initial hide before reveal",
+    );
     if (!model.parent) {
       heroGroup.add(model);
     }
     applyLabelTextures(model, focusLabelTextures, labelOptions, labelVisuals);
     applyFocusVinylScale(focusVinylState?.model ?? null, cameraRig);
-    setActiveVinylSource("focus");
+    // Only switch to focus source if there's no dropping vinyl animating
+    // If dropping vinyl exists, it keeps vinylModel until it lands
+    if (!droppingVinylState) {
+      setActiveVinylSource("focus");
+    }
+
+    // Log turntable vinyl state before preparing focus presentation
+    if (turntableVinylState?.model) {
+      console.log(
+        `[handleFocusSelection] Turntable vinyl BEFORE prepare: visible=${turntableVinylState.model.visible}, song=${turntableVinylState.selection.songName}`,
+      );
+    } else {
+      console.log(
+        `[handleFocusSelection] No turntable vinyl state BEFORE prepare`,
+      );
+    }
+
     prepareFocusVinylPresentation(model, loadToken);
+
+    // Log turntable vinyl state after preparing focus presentation
+    if (turntableVinylState?.model) {
+      console.log(
+        `[handleFocusSelection] Turntable vinyl AFTER prepare: visible=${turntableVinylState.model.visible}, song=${turntableVinylState.selection.songName}`,
+      );
+    } else {
+      console.log(
+        `[handleFocusSelection] No turntable vinyl state AFTER prepare`,
+      );
+    }
   } catch (error) {
     console.error("Failed to load focus vinyl", error);
   }
 }
 
 function prepareFocusVinylPresentation(model: Object3D, token: number) {
-  setActiveVinylSource("focus");
+  // Only switch to focus source if there's no dropping vinyl animating
+  if (!droppingVinylState) {
+    setActiveVinylSource("focus");
+  }
   vinylScaleFactor = getFocusVinylScale(cameraRig);
   vinylAnimationState.cameraRelativeOffsetValid = false;
   updateFocusCardPosition();
 
   // Keep vinyl invisible initially (including if not in fullscreen mode)
-  model.visible = false;
+  setVinylModelVisibility(
+    model,
+    "focus",
+    false,
+    "prepareFocusVinylPresentation",
+  );
 
   resetVinylAnimationState(focusCardAnchorPosition, "focus");
 
@@ -2492,16 +2881,19 @@ const applyFocusCoverHoverState = () => {
 };
 
 const updateFocusVinylVisibility = () => {
-  if (!focusVinylState?.model) {
-    return;
-  }
   // Only show focus vinyl if there's a focus card rendered
   const hasFocusCard = focusCardCoverContainer.childElementCount > 0;
-  focusVinylState.model.visible =
+  const shouldShow =
     !turntableStateManager.getIsFullscreenMode() &&
     !isFreeLookMode &&
     !focusVinylManuallyHidden &&
     hasFocusCard;
+  setVinylModelVisibility(
+    focusVinylState?.model,
+    "focus",
+    shouldShow,
+    `updateFocusVinylVisibility (hasFocusCard=${hasFocusCard}, manualHidden=${focusVinylManuallyHidden}, fullscreen=${turntableStateManager.getIsFullscreenMode()}, freeLook=${isFreeLookMode})`,
+  );
 };
 
 const clearFocusCoverFallbackTimer = () => {
@@ -2662,7 +3054,12 @@ const hideFocusVinylForFullscreen = () => {
     fullscreenVinylRestoreTimeout = null;
   }
   if (focusVinylState?.model) {
-    focusVinylState.model.visible = false;
+    setVinylModelVisibility(
+      focusVinylState.model,
+      "focus",
+      false,
+      "fullscreen hide",
+    );
   }
 };
 
@@ -2675,7 +3072,7 @@ const scheduleFocusVinylRestore = () => {
     return;
   }
   const modelRef = focusVinylState.model;
-  modelRef.visible = false;
+  setVinylModelVisibility(modelRef, "focus", false, "fullscreen restore delay");
   fullscreenVinylRestoreTimeout = window.setTimeout(() => {
     fullscreenVinylRestoreTimeout = null;
     if (focusVinylState?.model === modelRef) {
@@ -2750,15 +3147,19 @@ let isReturningToFocusCard = false; // Separate state for returning to focus car
 let paperScrollDragPointerId: number | null = null;
 function setVinylOnTurntable(onTurntable: boolean) {
   if (onTurntable === turntableStateManager.isOnTurntable()) {
+    console.log(
+      `[turntableVinyl] setVinylOnTurntable(${onTurntable}) skipped (already ${onTurntable})`,
+    );
     return;
   }
+  console.log(`[turntableVinyl] setVinylOnTurntable(${onTurntable})`);
 
   if (onTurntable) {
     const promotingFocus = pendingPromotionSource === "focus";
-    pendingPromotionSource = null;
+    setPendingPromotionSource(null, "setVinylOnTurntable(true)");
     if (promotingFocus && focusVinylState) {
       if (turntableVinylState) {
-        disposeTurntableVinyl();
+        disposeTurntableVinyl("promoting focus->turntable");
       }
       const textures = detachFocusTexturesForTurntable();
       const snapshotVisuals = cloneLabelVisuals(labelVisuals);
@@ -2768,6 +3169,14 @@ function setVinylOnTurntable(onTurntable: boolean) {
         labelTextures: textures,
         labelVisuals: snapshotVisuals,
       };
+      turntableVinylDerivedColor = focusVinylDerivedColor;
+      updateTurntableVinylColorFromDerived();
+      setVinylModelVisibility(
+        turntableVinylState.model,
+        "turntable",
+        true,
+        "promoted from focus",
+      );
       focusVinylState = null;
       shouldTrackFocusCard = false;
       setActiveVinylSource("turntable");
@@ -2775,6 +3184,12 @@ function setVinylOnTurntable(onTurntable: boolean) {
     if (!turntableVinylState) {
       return;
     }
+    setVinylModelVisibility(
+      turntableVinylState.model,
+      "turntable",
+      true,
+      "setVinylOnTurntable",
+    );
     turntableStateManager.setOnTurntable(true);
     turntableStateManager.setTurntableVinylState(turntableVinylState);
     turntableController?.setVinylPresence(true);
@@ -2787,7 +3202,7 @@ function setVinylOnTurntable(onTurntable: boolean) {
     return;
   }
 
-  pendingPromotionSource = null;
+  setPendingPromotionSource(null, "setVinylOnTurntable(false) request");
   if (!turntableStateManager.isOnTurntable()) {
     return;
   }
@@ -2806,17 +3221,32 @@ function setVinylOnTurntable(onTurntable: boolean) {
     viewport.style.height = "0px";
   }
   turntableController?.liftNeedle();
-  disposeTurntableVinyl();
+  disposeTurntableVinyl("setVinylOnTurntable(false)");
   setActiveVinylSource(focusVinylState ? "focus" : null);
 }
 
 const clearTurntableVinylPreservingPromotion = () => {
   if (!turntableVinylState) {
+    console.log(
+      "[turntableVinyl] clearTurntableVinylPreservingPromotion skipped (no turntable state)",
+    );
     return;
   }
+  if (pendingPromotionSource !== "focus") {
+    console.log(
+      `[turntableVinyl] clearTurntableVinylPreservingPromotion skipped (pendingPromotionSource=${pendingPromotionSource})`,
+    );
+    return;
+  }
+  console.log(
+    `[turntableVinyl] Clearing turntable vinyl for pending promotion (${turntableVinylState.selection.songName})`,
+  );
   const previousPromotion = pendingPromotionSource;
   setVinylOnTurntable(false);
-  pendingPromotionSource = previousPromotion;
+  setPendingPromotionSource(
+    previousPromotion,
+    "restore after clearTurntableVinylPreservingPromotion",
+  );
   turntableController?.returnTonearmHome();
 };
 
@@ -2824,6 +3254,9 @@ const startTurntableVinylFlyaway = () => {
   if (!turntableVinylState) {
     return;
   }
+  console.log(
+    `[turntableVinyl] Starting flyaway for ${turntableVinylState.selection.songName}`,
+  );
   const { model, labelTextures, selection } = turntableVinylState;
 
   flyawayVinyls.push({
@@ -2846,7 +3279,7 @@ const startTurntableVinylFlyaway = () => {
   turntableVinylState = null;
   turntableStateManager.setOnTurntable(false);
   turntableStateManager.setTurntableVinylState(null);
-  pendingPromotionSource = null;
+  setPendingPromotionSource(null, "startTurntableVinylFlyaway");
   turntableController?.setVinylPresence(false);
   turntableController?.liftNeedle();
   yt.pause();
@@ -3363,7 +3796,14 @@ const endDrag = (event: PointerEvent) => {
       isReturningToFocusCard = false;
       hasClearedNub = false;
       // Only set pendingPromotionSource if dragging from focus (not if already on turntable)
-      pendingPromotionSource = dragSource === "turntable" ? null : dragSource;
+      setPendingPromotionSource(
+        dragSource === "turntable" ? null : dragSource,
+        "start vinyl return from drag",
+      );
+      // If there's already a dropping vinyl, dispose it (max 2 vinyls rule)
+      if (dragSource !== "turntable" && droppingVinylState) {
+        disposeDroppingVinyl();
+      }
       if (dragSource !== "turntable" && turntableVinylState) {
         clearTurntableVinylPreservingPromotion();
       }
@@ -3382,7 +3822,7 @@ const endDrag = (event: PointerEvent) => {
     if (!isReturningVinyl && !isReturningToFocusCard) {
       isReturningVinyl = false;
       isReturningToFocusCard = true;
-      pendingPromotionSource = null;
+      setPendingPromotionSource(null, "returning focus vinyl to card");
       // Switch anchor to focus card when starting return
       setVinylAnchorPosition(focusCardAnchorPosition, "focus");
     }
@@ -3896,7 +4336,7 @@ const ensureFocusVinylPreloaded = () => {
         return null;
       }
       preloadedFocusVinylModel = model;
-      model.visible = false;
+      setVinylModelVisibility(model, "focus-preload", false, "preloading");
       model.position.copy(preloadedFocusVinylAnchor);
       applyFocusVinylScale(model, cameraRig);
       heroGroup.add(model);
@@ -3918,9 +4358,12 @@ const cancelPendingFocusVinylReveal = () => {
 const hideFocusVinyl = () => {
   cancelPendingFocusVinylReveal();
   focusVinylManuallyHidden = true;
-  if (focusVinylState?.model) {
-    focusVinylState.model.visible = false;
-  }
+  setVinylModelVisibility(
+    focusVinylState?.model,
+    "focus",
+    false,
+    "hideFocusVinyl",
+  );
 };
 const scheduleFocusVinylReveal = (framesRemaining: number = 1) => {
   cancelPendingFocusVinylReveal();
@@ -4198,9 +4641,19 @@ const animate = (time: number) => {
       // Only run vinyl animation system when NOT returning to focus card
       const activeVinylOnTurntable = activeVinylSource === "turntable";
       const wasReturningVinyl = isReturningVinyl;
+
+      // Determine if we're animating a dropping vinyl (one that was transferred mid-animation)
+      const isAnimatingDroppingVinyl =
+        activeVinylSource === "dropping" && droppingVinylState;
+      if (isAnimatingDroppingVinyl) {
+        console.log(
+          `[animate] Animating dropping vinyl, vinylModel=${vinylModel ? "exists" : "null"}, isReturningVinyl=${isReturningVinyl}, hasClearedNub=${hasClearedNub}`,
+        );
+      }
+
       const vinylAnimationResult = updateVinylAnimation(vinylAnimationState, {
         vinylModel,
-        dragActive: vinylDragPointerId !== null,
+        dragActive: vinylDragPointerId !== null && !isAnimatingDroppingVinyl,
         isReturningVinyl,
         hasClearedNub,
         nubClearanceY,
@@ -4225,6 +4678,7 @@ const animate = (time: number) => {
       if (
         activeVinylSource === "focus" &&
         turntableVinylState &&
+        pendingPromotionSource === "focus" &&
         !wasReturningVinyl &&
         vinylAnimationResult.isReturningVinyl
       ) {
@@ -4235,16 +4689,72 @@ const animate = (time: number) => {
       vinylReturnBaseTwist = vinylAnimationResult.vinylReturnBaseTwist;
       vinylReturnTwist = vinylAnimationResult.vinylReturnTwist;
       vinylReturnTwistTarget = vinylAnimationResult.vinylReturnTwistTarget;
-      if (shouldSignalOnTurntable) {
-        setVinylOnTurntable(true);
-        shouldTrackFocusCard = false;
+
+      // Handle dropping vinyl landing on turntable
+      if (
+        isAnimatingDroppingVinyl &&
+        (shouldSignalOnTurntable || vinylAnimationResult.returnedToPlatter)
+      ) {
+        console.log(
+          `[animate] Dropping vinyl landed on turntable: ${droppingVinylState!.selection.songName}`,
+        );
+        // Dispose any existing turntable vinyl
+        if (turntableVinylState) {
+          disposeTurntableVinyl(
+            "dropping landed - replacing existing turntable vinyl",
+          );
+        }
+        // Promote dropping vinyl to turntable vinyl
+        turntableVinylState = {
+          model: droppingVinylState!.model,
+          selection: droppingVinylState!.selection,
+          labelTextures: droppingVinylState!.labelTextures,
+          labelVisuals: droppingVinylState!.labelVisuals,
+        };
+        turntableVinylDerivedColor = droppingVinylState!.derivedColor;
+        updateTurntableVinylColorFromDerived();
+        setVinylModelVisibility(
+          turntableVinylState.model,
+          "turntable",
+          true,
+          "dropping landed on turntable",
+        );
+        droppingVinylState = null;
+
+        // Complete the turntable setup
+        turntableStateManager.setOnTurntable(true);
+        turntableStateManager.setTurntableVinylState(turntableVinylState);
+        turntableController?.setVinylPresence(true);
+        turntableController?.returnTonearmHome();
+        pendingVinylSelection = turntableVinylState.selection;
+        void loadVideoForCurrentSelection();
+
+        // Reset animation state and switch to focus vinyl if available
+        isReturningVinyl = false;
+        hasClearedNub = false;
+        setPendingPromotionSource(null, "dropping vinyl landed on turntable");
+        shouldTrackFocusCard = focusVinylState !== null;
         setVinylAnchorPosition(turntableAnchorPosition, "turntable");
-      }
-      if (vinylAnimationResult.returnedToPlatter) {
-        setVinylOnTurntable(true);
-        shouldTrackFocusCard = false;
-        // Switch anchor back to turntable position
-        setVinylAnchorPosition(turntableAnchorPosition, "turntable");
+
+        // Switch vinylModel to focus vinyl if it exists, otherwise to turntable
+        if (focusVinylState) {
+          setActiveVinylSource("focus");
+        } else {
+          setActiveVinylSource("turntable");
+        }
+      } else if (!isAnimatingDroppingVinyl) {
+        // Normal vinyl landing logic (not a dropping vinyl)
+        if (shouldSignalOnTurntable) {
+          setVinylOnTurntable(true);
+          shouldTrackFocusCard = false;
+          setVinylAnchorPosition(turntableAnchorPosition, "turntable");
+        }
+        if (vinylAnimationResult.returnedToPlatter) {
+          setVinylOnTurntable(true);
+          shouldTrackFocusCard = false;
+          // Switch anchor back to turntable position
+          setVinylAnchorPosition(turntableAnchorPosition, "turntable");
+        }
       }
     }
 
@@ -4282,6 +4792,23 @@ const animate = (time: number) => {
     }
 
     vinylModel.scale.setScalar(finalScale);
+  }
+
+  // When a dropping vinyl is being animated, also update the focus vinyl position
+  // The focus vinyl stays at the focus card position independently
+  if (activeVinylSource === "dropping" && focusVinylState?.model) {
+    // Position focus vinyl at focus card anchor
+    focusVinylState.model.position.copy(focusCardAnchorPosition);
+    // Apply hover offset
+    if (focusVinylHoverOffset !== 0) {
+      focusVinylState.model.position.x += focusVinylHoverOffset;
+    }
+    // Apply focus vinyl scale
+    applyFocusVinylScale(focusVinylState.model, cameraRig);
+    // Billboard effect - face the camera
+    if (vinylCameraTrackingEnabled) {
+      focusVinylState.model.quaternion.copy(camera.quaternion);
+    }
   }
 
   // Controller updates tonearm + platter/pulley

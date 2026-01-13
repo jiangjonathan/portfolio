@@ -46,6 +46,10 @@ export interface DOMElements {
   portfolioResumeButton: HTMLButtonElement;
   resetTutorialButton: HTMLButtonElement;
   freeLookButton: HTMLButtonElement;
+  settingsButton: HTMLButtonElement;
+  settingsPanel: HTMLDivElement;
+  coloredVinylsCheckbox: HTMLInputElement;
+  sfxCheckbox: HTMLInputElement;
   contactButton: HTMLButtonElement;
   cameraDebugPanel: HTMLDivElement;
   portfolioPapersContainer: HTMLDivElement;
@@ -551,6 +555,91 @@ export function setupDOM(): DOMElements {
   freeLookButton.textContent = "free-look";
   globalControls.appendChild(freeLookButton);
 
+  const settingsWrapper = document.createElement("div");
+  settingsWrapper.style.position = "relative";
+  settingsWrapper.style.display = "inline-flex";
+  settingsWrapper.style.alignItems = "flex-start";
+  globalControls.appendChild(settingsWrapper);
+
+  const settingsButton = document.createElement("button");
+  settingsButton.id = "turntable-settings-button";
+  settingsButton.textContent = "settings";
+  settingsWrapper.appendChild(settingsButton);
+
+  const settingsPanel = document.createElement("div");
+  settingsPanel.id = "turntable-settings-panel";
+  Object.assign(settingsPanel.style, {
+    position: "absolute",
+    bottom: "calc(100% + 8px)",
+    left: "0",
+    background: "#ffffff",
+    color: "#000000",
+    border: "1px solid #dddddd",
+    padding: "0.5rem 0.75rem",
+    display: "none",
+    flexDirection: "column",
+    gap: "0.4rem",
+    minWidth: "160px",
+    boxShadow: "0 2px 8px rgba(0, 0, 0, 0.08)",
+    zIndex: String(HIDE_BUTTON_Z_INDEX + 5),
+  });
+  settingsWrapper.appendChild(settingsPanel);
+
+  const createSettingsOption = (
+    id: string,
+    label: string,
+  ): { wrapper: HTMLLabelElement; checkbox: HTMLInputElement } => {
+    const option = document.createElement("label");
+    option.htmlFor = id;
+    option.style.display = "flex";
+    option.style.alignItems = "center";
+    option.style.gap = "0.4rem";
+    option.style.cursor = "pointer";
+    option.style.fontSize = "0.85rem";
+    option.style.lineHeight = "1.4";
+    option.style.width = "100%";
+    option.style.whiteSpace = "nowrap";
+    option.style.justifyContent = "flex-start";
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.id = id;
+    checkbox.checked = true;
+    checkbox.style.position = "absolute";
+    checkbox.style.opacity = "0";
+    checkbox.style.pointerEvents = "none";
+    const indicator = document.createElement("span");
+    indicator.style.fontFamily = "monospace";
+    indicator.style.minWidth = "2ch";
+    const updateIndicator = () => {
+      indicator.textContent = checkbox.checked ? "[✓]" : "[ ]";
+    };
+    updateIndicator();
+
+    const span = document.createElement("span");
+    span.textContent = label;
+
+    option.appendChild(indicator);
+    option.appendChild(span);
+    option.appendChild(checkbox);
+    option.addEventListener("click", () => {
+      checkbox.checked = !checkbox.checked;
+      updateIndicator();
+      checkbox.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    checkbox.addEventListener("change", updateIndicator);
+    return { wrapper: option, checkbox };
+  };
+
+  const coloredVinylsOption = createSettingsOption(
+    "colored-vinyls-toggle",
+    "coloured vinyls",
+  );
+  settingsPanel.appendChild(coloredVinylsOption.wrapper);
+
+  const sfxOption = createSettingsOption("sfx-toggle", "sfx");
+  settingsPanel.appendChild(sfxOption.wrapper);
+
   // Create camera debug panel (debug - hidden)
   const cameraDebugPanel = document.createElement("div");
   cameraDebugPanel.id = "camera-debug-panel";
@@ -704,6 +793,9 @@ export function setupDOM(): DOMElements {
   canvas.id = "vinyl-viewer";
   root.appendChild(canvas);
 
+  const coloredVinylsCheckbox = coloredVinylsOption.checkbox;
+  const sfxCheckbox = sfxOption.checkbox;
+
   return {
     root,
     canvas,
@@ -722,6 +814,10 @@ export function setupDOM(): DOMElements {
     portfolioResumeButton,
     resetTutorialButton,
     freeLookButton,
+    settingsButton,
+    settingsPanel,
+    coloredVinylsCheckbox,
+    sfxCheckbox,
     contactButton,
     cameraDebugPanel,
     portfolioPapersContainer,

@@ -1,5 +1,6 @@
 import {
   BufferAttribute,
+  Color,
   MathUtils,
   Mesh,
   MeshStandardMaterial,
@@ -12,6 +13,11 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 const vinylLoader = new GLTFLoader();
 const VINYL_RENDER_ORDER = 400;
+export const DEFAULT_VINYL_COLOR = "#0f0f0f";
+const UNCOLORED_GROOVE_COLOR = "#1a1a1a";
+const UNCOLORED_OUTER_COLOR = "#2e2e2e";
+const defaultVinylColor = new Color(DEFAULT_VINYL_COLOR);
+const modelVinylMaterials = new WeakMap<Object3D, Set<MeshStandardMaterial>>();
 
 export function loadVinylModel(normalTexture: Texture): Promise<Object3D> {
   return new Promise((resolve, reject) => {
@@ -56,10 +62,105 @@ export function applyGrooveMaterial(model: Object3D, texture: Texture) {
         return;
       }
 
-      updateGrooveMaterial(material, texture);
+      updateGrooveMaterial(material, texture, model);
     });
     applyVinylRenderBias(mesh);
   });
+}
+
+function trackVinylMaterial(
+  material: MeshStandardMaterial,
+  root: Object3D,
+): void {
+  let materials = modelVinylMaterials.get(root);
+  if (!materials) {
+    materials = new Set();
+    modelVinylMaterials.set(root, materials);
+  }
+  if (materials.has(material)) {
+    return;
+  }
+  materials.add(material);
+  material.addEventListener?.("dispose", () => {
+    const tracked = modelVinylMaterials.get(root);
+    tracked?.delete(material);
+    if (tracked && tracked.size === 0) {
+      modelVinylMaterials.delete(root);
+    }
+  });
+}
+
+function applyVinylColorToMaterial(
+  material: MeshStandardMaterial,
+  color: Color,
+): void {
+  material.color?.copy(color);
+  material.needsUpdate = true;
+}
+
+export function applyVinylColor(
+  model: Object3D | null,
+  colorHex?: string | null,
+): void {
+  if (!model) {
+    return;
+  }
+  const materials = modelVinylMaterials.get(model);
+  if (!materials || materials.size === 0) {
+    return;
+  }
+  materials.forEach((mat) => {
+    const style = resolveVinylStyleForMaterial(mat, colorHex);
+    if (!style) {
+      return;
+    }
+    applyVinylColorToMaterial(mat, style.color);
+    if (style.roughness !== undefined) {
+      mat.roughness = style.roughness;
+    }
+    if (style.metalness !== undefined) {
+      mat.metalness = style.metalness;
+    }
+  });
+}
+
+function resolveVinylStyleForMaterial(
+  material: MeshStandardMaterial,
+  colorHex?: string | null,
+): { color: Color; roughness?: number; metalness?: number } | null {
+  const baseRoughness = 0.38;
+  const baseMetalness = 0.45;
+  const normalized = material.name.trim().toLowerCase();
+  const color = new Color();
+
+  if (colorHex) {
+    try {
+      color.set(colorHex);
+    } catch {
+      color.copy(defaultVinylColor);
+    }
+    return {
+      color,
+      roughness: baseRoughness,
+      metalness: baseMetalness,
+    };
+  }
+
+  if (normalized === "grooves") {
+    color.set(UNCOLORED_GROOVE_COLOR);
+    return {
+      color,
+      roughness: baseRoughness,
+      metalness: baseMetalness,
+    };
+  }
+
+  color.set(UNCOLORED_OUTER_COLOR);
+  return {
+    color,
+    roughness: 0.8,
+    metalness: 0.12,
+  };
 }
 
 function applyVinylRenderBias(mesh: Mesh) {
@@ -112,11 +213,20 @@ function ensureDiscUVs(mesh: Mesh) {
   geometry.attributes.uv.needsUpdate = true;
 }
 
-function updateGrooveMaterial(material: Material, texture: Texture) {
-  const normalized = material.name.toLowerCase();
-  if (normalized !== "grooves" && normalized !== "no grooves") {
+function updateGrooveMaterial(
+  material: Material,
+  texture: Texture,
+  root: Object3D,
+) {
+  const normalized = material.name.trim().toLowerCase();
+  const isGrooveLayer = normalized === "grooves";
+  const isOuterLayer =
+    normalized === "no grooves" || normalized === "vinylouterblack";
+  if (!isGrooveLayer && !isOuterLayer) {
     return;
   }
+
+  material.name = isOuterLayer ? "VinylOuterblack" : "Grooves";
 
   const physicalMaterial = material as MeshStandardMaterial & {
     normalScale?: Vector2;
@@ -124,7 +234,8 @@ function updateGrooveMaterial(material: Material, texture: Texture) {
     clearcoatRoughness?: number;
   };
 
-  physicalMaterial.color?.set("#050505");
+  trackVinylMaterial(physicalMaterial, root);
+  applyVinylColorToMaterial(physicalMaterial, defaultVinylColor);
   physicalMaterial.map = null;
   physicalMaterial.normalMap = texture;
 

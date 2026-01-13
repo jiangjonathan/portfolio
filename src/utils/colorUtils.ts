@@ -147,3 +147,118 @@ export function getContrastTextColor(
   // Using WCAG 2.0 threshold for better contrast
   return luminance > 0.179 ? "#000000" : "#ffffff";
 }
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function rgbToHslNormalized(
+  r: number,
+  g: number,
+  b: number,
+): { h: number; s: number; l: number } {
+  const rNorm = r / 255;
+  const gNorm = g / 255;
+  const bNorm = b / 255;
+  const max = Math.max(rNorm, gNorm, bNorm);
+  const min = Math.min(rNorm, gNorm, bNorm);
+  let h = 0;
+  let s = 0;
+  const l = (max + min) / 2;
+
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case rNorm:
+        h = (gNorm - bNorm) / d + (gNorm < bNorm ? 6 : 0);
+        break;
+      case gNorm:
+        h = (bNorm - rNorm) / d + 2;
+        break;
+      default:
+        h = (rNorm - gNorm) / d + 4;
+        break;
+    }
+    h /= 6;
+  }
+
+  return { h, s, l };
+}
+
+function hueToRgb(p: number, q: number, t: number): number {
+  if (t < 0) t += 1;
+  if (t > 1) t -= 1;
+  if (t < 1 / 6) return p + (q - p) * 6 * t;
+  if (t < 1 / 2) return q;
+  if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+  return p;
+}
+
+function hslToRgbNormalized(
+  h: number,
+  s: number,
+  l: number,
+): { r: number; g: number; b: number } {
+  if (s === 0) {
+    return { r: l, g: l, b: l };
+  }
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  return {
+    r: hueToRgb(p, q, h + 1 / 3),
+    g: hueToRgb(p, q, h),
+    b: hueToRgb(p, q, h - 1 / 3),
+  };
+}
+
+export function deriveVinylColorFromBackground(
+  backgroundColor: string,
+  fallbackColor: string = "#050505",
+): string {
+  const sourceRgb = hexToRgb(backgroundColor);
+  const fallbackRgb = hexToRgb(fallbackColor) ?? { r: 30, g: 64, b: 255 };
+  const baseRgb = sourceRgb ?? fallbackRgb;
+  const baseHsl = rgbToHslNormalized(baseRgb.r, baseRgb.g, baseRgb.b);
+  const fallbackHsl = rgbToHslNormalized(
+    fallbackRgb.r,
+    fallbackRgb.g,
+    fallbackRgb.b,
+  );
+
+  let hue = baseHsl.h;
+  let saturation = baseHsl.s;
+  let lightness = baseHsl.l;
+
+  if (!sourceRgb || baseHsl.s < 0.2) {
+    hue = (fallbackHsl.h * 0.75 + baseHsl.h * 0.25) % 1;
+    saturation = clamp(0.5 + fallbackHsl.s * 0.3, 0.45, 0.85);
+  } else {
+    const hueOffset =
+      getColorLuminance(backgroundColor || fallbackColor) > 0.45
+        ? -0.035
+        : 0.045;
+    hue = (hue + hueOffset + 1) % 1;
+    saturation = clamp(saturation * 1.2 + 0.02, 0.4, 0.86);
+  }
+
+  const luminance = getColorLuminance(
+    sourceRgb ? backgroundColor : fallbackColor,
+  );
+  if (luminance > 0.7) {
+    lightness = clamp(lightness - 0.35, 0.2, 0.42);
+  } else if (luminance > 0.5) {
+    lightness = clamp(lightness - 0.25, 0.22, 0.45);
+  } else if (luminance < 0.2) {
+    lightness = clamp(lightness + 0.12, 0.22, 0.5);
+  } else {
+    lightness = clamp(lightness - 0.12, 0.22, 0.45);
+  }
+
+  const adjusted = hslToRgbNormalized(hue, saturation, lightness);
+  return rgbToHex(
+    Math.round(adjusted.r * 255),
+    Math.round(adjusted.g * 255),
+    Math.round(adjusted.b * 255),
+  );
+}
