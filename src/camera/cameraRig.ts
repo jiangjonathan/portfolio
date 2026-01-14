@@ -202,9 +202,6 @@ export class CameraRig {
     this.savedAzimuth = this.orbitAzimuth;
     this.savedPolar = this.orbitPolar;
     this.savedTarget.copy(this.target);
-    console.log(
-      `[CameraRig] Saved state: azimuth=${this.savedAzimuth}, polar=${this.savedPolar}, target=(${this.savedTarget.x.toFixed(2)}, ${this.savedTarget.y.toFixed(2)}, ${this.savedTarget.z.toFixed(2)})`,
-    );
   }
 
   /**
@@ -215,10 +212,6 @@ export class CameraRig {
       console.warn("[CameraRig] No saved rotation state to restore");
       return;
     }
-
-    console.log(
-      `[CameraRig] Restoring to saved state: azimuth=${this.savedAzimuth}, polar=${this.savedPolar}, target=(${this.savedTarget.x.toFixed(2)}, ${this.savedTarget.y.toFixed(2)}, ${this.savedTarget.z.toFixed(2)})`,
-    );
 
     // Start animation to the saved state (both position and rotation)
     this.isAnimating = true;

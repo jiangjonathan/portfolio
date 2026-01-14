@@ -136,14 +136,38 @@ function resolveVinylStyleForMaterial(
   if (colorHex) {
     try {
       color.set(colorHex);
+
+      // If too dark, use uncolored vinyl instead
+      const hsl = { h: 0, s: 0, l: 0 };
+      color.getHSL(hsl);
+      const DARKNESS_THRESHOLD = 0.03;
+
+      if (hsl.l < DARKNESS_THRESHOLD) {
+        // Too dark - use uncolored vinyl colors
+        if (normalized === "grooves") {
+          color.set(UNCOLORED_GROOVE_COLOR);
+        } else {
+          color.set(UNCOLORED_OUTER_COLOR);
+        }
+      }
     } catch {
       color.copy(defaultVinylColor);
     }
-    return {
-      color,
-      roughness: baseRoughness,
-      metalness: baseMetalness,
-    };
+
+    // Return different roughness/metalness based on material type
+    if (normalized === "grooves") {
+      return {
+        color,
+        roughness: baseRoughness,
+        metalness: baseMetalness,
+      };
+    } else {
+      return {
+        color,
+        roughness: 0.8,
+        metalness: 0.12,
+      };
+    }
   }
 
   if (normalized === "grooves") {

@@ -24,9 +24,9 @@ function calculateVibrance(r: number, g: number, b: number): number {
 }
 
 /**
- * Extracts the most vibrant color from an image (highest saturation)
+ * Extracts the most vibrant color from an image (for labels)
  */
-export function extractDominantColor(imageUrl: string): Promise<string> {
+export function extractVibrantColor(imageUrl: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.crossOrigin = "anonymous";
@@ -77,9 +77,126 @@ export function extractDominantColor(imageUrl: string): Promise<string> {
 
     img.onerror = () => {
       console.warn(
+        `[extractVibrantColor] CORS error loading ${imageUrl}, using fallback color`,
+      );
+      resolve("#b0b0b0");
+    };
+
+    img.src = imageUrl;
+  });
+}
+
+/**
+ * Extracts the dominant color from an image using area-weighted scoring (for vinyl body color)
+ */
+export function extractDominantColor(imageUrl: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+
+    img.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = 100;
+        canvas.height = 100;
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        if (!ctx) {
+          reject(new Error("Could not get canvas context"));
+          return;
+        }
+
+        ctx.drawImage(img, 0, 0, 100, 100);
+        const imageData = ctx.getImageData(0, 0, 100, 100);
+        const data = imageData.data;
+
+        // Build color histogram
+        const colorMap = new Map<
+          string,
+          { count: number; r: number; g: number; b: number }
+        >();
+
+        for (let i = 0; i < data.length; i += 4) {
+          const r = data[i];
+          const g = data[i + 1];
+          const b = data[i + 2];
+          const a = data[i + 3];
+
+          if (a < 128) continue;
+
+          // Quantize to reduce color space
+          const bucketR = Math.floor(r / 32) * 32;
+          const bucketG = Math.floor(g / 32) * 32;
+          const bucketB = Math.floor(b / 32) * 32;
+          const key = `${bucketR},${bucketG},${bucketB}`;
+
+          const existing = colorMap.get(key);
+          if (existing) {
+            existing.count++;
+          } else {
+            colorMap.set(key, { count: 1, r: bucketR, g: bucketG, b: bucketB });
+          }
+        }
+
+        // Find color with highest area coverage
+        let bestColor = "#e0e0e0";
+        let bestScore = -1;
+        let fallbackMostCommon = "#e0e0e0";
+        let fallbackMaxCount = 0;
+
+        for (const [, colorData] of colorMap) {
+          const { r, g, b, count } = colorData;
+          const { s, l } = rgbToHslNormalized(r, g, b);
+          const brightness = (r + g + b) / 3;
+          const hex = rgbToHex(r, g, b);
+
+          // Track pure most-common as a safety fallback
+          if (count > fallbackMaxCount) {
+            fallbackMaxCount = count;
+            fallbackMostCommon = hex;
+          }
+
+          // Drop near-black/near-white low-saturation buckets entirely so text
+          // and borders don't drive the vinyl color.
+          if ((l < 0.12 && s < 0.25) || (l > 0.92 && s < 0.1)) {
+            continue;
+          }
+
+          // Penalize very dark/very light and very gray buckets so black text
+          // or white backgrounds don't dominate the vinyl color.
+          const darknessPenalty = l < 0.08 ? 0.15 : l < 0.18 ? 0.4 : 1;
+          const lightnessPenalty = l > 0.9 ? 0.2 : l > 0.82 ? 0.5 : 1;
+          const grayscalePenalty = s < 0.08 ? 0.2 : s < 0.15 ? 0.55 : 1;
+          const balancedLightnessBoost =
+            0.6 + Math.max(0, 0.6 - Math.abs(l - 0.5));
+          const saturationBoost = 0.6 + s * 0.8;
+          const brightnessGuard =
+            brightness < 18 || brightness > 238 ? 0.35 : 1;
+
+          const score =
+            count *
+            saturationBoost *
+            balancedLightnessBoost *
+            darknessPenalty *
+            lightnessPenalty *
+            grayscalePenalty *
+            brightnessGuard;
+
+          if (score > bestScore) {
+            bestScore = score;
+            bestColor = hex;
+          }
+        }
+
+        resolve(bestScore > 0 ? bestColor : fallbackMostCommon);
+      } catch (error) {
+        reject(error);
+      }
+    };
+
+    img.onerror = () => {
+      console.warn(
         `[extractDominantColor] CORS error loading ${imageUrl}, using fallback color`,
       );
-      // Return a neutral fallback color instead of rejecting
       resolve("#b0b0b0");
     };
 
@@ -152,6 +269,9 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+const GRAYSCALE_SATURATION_THRESHOLD = 0.12;
+const DARK_LUMINANCE_THRESHOLD = 0.08;
+
 function rgbToHslNormalized(
   r: number,
   g: number,
@@ -184,6 +304,23 @@ function rgbToHslNormalized(
   }
 
   return { h, s, l };
+}
+
+export function isGrayscaleColor(
+  hexColor: string,
+  saturationThreshold: number = GRAYSCALE_SATURATION_THRESHOLD,
+): boolean {
+  const rgb = hexToRgb(hexColor);
+  if (!rgb) return false;
+  const { s } = rgbToHslNormalized(rgb.r, rgb.g, rgb.b);
+  return s < saturationThreshold;
+}
+
+export function isDarkColor(
+  hexColor: string,
+  luminanceThreshold: number = DARK_LUMINANCE_THRESHOLD,
+): boolean {
+  return getColorLuminance(hexColor) < luminanceThreshold;
 }
 
 function hueToRgb(p: number, q: number, t: number): number {
@@ -261,4 +398,21 @@ export function deriveVinylColorFromBackground(
     Math.round(adjusted.g * 255),
     Math.round(adjusted.b * 255),
   );
+}
+
+export function deriveVinylColorFromAlbumColor(
+  albumColor: string,
+  fallbackColor: string = "#050505",
+): string | null {
+  // If the album art is effectively grayscale, don't color the vinyl
+  if (!albumColor || !hexToRgb(albumColor) || isGrayscaleColor(albumColor)) {
+    return null;
+  }
+
+  // Use the album tone directly so the vinyl matches the cover.
+  if (isDarkColor(albumColor)) {
+    return null;
+  }
+
+  return albumColor;
 }

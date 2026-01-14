@@ -208,7 +208,11 @@ export class PortfolioPapersManager {
     const animate = (currentTime: number) => {
       const elapsed = currentTime - startTime;
       const progress = Math.min(elapsed / duration, 1);
-      const easeProgress = 1 - Math.pow(1 - progress, 3);
+      // Smoother ease-in-out-cubic for less robotic movement
+      const easeProgress =
+        progress < 0.5
+          ? 4 * progress * progress * progress
+          : 1 - Math.pow(-2 * progress + 2, 3) / 2;
       mesh.rotation.z =
         startRotation + (targetRotation - startRotation) * easeProgress;
 
@@ -1670,7 +1674,7 @@ export class PortfolioPapersManager {
       this.isAnimating = true;
     }
 
-    const animationDuration = durationMs ?? 500;
+    const animationDuration = durationMs ?? 650;
     try {
       const nextIndex = currentIndex + 1;
       const nextPaper = papersList[nextIndex];
@@ -1950,7 +1954,7 @@ export class PortfolioPapersManager {
       this.isAnimating = true;
     }
 
-    const animationDuration = durationMs ?? 500;
+    const animationDuration = durationMs ?? 650;
     try {
       const prevIndex = currentIndex - 1;
       const prevPaper = papersList[prevIndex];

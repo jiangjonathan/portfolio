@@ -3,7 +3,11 @@ import type { Object3D } from "three";
 import type { CameraRig } from "../camera/cameraRig";
 import type { LabelTextures, LabelVisualOptions } from "./labels";
 import { createLabelTextures } from "./labels";
-import { extractDominantColor } from "../utils/colorUtils";
+import {
+  extractVibrantColor,
+  extractDominantColor,
+  deriveVinylColorFromAlbumColor,
+} from "../utils/colorUtils";
 import { FALLBACK_BACKGROUND_COLOR } from "../utils/config";
 import type { VinylSelectionDetail } from "./vinylInteractions";
 import { getOrCacheAlbumCover } from "../utils/albumCoverCache";
@@ -116,7 +120,7 @@ export async function applySelectionVisualsToVinyl(
   applyMetadata: (metadata: any, overwrite: boolean) => void,
   rebuildTextures: () => void,
   getUpdateId: () => number,
-): Promise<void> {
+): Promise<string | null> {
   applyMetadata(
     {
       artist: selection.artistName,
@@ -128,23 +132,29 @@ export async function applySelectionVisualsToVinyl(
   rebuildTextures();
 
   const updateId = getUpdateId();
+  let derivedVinylColor: string | null = null;
   try {
     const coverUrl = await getSelectionCoverUrl(selection);
-    const dominantColor = await extractDominantColor(coverUrl);
+    // Use vibrant color for label, derive vinyl color from album dominant tone
+    const labelColor = await extractVibrantColor(coverUrl);
+    const vinylColor = await extractDominantColor(coverUrl);
     if (updateId !== getUpdateId()) {
-      return;
+      return null;
     }
-    labelVisuals.background = dominantColor;
+    labelVisuals.background = labelColor;
+    derivedVinylColor = deriveVinylColorFromAlbumColor(vinylColor);
   } catch (error) {
     if (updateId !== getUpdateId()) {
-      return;
+      return null;
     }
     console.warn("Failed to extract dominant color, using fallback", error);
     labelVisuals.background = FALLBACK_BACKGROUND_COLOR;
+    derivedVinylColor = null;
   }
   if (updateId === getUpdateId()) {
     rebuildTextures();
   }
+  return derivedVinylColor;
 }
 
 export function syncAnimationStateToModel(

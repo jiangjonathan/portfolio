@@ -18,11 +18,7 @@ import {
 } from "three";
 import type { Intersection } from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import {
-  loadVinylModel,
-  applyVinylColor,
-  DEFAULT_VINYL_COLOR,
-} from "./vinyl/vinyl";
+import { loadVinylModel, applyVinylColor } from "./vinyl/vinyl";
 import {
   applyLabelTextures,
   createLabelTextures,
@@ -63,8 +59,9 @@ import {
 import { VinylLibraryManager } from "./vinyl/vinylLibraryManager";
 import { VinylLibraryViewer } from "./vinyl/vinylLibraryViewer";
 import {
+  extractVibrantColor,
   extractDominantColor,
-  deriveVinylColorFromBackground,
+  deriveVinylColorFromAlbumColor,
 } from "./utils/colorUtils";
 import { initializeCache } from "./utils/albumCoverCache";
 import type { VideoMetadata } from "./youtube/youtube";
@@ -1842,13 +1839,15 @@ let labelOptions: LabelApplicationOptions = {
   offsetY: 0,
 };
 
-const DEFAULT_VINYL_BODY_COLOR = DEFAULT_VINYL_COLOR;
-const getInitialDerivedColor = () =>
-  labelVisuals.background || DEFAULT_VINYL_BODY_COLOR;
-let focusVinylDerivedColor = getInitialDerivedColor();
-let turntableVinylDerivedColor = focusVinylDerivedColor;
-let focusVinylBodyColor: string | null = focusVinylDerivedColor;
-let turntableVinylBodyColor: string | null = turntableVinylDerivedColor;
+const getInitialDerivedColor = (): string | null => null;
+let focusVinylDerivedColor: string | null = getInitialDerivedColor();
+let turntableVinylDerivedColor: string | null = focusVinylDerivedColor;
+let focusVinylBodyColor: string | null = getEffectiveVinylColor(
+  focusVinylDerivedColor,
+);
+let turntableVinylBodyColor: string | null = getEffectiveVinylColor(
+  turntableVinylDerivedColor,
+);
 
 // const RAD2DEG = 180 / Math.PI;
 
@@ -1940,7 +1939,7 @@ type DroppingVinylState = {
   selection: VinylSelectionDetail;
   labelTextures: LabelTextures;
   labelVisuals: LabelVisualOptions;
-  derivedColor: string;
+  derivedColor: string | null;
 };
 let droppingVinylState: DroppingVinylState | null = null;
 let focusVinylLoadToken = 0;
@@ -1995,7 +1994,10 @@ function applyTurntableVinylColorToModel(): void {
   }
 }
 
-function getEffectiveVinylColor(derivedColor: string): string | null {
+function getEffectiveVinylColor(derivedColor: string | null): string | null {
+  if (!derivedColor) {
+    return null;
+  }
   return coloredVinylsEnabled ? derivedColor : null;
 }
 
@@ -2129,7 +2131,7 @@ const disposeTurntableVinyl = (reason: string = "unknown") => {
   turntableVinylState.labelTextures.sideA.dispose();
   turntableVinylState.labelTextures.sideB.dispose();
   turntableVinylState = null;
-  turntableVinylDerivedColor = DEFAULT_VINYL_BODY_COLOR;
+  turntableVinylDerivedColor = null;
   turntableVinylBodyColor = getEffectiveVinylColor(turntableVinylDerivedColor);
   if (activeVinylSource === "turntable") {
     setActiveVinylSource(focusVinylState ? "focus" : null);
@@ -2389,9 +2391,7 @@ const applySelectionVisualsToVinyl = async (
   selection: VinylSelectionDetail,
 ) => {
   const refreshFocusVinylColor = () => {
-    focusVinylDerivedColor = deriveVinylColorFromBackground(
-      labelVisuals.background,
-    );
+    focusVinylDerivedColor = null;
     updateFocusVinylColorFromDerived();
   };
 
@@ -2408,12 +2408,18 @@ const applySelectionVisualsToVinyl = async (
   const updateId = ++selectionVisualUpdateId;
   try {
     const coverUrl = await getSelectionCoverUrl(selection);
-    const dominantColor = await extractDominantColor(coverUrl);
+    // Use vibrant color for label background
+    const labelColor = await extractVibrantColor(coverUrl);
+    // Use dominant (area-based) color for vinyl body
+    const vinylColor = await extractDominantColor(coverUrl);
+
     if (updateId !== selectionVisualUpdateId) {
       return;
     }
-    labelVisuals.background = dominantColor;
-    refreshFocusVinylColor();
+    labelVisuals.background = labelColor;
+    // Derive vinyl color from the chosen color
+    focusVinylDerivedColor = deriveVinylColorFromAlbumColor(vinylColor);
+    updateFocusVinylColorFromDerived();
   } catch (error) {
     if (updateId !== selectionVisualUpdateId) {
       return;

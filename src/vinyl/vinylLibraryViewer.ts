@@ -1461,16 +1461,6 @@ export class VinylLibraryViewer {
     const aspectRatio =
       entry.aspectRatio !== undefined ? String(entry.aspectRatio) : "";
 
-    console.log(`[renderFocusCard] Entry ${entry.id}:`, {
-      duration: entry.duration,
-      formatted: entry.duration
-        ? this.formatDuration(entry.duration)
-        : "NO DURATION",
-      isOwnerEntry: entry.isOwnerEntry,
-      youtubeId: entry.youtubeId,
-    });
-    console.log(`[renderFocusCard] Full entry object:`, entry);
-
     const containers = [focusCoverContainer, focusInfoContainer];
     // Set initial opacity to 0 without transition
     containers.forEach((container) => {
@@ -1897,10 +1887,8 @@ export class VinylLibraryViewer {
     });
 
     // Add apply button handler
-    console.log("[Apply Button] Found apply button:", applyBtn);
     if (applyBtn) {
       applyBtn.addEventListener("click", async () => {
-        console.log("[Apply Button] Button clicked!");
         const updatedEntry = { ...entry };
         let hasChanges = false;
 
