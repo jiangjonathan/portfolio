@@ -402,7 +402,6 @@ export function deriveVinylColorFromBackground(
 
 export function deriveVinylColorFromAlbumColor(
   albumColor: string,
-  fallbackColor: string = "#050505",
 ): string | null {
   // If the album art is effectively grayscale, don't color the vinyl
   if (!albumColor || !hexToRgb(albumColor) || isGrayscaleColor(albumColor)) {

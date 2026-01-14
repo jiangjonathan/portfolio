@@ -16,7 +16,6 @@ import {
   Vector2,
   Vector3,
 } from "three";
-import type { Intersection } from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { loadVinylModel, applyVinylColor } from "./vinyl/vinyl";
 import {
@@ -63,8 +62,8 @@ import {
   extractDominantColor,
   deriveVinylColorFromAlbumColor,
 } from "./utils/colorUtils";
+import { createVinylSelectionController } from "./vinyl/vinylSelectionController";
 import { initializeCache } from "./utils/albumCoverCache";
-import type { VideoMetadata } from "./youtube/youtube";
 import { TutorialManager } from "./turntable/tutorialManager";
 
 // New modular imports
@@ -95,7 +94,6 @@ import {
 import {
   createBusinessCardMesh,
   createPlaceholderMesh,
-  prioritizePortfolioCoverRendering,
   BUSINESS_CARD_PAGE,
   BUSINESS_CARD_FOCUS_TARGET,
   BUSINESS_CARD_CAMERA_YAW,
@@ -122,6 +120,8 @@ import {
   getSelectionCoverUrl,
   applyLabelTextureQuality,
 } from "./vinyl/vinylHelpers";
+import { createFocusCardController } from "./vinyl/focusCardController";
+import { createTurntableVinylController } from "./vinyl/turntableVinylController";
 import {
   VINYL_DRAG_THRESHOLD,
   FOCUS_VINYL_CLICK_ANIMATION_SPEED,
@@ -131,14 +131,21 @@ import {
   type TurntableVinylState,
 } from "./vinyl/vinylInteractions";
 import { TurntableStateManager } from "./turntable/turntableState";
+import { createFreeLookTutorialController } from "./turntable/freeLookTutorial";
+import {
+  createTurntableUiController,
+  type TurntablePosition,
+} from "./turntable/turntableUi";
+import { createTurntablePointerUtils } from "./turntable/turntablePointerUtils";
 import {
   setupDOM,
   GLOBAL_CONTROLS_DEFAULT,
   GLOBAL_CONTROLS_TURNTABLE,
 } from "./ui/domSetup";
-import { PortfolioPapersManager } from "./portfolio/portfolioPapers";
-import type { PaperConfig } from "./portfolio/portfolioPapers";
-import { PortfolioNavigationController } from "./portfolio/portfolioNavigation";
+import { registerInputHandlers } from "./ui/inputHandlers";
+import type { PortfolioPapersManager } from "./portfolio/portfolioPapers";
+import { createPortfolioFeature } from "./portfolio/portfolioFeature";
+import { createPortfolioInteractions } from "./portfolio/portfolioInteractions";
 
 declare global {
   interface Window {
@@ -267,7 +274,7 @@ const triggerVinylUIFadeIn = () => {
         "--vinyl-viewer-translate",
         "translateY(0)",
       );
-      setTurntableUIVisible(activePage === "turntable");
+      turntableUiController?.setTurntableUIVisible(activePage === "turntable");
     });
   });
 };
@@ -288,173 +295,16 @@ const focusCardContainers = [focusCardCoverContainer, focusCardInfoContainer];
 const vinylPositionOffset = new Vector3(0, 0, 0);
 const vinylDisplayPosition = new Vector3();
 let vinylScaleFactor = 1.0;
-const isMarkdownPaperConfig = (paper: { url: string }): boolean => {
-  return paper.url?.toLowerCase().endsWith(".md");
-};
-const isResumePaperConfig = (paper: { id: string }): boolean =>
-  paper.id === "resume-pdf";
 const FREE_LOOK_MIN_ZOOM = 1.1;
-type FreeLookTutorialAction = "rotate" | "pan" | "zoom";
-interface FreeLookTutorialState {
-  completed: FreeLookTutorialAction[];
-  dismissed: boolean;
-}
-const FREE_LOOK_TUTORIAL_STORAGE_KEY = "free-look-tutorial-state";
-const FREE_LOOK_TUTORIAL_ACTIONS: Array<{
-  action: FreeLookTutorialAction;
-  text: string;
-}> = [
-  {
-    action: "rotate",
-    text: "- right click + drag to rotate the camera",
-  },
-  {
-    action: "pan",
-    text: "- middle mouse click + drag to pan the camera",
-  },
-  {
-    action: "zoom",
-    text: "- scroll to zoom the camera",
-  },
-];
-let freeLookTutorialState: FreeLookTutorialState = {
-  completed: [],
-  dismissed: false,
-};
-const loadFreeLookTutorialState = (): FreeLookTutorialState => {
-  try {
-    const stored = localStorage.getItem(FREE_LOOK_TUTORIAL_STORAGE_KEY);
-    if (stored) {
-      return JSON.parse(stored);
-    }
-  } catch (error) {
-    console.warn("Failed to load free-look tutorial state:", error);
-  }
-  return { completed: [], dismissed: false };
-};
-const saveFreeLookTutorialState = () => {
-  try {
-    localStorage.setItem(
-      FREE_LOOK_TUTORIAL_STORAGE_KEY,
-      JSON.stringify(freeLookTutorialState),
-    );
-  } catch (error) {
-    console.warn("Failed to save free-look tutorial state:", error);
-  }
-};
-freeLookTutorialState = loadFreeLookTutorialState();
-const renderFreeLookTutorialContent = () => {
-  if (!freeLookTutorialContainer) {
-    return;
-  }
-  const stepsHtml = FREE_LOOK_TUTORIAL_ACTIONS.map(({ action, text }) => {
-    const completed = freeLookTutorialState.completed.includes(action);
-    const className = completed ? "tutorial-step completed" : "tutorial-step";
-    return `<div class="${className}" data-action="${action}">${text}</div>`;
-  }).join("");
-  freeLookTutorialContainer.innerHTML = `
-    <style>
-      #free-look-tutorial {
-        position: relative;
-      }
-      #free-look-tutorial .tutorial-close-btn {
-        position: absolute;
-        top: 8px;
-        right: 8px;
-        background: transparent;
-        border: none;
-        font-size: 1.2rem;
-        cursor: pointer;
-        color: #666;
-        width: 24px;
-        height: 24px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        opacity: 0;
-        transition: opacity 0.2s, color 0.2s;
-        padding: 0;
-        line-height: 1;
-      }
-      #free-look-tutorial:hover .tutorial-close-btn {
-        opacity: 1;
-      }
-      #free-look-tutorial .tutorial-close-btn:hover {
-        color: #000;
-      }
-      #free-look-tutorial .tutorial-step {
-        margin-bottom: 8px;
-        opacity: 1;
-        transition: opacity 0.3s, text-decoration 0.3s;
-      }
-      #free-look-tutorial .tutorial-step.completed {
-        text-decoration: line-through;
-        opacity: 0.5;
-      }
-      #free-look-tutorial .tutorial-step:last-child {
-        margin-bottom: 0;
-      }
-    </style>
-    <button class="tutorial-close-btn" id="free-look-tutorial-close">
-      ×
-    </button>
-    ${stepsHtml}
-  `;
-  const closeBtn = freeLookTutorialContainer.querySelector(
-    "#free-look-tutorial-close",
-  ) as HTMLButtonElement | null;
-  closeBtn?.addEventListener("click", () => {
-    freeLookTutorialState.dismissed = true;
-    saveFreeLookTutorialState();
-    setFreeLookTutorialVisible(false);
-  });
-};
-const markFreeLookTutorialAction = (action: FreeLookTutorialAction) => {
-  if (freeLookTutorialState.completed.includes(action)) {
-    return;
-  }
-  freeLookTutorialState.completed.push(action);
-  saveFreeLookTutorialState();
-  renderFreeLookTutorialContent();
-};
-window.addEventListener("free-look-action", (event) => {
-  const detail = (event as CustomEvent).detail;
-  if (!detail?.action) {
-    return;
-  }
-  markFreeLookTutorialAction(detail.action as FreeLookTutorialAction);
-});
-const resetFreeLookTutorial = () => {
-  freeLookTutorialState = { completed: [], dismissed: false };
-  saveFreeLookTutorialState();
-  renderFreeLookTutorialContent();
+const freeLookTutorialController = createFreeLookTutorialController(
+  freeLookTutorialContainer,
+);
+let turntableUiController: ReturnType<
+  typeof createTurntableUiController
+> | null = null;
+const isFreeLookModeActive = () =>
+  turntableUiController?.isFreeLookMode() ?? false;
 
-  // If tutorial was invisible, make it visible and fade it in
-  if (freeLookTutorialContainer) {
-    freeLookTutorialContainer.style.display = "block";
-    // Force a reflow to ensure display change is applied
-    void freeLookTutorialContainer.offsetHeight;
-    freeLookTutorialContainer.style.opacity = "0";
-    freeLookTutorialContainer.style.pointerEvents = "auto";
-
-    // Trigger fade-in animation on next frame
-    setTimeout(() => {
-      freeLookTutorialContainer.style.opacity = "1";
-    }, 10);
-  }
-
-  console.log("Free-look tutorial reset");
-};
-let isFreeLookMode = false;
-let freeLookWasPlayerCollapsed = false;
-let freeLookFocusHidden = false;
-
-// Turntable position cycling (camera view)
-type TurntablePosition =
-  | "default"
-  | "bottom-center"
-  | "bottom-left"
-  | "fullscreen";
 let turntablePositionState: TurntablePosition = "default";
 let vinylCameraTrackingEnabled = false;
 
@@ -733,126 +583,6 @@ const businessCardAnimation = createBusinessCardAnimation({
     (pageSceneRoots[BUSINESS_CARD_PAGE] as Object3D) ?? null,
 });
 
-// Add mouse tracking for business card reactive rotation
-document.addEventListener("mousemove", (event) => {
-  const x = event.clientX / window.innerWidth;
-  const y = event.clientY / window.innerHeight;
-  businessCardAnimation.updateMousePosition(x, y);
-
-  const raycaster = new Raycaster();
-  const pointer = new Vector2();
-  pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
-  pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
-  raycaster.setFromCamera(pointer, camera);
-
-  // Check if hovering over models on home page
-  if (activePage === "home") {
-    let isHoveringAnyModel = false;
-    for (const { model } of homePageTargets) {
-      const intersects = raycaster.intersectObject(model, true);
-      if (intersects.length > 0) {
-        isHoveringAnyModel = true;
-        break;
-      }
-    }
-    cameraOrbitState.isHoveringModel = isHoveringAnyModel;
-  } else {
-    cameraOrbitState.isHoveringModel = false;
-  }
-
-  // Check if hovering over business card (only when on business card page)
-  let isHoveringBusinessCard = false;
-  if (activePage === BUSINESS_CARD_PAGE && pageSceneRoots[BUSINESS_CARD_PAGE]) {
-    const intersects = raycaster.intersectObject(
-      pageSceneRoots[BUSINESS_CARD_PAGE],
-      true,
-    );
-    isHoveringBusinessCard = intersects.length > 0;
-    businessCardAnimation.setIsHovered(isHoveringBusinessCard);
-  } else {
-    businessCardAnimation.setIsHovered(false);
-  }
-
-  // Check if hovering over portfolio papers (only when on portfolio page)
-  if (activePage === "portfolio" && portfolioPapersManager) {
-    if (updatePointer(event, pointerNDC, canvas)) {
-      raycaster.setFromCamera(pointerNDC, camera);
-      const currentPaperId = portfolioPapersManager.getCurrentPaperId();
-      // Check if hovering a link and set cursor - only on top papers
-      let hoveringLink = false;
-      const paperMeshes = portfolioPapersManager.getPaperMeshes();
-      const topLeftStackPaperId =
-        portfolioPapersManager.getTopLeftStackPaperId();
-      const papersById = new Map(
-        portfolioPapersManager.getPapers().map((paper) => [paper.id, paper]),
-      );
-
-      // Collect all hits from all papers and find the closest one
-      let closestHit: { paperId: string; hit: any } | null = null;
-      for (const [paperId, mesh] of paperMeshes) {
-        if (!mesh.visible) continue;
-
-        const hits = raycaster.intersectObject(mesh, true);
-        if (hits.length > 0) {
-          const paper = papersById.get(paperId);
-          if (!paper) continue;
-
-          // Only consider papers that are "on top": current paper or top of left stack
-          const isLeftStack =
-            portfolioPapersManager.isPaperInLeftStack(paperId);
-          const isCurrentPaper = paperId === currentPaperId;
-          const isTopLeftStackPaper = paperId === topLeftStackPaperId;
-          const allowLeftStackInteraction =
-            isMarkdownPaperConfig(paper) || isResumePaperConfig(paper);
-
-          const isOnTop = isLeftStack
-            ? allowLeftStackInteraction && isTopLeftStackPaper
-            : isCurrentPaper;
-
-          if (!isOnTop) continue;
-
-          if (!closestHit || hits[0].distance < closestHit.hit.distance) {
-            closestHit = { paperId, hit: hits[0] };
-          }
-        }
-      }
-
-      // Check if the closest hit has a link or is a PDF
-      if (closestHit) {
-        const paper = papersById.get(closestHit.paperId);
-
-        // Show pointer for PDFs
-        if (paper?.type === "pdf") {
-          hoveringLink = true;
-        } else if (closestHit.hit.uv) {
-          // Check for links in markdown/HTML papers
-          const linkUrl = portfolioPapersManager.checkLinkAtUV(
-            closestHit.paperId,
-            closestHit.hit.uv.x,
-            closestHit.hit.uv.y,
-          );
-          hoveringLink = Boolean(linkUrl);
-          if (hoveringLink) {
-            console.log("[Portfolio Link Check] Found link:", {
-              paperId: closestHit.paperId,
-              linkUrl,
-              uv: closestHit.hit.uv,
-            });
-          }
-        }
-      }
-
-      canvas.style.cursor = hoveringLink ? "pointer" : "default";
-    }
-  } else {
-    // Set cursor for business card page - only show pointer on links
-    if (activePage === BUSINESS_CARD_PAGE) {
-      const link = findBusinessCardLinkUnderRay();
-      canvas.style.cursor = link ? "pointer" : "auto";
-    }
-  }
-});
-
 type PortfolioSceneConfig = {
   id: "portfolio";
   glbUrl: string;
@@ -973,457 +703,17 @@ const applyHomeCameraPreset = () => {
   pageCameraSettings.home.zoom = HOME_CAMERA_ZOOM;
 };
 
-let portfolioCoverMesh: Mesh | null = null;
-let portfolioCoverOriginalRotation = 0;
-const PORTFOLIO_COVER_FLIP_DURATION_MS = 800;
-const PORTFOLIO_COVER_WATERFALL_DELAY_MS = 500;
 let portfolioPapersManager: PortfolioPapersManager | null = null;
-const paperLinkElements = new Map<string, HTMLButtonElement>();
-let detachPaperChangeListener: (() => void) | null = null;
-
-const updatePaperLinkActiveState = (activeId?: string | null) => {
-  const currentId =
-    activeId ?? portfolioPapersManager?.getCurrentPaperId() ?? null;
-  paperLinkElements.forEach((link, id) => {
-    const isActive = id === currentId;
-    link.style.opacity = isActive ? "1" : "0.65";
-    link.style.textDecoration = isActive ? "underline" : "none";
-    link.style.color = "#000";
-  });
-};
-
-const buildPortfolioPaperLinks = () => {
-  portfolioPaperLinksBar.innerHTML = "";
-  paperLinkElements.clear();
-  if (!portfolioPapersManager) {
-    return;
-  }
-  const papers = portfolioPapersManager.getPapers();
-  papers.forEach((paper) => {
-    const link = document.createElement("button");
-    link.type = "button";
-    link.textContent = paper.name.toLowerCase();
-    link.className = "vinyl-hyperlink";
-    link.style.transition = "opacity 0.2s ease, color 0.2s ease";
-    link.style.textTransform = "none";
-    link.style.letterSpacing = "0.05em";
-    link.style.fontSize = "0.85rem";
-    link.addEventListener("mouseenter", () => {
-      link.style.opacity = "1";
-      link.style.color = "var(--vinyl-link-hover-color)";
-      link.style.textDecoration = "underline";
-    });
-    link.addEventListener("mouseleave", () => {
-      updatePaperLinkActiveState();
-      link.style.color = "var(--vinyl-link-color)";
-      if (
-        !portfolioPapersManager ||
-        portfolioPapersManager.getCurrentPaperId() !== paper.id
-      ) {
-        link.style.textDecoration = "none";
-      }
-    });
-    link.addEventListener("click", (event) => {
-      event.preventDefault();
-      if (!portfolioPapersManager) {
-        return;
-      }
-      void portfolioPapersManager.goToPaper(paper.id);
-    });
-    portfolioPaperLinksBar.appendChild(link);
-    paperLinkElements.set(paper.id, link);
-  });
-  updatePaperLinkActiveState();
-};
-
-const attachPaperLinkListener = () => {
-  detachPaperChangeListener?.();
-  if (!portfolioPapersManager) {
-    return;
-  }
-  detachPaperChangeListener = portfolioPapersManager.onCurrentPaperChange(
-    (paperId) => {
-      updatePaperLinkActiveState(paperId);
-    },
-  );
-};
-
-// prioritizePortfolioCoverRendering now imported from sceneObjects.ts
-// Custom wrapper to store cover mesh reference for animation
-const setupPortfolioCover = (model: Object3D) => {
-  prioritizePortfolioCoverRendering(
-    model,
-    (mesh) => {
-      portfolioCoverMesh = mesh;
-      portfolioCoverOriginalRotation = mesh.rotation.z;
-      // Set high render order so cover appears in front of papers (papers are 210)
-      mesh.renderOrder = 220;
-      // Disable shadow receiving on cover to prevent z-fighting
-      mesh.receiveShadow = false;
-
-      // console.log("[Portfolio Cover] Found cover mesh:", mesh.name);
-      // console.log(
-      //   "[Portfolio Cover] Original Z rotation:",
-      //   portfolioCoverOriginalRotation,
-      // );
-    },
-    (whitepaperMesh) => {
-      // console.log("[Portfolio] Found whitepaper mesh:", whitepaperMesh.name);
-      whitepaperMesh.visible = false;
-      if (portfolioPapersManager) {
-        portfolioPapersManager.setWhitepaperMesh(whitepaperMesh);
-      }
-    },
-  );
-};
-
-const animatePortfolioCoverFlip = (reverse = false): Promise<void> => {
-  if (!portfolioCoverMesh) {
-    console.log("[Portfolio Cover] Cover mesh not found");
-    return Promise.resolve();
-  }
-
-  console.log(
-    "[Portfolio Cover] Starting flip animation",
-    reverse ? "(reverse)" : "",
-  );
-  console.log(
-    "[Portfolio Cover] Initial rotation:",
-    portfolioCoverMesh.rotation.z,
-  );
-
-  const startRotation = portfolioCoverMesh.rotation.z;
-  const targetRotation = reverse
-    ? portfolioCoverOriginalRotation
-    : portfolioCoverOriginalRotation + Math.PI;
-  const duration = PORTFOLIO_COVER_FLIP_DURATION_MS; // milliseconds
-
-  return new Promise((resolve) => {
-    const startTime = performance.now();
-
-    const animate = (currentTime: number) => {
-      const elapsed = currentTime - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-
-      // Ease in-out function for smoother animation
-      const easeProgress =
-        progress < 0.5
-          ? 2 * progress * progress
-          : 1 - Math.pow(-2 * progress + 2, 2) / 2;
-
-      portfolioCoverMesh!.rotation.z =
-        startRotation + (targetRotation - startRotation) * easeProgress;
-
-      if (progress < 1) {
-        requestAnimationFrame(animate);
-      } else {
-        console.log(
-          "[Portfolio Cover] Animation complete. Final rotation:",
-          portfolioCoverMesh!.rotation.z,
-        );
-        resolve();
-      }
-    };
-
-    requestAnimationFrame(animate);
-  });
-};
+const portfolioFeature = createPortfolioFeature({
+  renderer,
+  papersContainer: portfolioPapersContainer,
+  paperLinksBar: portfolioPaperLinksBar,
+  prevArrow: portfolioPrevArrow,
+  nextArrow: portfolioNextArrow,
+});
+portfolioPapersManager = portfolioFeature.init();
 
 // setMeshRenderPriority and applyPolygonOffsetToMaterials now in sceneObjects.ts
-
-const setTurntableUIVisible = (visible: boolean) => {
-  const effective =
-    visible &&
-    vinylUIFadeTriggered &&
-    !turntableStateManager.getIsFullscreenMode() &&
-    activePage === "turntable" &&
-    !isFreeLookMode;
-  vinylViewerContainer.style.opacity = effective ? "1" : "0";
-  vinylViewerContainer.style.pointerEvents = effective ? "auto" : "none";
-  vinylViewerContainer.style.visibility = effective ? "visible" : "hidden";
-  vinylViewerContainer.style.transform = effective
-    ? "translateY(0)"
-    : "translateY(8px)";
-  hideLibraryBtn.style.opacity = effective ? "1" : "0";
-  hideLibraryBtn.style.pointerEvents = effective ? "auto" : "none";
-  focusCardContainers.forEach((container) => {
-    const shouldShow = effective && container.childElementCount > 0;
-    container.style.opacity = shouldShow ? "1" : "0";
-    container.style.pointerEvents = shouldShow ? "auto" : "none";
-  });
-  showFocusBtn.style.opacity = effective ? "1" : "0";
-  showFocusBtn.style.pointerEvents = effective ? "auto" : "none";
-  vinylLibraryContainer.style.transition = "opacity 0.3s ease";
-  vinylLibraryContainer.style.opacity = effective ? "1" : "0";
-  vinylLibraryContainer.style.pointerEvents = effective ? "auto" : "none";
-  if (vinylUIFadeTriggered) {
-    const tutorialManager = (window as any).tutorialManager;
-    const isTutorialDismissed = tutorialManager?.isDismissed() ?? false;
-
-    tutorialContainer.style.opacity =
-      effective && !isTutorialDismissed ? "1" : "0";
-    tutorialContainer.style.pointerEvents =
-      effective && !isTutorialDismissed ? "auto" : "none";
-    // Only hide display after fade completes
-    if (!effective || isTutorialDismissed) {
-      setTimeout(() => {
-        if (tutorialContainer.style.opacity === "0") {
-          tutorialContainer.style.display = "none";
-        }
-      }, 450);
-    } else {
-      tutorialContainer.style.display = "block";
-    }
-  } else {
-    tutorialContainer.style.display = "none";
-  }
-};
-setTurntableUIVisible(false);
-
-const setFreeLookTutorialVisible = (visible: boolean) => {
-  if (!freeLookTutorialContainer) {
-    return;
-  }
-  if (visible && !freeLookTutorialState.dismissed) {
-    renderFreeLookTutorialContent();
-    freeLookTutorialContainer.style.display = "block";
-    requestAnimationFrame(() => {
-      freeLookTutorialContainer.style.opacity = "1";
-      freeLookTutorialContainer.style.pointerEvents = "auto";
-    });
-  } else {
-    freeLookTutorialContainer.style.opacity = "0";
-    freeLookTutorialContainer.style.pointerEvents = "none";
-    setTimeout(() => {
-      if (freeLookTutorialContainer.style.opacity === "0") {
-        freeLookTutorialContainer.style.display = "none";
-      }
-    }, 450);
-  }
-};
-
-const exitFreeLookMode = ({
-  restoreCamera = true,
-  restoreUI = true,
-  restorePlayer = true,
-}: {
-  restoreCamera?: boolean;
-  restoreUI?: boolean;
-  restorePlayer?: boolean;
-} = {}) => {
-  if (!isFreeLookMode) {
-    return;
-  }
-  isFreeLookMode = false;
-  freeLookButton.textContent = "free-look";
-  setFreeLookTutorialVisible(false);
-
-  // Restore turntable tutorial display (setTurntableUIVisible will handle opacity)
-  tutorialContainer.style.display = "block";
-
-  focusVinylManuallyHidden = true;
-  updateFocusVinylVisibility();
-  if (restorePlayer && yt) {
-    yt.setPlayerCollapsed(freeLookWasPlayerCollapsed);
-  }
-  if (restoreCamera) {
-    turntablePositionState = "bottom-center";
-    cameraRig.setLookTarget(CAMERA_TARGETS[turntablePositionState], true);
-    cameraRig.setViewDirection(
-      directionFromAngles(pageCameraSettings.turntable.yaw, 22),
-      true,
-    );
-    cameraRig.setZoomFactor(pageCameraSettings.turntable.zoom);
-    cameraRig.onAnimationComplete(() => {
-      focusVinylManuallyHidden = freeLookFocusHidden;
-      updateFocusVinylVisibility();
-    });
-  } else {
-    focusVinylManuallyHidden = freeLookFocusHidden;
-    updateFocusVinylVisibility();
-  }
-  if (restoreUI) {
-    setTurntableUIVisible(activePage === "turntable");
-  }
-};
-
-const enterFreeLookMode = () => {
-  if (
-    isFreeLookMode ||
-    activePage !== "turntable" ||
-    pageTransitionState.active
-  ) {
-    return;
-  }
-  isFreeLookMode = true;
-  freeLookButton.textContent = "exit free-look";
-  freeLookWasPlayerCollapsed = yt?.isPlayerCollapsed() ?? false;
-  freeLookFocusHidden = focusVinylManuallyHidden;
-  focusVinylManuallyHidden = true;
-  updateFocusVinylVisibility();
-
-  // Immediately hide turntable tutorial to prevent overlap with free-look tutorial
-  tutorialContainer.style.display = "none";
-
-  setTurntableUIVisible(false);
-  if (yt) {
-    yt.setPlayerCollapsed(true);
-  }
-  turntablePositionState = "default";
-  const defaultTurntableSettings = pageCameraSettings.turntable;
-  cameraRig.setLookTarget(defaultTurntableSettings.target, true);
-  cameraRig.setViewDirection(
-    directionFromAngles(
-      defaultTurntableSettings.yaw,
-      defaultTurntableSettings.pitch,
-    ),
-    true,
-  );
-  cameraRig.setZoomFactor(defaultTurntableSettings.zoom);
-  setFreeLookTutorialVisible(true);
-};
-
-const toggleFreeLookMode = () => {
-  if (isFreeLookMode) {
-    exitFreeLookMode();
-  } else {
-    enterFreeLookMode();
-  }
-};
-
-// Initialize portfolio papers manager
-portfolioPapersManager = new PortfolioPapersManager(
-  portfolioPapersContainer,
-  renderer,
-);
-attachPaperLinkListener();
-buildPortfolioPaperLinks();
-
-// Load all paper meshes on startup regardless of which page is active
-portfolioPapersManager.loadAllPapers().catch((error) => {
-  console.error("[Portfolio] Error loading papers on startup:", error);
-});
-
-// Create papers UI
-const createPapersUI = () => {
-  portfolioPapersContainer.innerHTML = "";
-
-  const title = document.createElement("div");
-  title.textContent = "Portfolio Papers";
-  title.style.fontWeight = "bold";
-  title.style.marginBottom = "0.5rem";
-  portfolioPapersContainer.appendChild(title);
-
-  // Navigation arrows
-  const navContainer = document.createElement("div");
-  navContainer.style.cssText = `
-    display: flex;
-    gap: 0.5rem;
-    margin-bottom: 0.5rem;
-  `;
-
-  const prevButton = document.createElement("button");
-  prevButton.textContent = "← Previous";
-  prevButton.style.cssText = `
-    flex: 1;
-    padding: 8px 12px;
-    background: rgba(100, 100, 255, 0.3);
-    color: #fff;
-    border: 1px solid #66f;
-    border-radius: 4px;
-    cursor: pointer;
-    font-family: inherit;
-    font-size: 13px;
-    transition: background 0.15s;
-  `;
-  prevButton.onmouseover = () => {
-    prevButton.style.background = "rgba(100, 100, 255, 0.5)";
-  };
-  prevButton.onmouseout = () => {
-    prevButton.style.background = "rgba(100, 100, 255, 0.3)";
-  };
-  prevButton.onclick = () => {
-    portfolioPapersManager!.previousPaper();
-  };
-
-  const nextButton = document.createElement("button");
-  nextButton.textContent = "Next →";
-  nextButton.style.cssText = `
-    flex: 1;
-    padding: 8px 12px;
-    background: rgba(100, 100, 255, 0.3);
-    color: #fff;
-    border: 1px solid #66f;
-    border-radius: 4px;
-    cursor: pointer;
-    font-family: inherit;
-    font-size: 13px;
-    transition: background 0.15s;
-  `;
-  nextButton.onmouseover = () => {
-    nextButton.style.background = "rgba(100, 100, 255, 0.5)";
-  };
-  nextButton.onmouseout = () => {
-    nextButton.style.background = "rgba(100, 100, 255, 0.3)";
-  };
-  nextButton.onclick = () => {
-    portfolioPapersManager!.nextPaper();
-  };
-
-  navContainer.appendChild(prevButton);
-  navContainer.appendChild(nextButton);
-  portfolioPapersContainer.appendChild(navContainer);
-
-  const papers = portfolioPapersManager!.getPapers();
-  papers.forEach((paper) => {
-    const button = document.createElement("button");
-    button.textContent = paper.name;
-    button.style.cssText = `
-      width: 100%;
-      padding: 8px 12px;
-      background: rgba(255, 255, 255, 0.1);
-      color: #fff;
-      border: 1px solid #666;
-      border-radius: 4px;
-      cursor: pointer;
-      font-family: inherit;
-      font-size: 13px;
-      transition: background 0.15s;
-      text-align: left;
-    `;
-    button.onmouseover = () => {
-      button.style.background = "rgba(255, 255, 255, 0.2)";
-    };
-    button.onmouseout = () => {
-      button.style.background = "rgba(255, 255, 255, 0.1)";
-    };
-    button.onclick = () => {
-      console.log(`[Portfolio] Loading paper: ${paper.name}`);
-      portfolioPapersManager!.hideAllPapers();
-      portfolioPapersManager!.loadPaper(paper.id);
-    };
-    portfolioPapersContainer.appendChild(button);
-  });
-};
-
-const showPortfolioUI = () => {
-  portfolioPapersContainer.style.display = "flex";
-  portfolioPaperLinksBar.style.display = "flex";
-};
-
-const ensurePortfolioLinksReady = () => {
-  if (paperLinkElements.size === 0) {
-    buildPortfolioPaperLinks();
-  } else {
-    updatePaperLinkActiveState();
-  }
-};
-
-const ensurePortfolioPanelReady = () => {
-  if (portfolioPapersContainer.children.length === 0) {
-    createPapersUI();
-  }
-};
 
 // globalControls, homeNavButton, portfolioNavButton, resetTutorialButton now created by setupDOM()
 homeNavButton.addEventListener("click", () => {
@@ -1446,9 +736,9 @@ portfolioResumeButton.addEventListener("click", () => {
 });
 
 resetTutorialButton.addEventListener("click", () => {
-  if (isFreeLookMode) {
+  if (isFreeLookModeActive()) {
     // Only reset free-look tutorial when in free-look mode
-    resetFreeLookTutorial();
+    freeLookTutorialController.reset();
   } else {
     // Only reset turntable tutorial when not in free-look mode
     const tutorialManager = (window as any).tutorialManager;
@@ -1460,57 +750,26 @@ resetTutorialButton.addEventListener("click", () => {
 });
 
 freeLookButton.addEventListener("click", () => {
-  toggleFreeLookMode();
+  turntableUiController?.toggleFreeLookMode();
 });
 
 contactButton.addEventListener("click", () => {
   setActiveScenePage("business_card");
 });
 
-portfolioPrevArrow.addEventListener("click", () => {
-  if (portfolioPapersManager) {
-    portfolioPapersManager.previousPaper();
-  }
-});
-
-portfolioNextArrow.addEventListener("click", () => {
-  if (portfolioPapersManager) {
-    portfolioPapersManager.nextPaper();
-  }
-});
-
 const setActiveScenePage = (page: ScenePage) => {
   if (page === activePage) {
     return;
   }
-  if (page !== "turntable" && isFreeLookMode) {
-    exitFreeLookMode({
+  if (page !== "turntable" && isFreeLookModeActive()) {
+    turntableUiController?.exitFreeLookMode({
       restoreCamera: false,
       restoreUI: false,
       restorePlayer: false,
     });
   }
   const previousPage = activePage;
-  if (previousPage === "portfolio" && page !== "portfolio") {
-    // Hide papers UI immediately for the new scene.
-    portfolioPapersContainer.style.display = "none";
-    portfolioPaperLinksBar.style.display = "none";
-
-    (async () => {
-      try {
-        if (portfolioPapersManager) {
-          await portfolioPapersManager.resetPapersToOriginalStack();
-        }
-      } catch (error) {
-        console.error(
-          "[Portfolio] Error resetting papers before closing cover:",
-          error,
-        );
-      } finally {
-        void animatePortfolioCoverFlip(true);
-      }
-    })();
-  }
+  portfolioFeature.handlePageExit(previousPage, page);
   if (page === BUSINESS_CARD_PAGE) {
     businessCardAnimation.handlePageSelection(page);
     businessCardAnimation.setMouseReactiveRotation(true);
@@ -1549,19 +808,12 @@ const setActiveScenePage = (page: ScenePage) => {
   pageTransitionState.active = true;
   const wasTurntable = previousPage === "turntable";
   if (page === "portfolio") {
-    portfolioPaperLinksBar.style.display = "flex";
-    if (portfolioPapersManager) {
-      portfolioPapersManager.showAllPapers();
-    }
-    if (paperLinkElements.size === 0) {
-      buildPortfolioPaperLinks();
-    }
-    updatePaperLinkActiveState();
-  } else {
-    portfolioPaperLinksBar.style.display = "none";
+    portfolioFeature.showUI();
+    portfolioPapersManager?.showAllPapers();
+    portfolioFeature.ensureLinksReady();
   }
   if (page === "turntable") {
-    ensureFocusVinylPreloaded();
+    focusCardController.ensureFocusVinylPreloaded();
   }
 
   activePage = page;
@@ -1569,14 +821,14 @@ const setActiveScenePage = (page: ScenePage) => {
 
   // Start auto-orbit if moving to home page
   if (page === "home") {
-    startAutoOrbit();
+    inputHandlers?.startAutoOrbit();
   } else {
-    cameraOrbitState.isAutoOrbiting = false;
+    inputHandlers?.setAutoOrbitActive(false);
   }
 
   youtubeBridge?.setFKeyListenerEnabled(page === "turntable");
   const shouldShowFocusVinyl = page === "turntable";
-  focusVinylManuallyHidden = !shouldShowFocusVinyl;
+  focusCardController.setFocusVinylManuallyHidden(!shouldShowFocusVinyl);
   if (!shouldShowFocusVinyl && focusVinylState?.model) {
     setVinylModelVisibility(
       focusVinylState.model,
@@ -1584,11 +836,10 @@ const setActiveScenePage = (page: ScenePage) => {
       false,
       "scene-change hide",
     );
-    setFocusCoverClickBodyClass(false);
   }
-  updateFocusVinylVisibility();
+  focusCardController.updateFocusVinylVisibility();
   vinylCameraTrackingEnabled = page === "turntable";
-  setTurntableUIVisible(activePage === "turntable");
+  turntableUiController?.setTurntableUIVisible(activePage === "turntable");
   if (page === "turntable") {
     setHeroPageVisibility("turntable");
     yt?.setPlayerCollapsed(false);
@@ -1596,7 +847,7 @@ const setActiveScenePage = (page: ScenePage) => {
     setHeroPageVisibility(null);
   }
   if (wasTurntable && page !== "turntable") {
-    hideFocusCardAndVinyl();
+    focusCardController.hideFocusCardAndVinyl();
     // Collapse player when leaving turntable
     if (yt && !yt.isPlayerCollapsed()) {
       yt.setPlayerCollapsed(true);
@@ -1605,7 +856,7 @@ const setActiveScenePage = (page: ScenePage) => {
     isTonearmInPlayArea = false;
     turntableStateManager.setTonearmInPlayArea(false);
     yt?.updateButtonVisibility();
-    clearPreloadedFocusVinyl();
+    focusCardController.clearPreloadedFocusVinyl();
     // Clean up any dropping vinyl
     disposeDroppingVinyl();
     isReturningVinyl = false;
@@ -1693,16 +944,7 @@ const setActiveScenePage = (page: ScenePage) => {
   }
 
   // Show/hide portfolio navigation arrows
-  const setPortfolioArrowVisibility = (visible: boolean) => {
-    const opacity = visible ? "1" : "0";
-    const pointer = visible ? "auto" : "none";
-    portfolioPrevArrow.style.opacity = opacity;
-    portfolioPrevArrow.style.pointerEvents = pointer;
-    portfolioNextArrow.style.opacity = opacity;
-    portfolioNextArrow.style.pointerEvents = pointer;
-  };
-
-  setPortfolioArrowVisibility(page === "portfolio");
+  portfolioFeature.setArrowVisibility(page === "portfolio");
 
   // Show/hide placeholder info
   if (page === "placeholder_A") {
@@ -1726,15 +968,8 @@ const setActiveScenePage = (page: ScenePage) => {
   }
 };
 
-const portfolioNavigationController = new PortfolioNavigationController({
-  setActiveScenePage,
-  animateCoverFlip: animatePortfolioCoverFlip,
-  showPortfolioUI,
-  ensurePortfolioLinks: ensurePortfolioLinksReady,
-  ensurePortfolioPanel: ensurePortfolioPanelReady,
-  getManager: () => portfolioPapersManager,
-  coverWaterfallDelayMs: PORTFOLIO_COVER_WATERFALL_DELAY_MS,
-});
+const portfolioNavigationController =
+  portfolioFeature.createNavigationController(setActiveScenePage);
 
 // findPageForObject now imported from pageNavigation.ts
 
@@ -1782,7 +1017,7 @@ const updateScenePageTransition = () => {
     }
     // Start auto-orbit after transition completes when returning to home page
     if (activePage === "home") {
-      startAutoOrbit();
+      inputHandlers?.startAutoOrbit();
     }
   }
 };
@@ -1947,10 +1182,6 @@ let turntableSceneRoot: Object3D | null = null;
 const turntableBounds = new Box3();
 const turntableBoundsSize = new Vector3();
 const turntableBoundsCenter = new Vector3();
-let preloadedFocusVinylModel: Object3D | null = null;
-let preloadedFocusVinylPromise: Promise<Object3D | null> | null = null;
-const preloadedFocusVinylAnchor = new Vector3();
-let focusVinylPreloadToken = 0;
 // VinylSource type now imported from vinylInteractions.ts
 let activeVinylSource: VinylSource | null = null;
 let currentDragSource: VinylSource | null = null;
@@ -1980,7 +1211,6 @@ type FlyawayVinyl = {
 };
 const flyawayVinyls: FlyawayVinyl[] = [];
 // isFullscreenMode now managed by TurntableStateManager
-let fullscreenVinylRestoreTimeout: number | null = null;
 
 function applyFocusVinylColorToModel(): void {
   if (focusVinylState?.model) {
@@ -2115,7 +1345,7 @@ const disposeFocusVinyl = () => {
     setActiveVinylSource(turntableVinylState ? "turntable" : null);
   }
   if (activePage === "turntable") {
-    ensureFocusVinylPreloaded();
+    focusCardController.ensureFocusVinylPreloaded();
   }
 };
 
@@ -2177,29 +1407,19 @@ const updateTurntableVinylVisuals = (visuals: LabelVisualOptions) => {
   );
 };
 let shouldTrackFocusCard = false; // Flag to enable focus card tracking
-let focusCardAnchorPosition = new Vector3(); // Saved position for focus card anchor
 const TURN_TABLE_ANCHOR_OFFSET = new Vector3(0, 6.41, 0);
 const turntableAnchorPosition = new Vector3(0, 6.41, 0); // Updated to model position + offset
-const cameraOrbitState = {
-  isOrbiting: false,
-  pointerId: -1,
-  lastX: 0,
-  lastY: 0,
-  mode: null as ScenePage | null,
-  velocityX: 0,
-  velocityY: 0,
-  lastDeltaX: 0,
-  lastDeltaY: 0,
-  isAutoOrbiting: false,
-  isHoveringModel: false,
-};
 
-const cameraPanState = {
-  isPanning: false,
-  pointerId: -1,
-  lastX: 0,
-  lastY: 0,
-};
+let vinylDragPointerId: number | null = null;
+let activeDragVisualOffset = 0;
+let isReturningVinyl = false;
+let hasClearedNub = false;
+let nubClearanceY = 0;
+let vinylDragExceededThreshold = false;
+// tonearm drag handled by controller
+// ON_TURNTABLE state now managed by TurntableStateManager
+// VINYL_DRAG_THRESHOLD now imported from vinylInteractions.ts
+let isReturningToFocusCard = false; // Separate state for returning to focus card
 
 const BUSINESS_CARD_ROTATION_SENSITIVITY = 0.006;
 const BUSINESS_CARD_MAX_PITCH = Math.PI / 2 - 0.05;
@@ -2210,20 +1430,17 @@ const businessCardDragState = {
   lastY: 0,
 };
 
-// Camera orbit momentum deceleration
-const MOMENTUM_FRICTION = 0.94; // Friction coefficient (0-1, lower = faster deceleration)
-const MOMENTUM_MIN_VELOCITY = 0.001; // Minimum velocity threshold to stop momentum
-let isCameraOrbitDecelerating = false;
-
-// Camera auto-orbit on home page
-const AUTO_ORBIT_SPEED = 0.001; // Radians per frame when auto-orbiting (slow rotation)
-const AUTO_ORBIT_DECEL_RATE = 0.967; // Deceleration rate when hovering (0-1, lower = faster stop)
-let autoOrbitStartTime = 0;
-let autoOrbitDirection = 1; // 1 for positive (right), -1 for negative (left)
-let autoOrbitSpeedMultiplier = 1.0; // Multiplier for gradual deceleration (1.0 = full speed, 0.0 = stopped)
-
 const raycaster = new Raycaster();
 const pointerNDC = new Vector2();
+const portfolioInteractions = createPortfolioInteractions({
+  canvas,
+  camera,
+  pointerNDC,
+  updatePointer,
+  getActivePage: () => activePage,
+  getManager: () => portfolioPapersManager,
+});
+let inputHandlers: ReturnType<typeof registerInputHandlers> | null = null;
 const dragPlane = new Plane(new Vector3(0, 0, 1), 0); // Plane perpendicular to Z axis (allows X and Y movement)
 const dragIntersectPoint = new Vector3();
 const vinylAnimationState = createVinylAnimationState();
@@ -2269,9 +1486,11 @@ const {
 } = vinylAnimationState;
 type VinylAnchorType = "turntable" | "focus";
 let currentVinylAnchorType: VinylAnchorType = "turntable";
-const setVinylAnchorPosition = (anchor: Vector3, type: VinylAnchorType) => {
+const setVinylAnchorPosition = (anchor: Vector3, type: VinylSource) => {
   vinylAnchorPosition.copy(anchor);
-  currentVinylAnchorType = type;
+  if (type === "focus" || type === "turntable") {
+    currentVinylAnchorType = type;
+  }
 };
 const placementRaycaster = new Raycaster();
 const placementRayOrigin = new Vector3();
@@ -2372,747 +1591,195 @@ youtubeBridge = yt;
 
 // Initialize turntable state manager
 const turntableStateManager = new TurntableStateManager(yt, root);
+const focusCardController = createFocusCardController({
+  focusCardContainers,
+  focusCardCoverContainer,
+  camera,
+  cameraRig,
+  getFocusCardScale,
+  setVinylModelVisibility,
+  getFocusVinylState: () => focusVinylState,
+  getActiveVinylSource: () => activeVinylSource,
+  getVinylDragPointerId: () => vinylDragPointerId,
+  getShouldTrackFocusCard: () => shouldTrackFocusCard,
+  setVinylAnchorPosition,
+  updateDragPlaneDepthLocal,
+  applyFocusVinylScale,
+  vinylTargetPosition,
+  lastTargetPosition,
+  resetVinylAnimationState,
+  vinylAnimationState,
+  swingState,
+  isFreeLookModeActive: () => isFreeLookModeActive(),
+  getIsFullscreenMode: () => turntableStateManager.getIsFullscreenMode(),
+  setAspectRatio: (ratio) => yt.setAspectRatio(ratio),
+  loadVinylModel,
+  vinylNormalTexture,
+  heroGroup,
+  runWhenTurntableReady,
+  cameraTargets: CAMERA_TARGETS,
+  setTurntablePositionState: (state) => {
+    turntablePositionState = state as TurntablePosition;
+  },
+  FOCUS_VINYL_CLICK_ANIMATION_SPEED,
+});
+const focusCardAnchorPosition =
+  focusCardController.getFocusCardAnchorPosition();
+turntableUiController = createTurntableUiController({
+  vinylViewerContainer,
+  hideLibraryBtn,
+  focusCardContainers,
+  showFocusBtn,
+  vinylLibraryContainer,
+  tutorialContainer,
+  getVinylUIFadeTriggered: () => vinylUIFadeTriggered,
+  getActivePage: () => activePage,
+  getIsPageTransitionActive: () => pageTransitionState.active,
+  turntableStateManager,
+  freeLookTutorialController,
+  freeLookButton,
+  updateFocusVinylVisibility: () =>
+    focusCardController.updateFocusVinylVisibility(),
+  getFocusVinylManuallyHidden: () =>
+    focusCardController.getFocusVinylManuallyHidden(),
+  setFocusVinylManuallyHidden: (value) => {
+    focusCardController.setFocusVinylManuallyHidden(value);
+  },
+  setTurntablePositionState: (state) => {
+    turntablePositionState = state;
+  },
+  getTurntablePositionState: () => turntablePositionState,
+  cameraRig,
+  cameraTargets: CAMERA_TARGETS,
+  directionFromAngles,
+  pageTurntableSettings: pageCameraSettings.turntable,
+  getYouTubeBridge: () => yt,
+});
+turntableUiController.setTurntableUIVisible(false);
 
 yt.setFKeyListenerEnabled(false);
-yt.setIsFreeLookModeQuery(() => isFreeLookMode);
+yt.setIsFreeLookModeQuery(() => isFreeLookModeActive());
 yt.onPlaybackEnded(() => {
   turntableController?.notifyPlaybackFinishedExternally();
 });
 
-// VinylSelectionDetail now imported from vinylInteractions.ts
 let pendingVinylSelection: VinylSelectionDetail | null = null;
 let loadedSelectionVideoId: string | null = null;
 let selectionVisualUpdateId = 0;
 let currentVideoLoad: Promise<void> | null = null;
 
-// getSelectionCoverUrl now imported from vinylHelpers.ts
-
-const applySelectionVisualsToVinyl = async (
-  selection: VinylSelectionDetail,
-) => {
-  const refreshFocusVinylColor = () => {
-    focusVinylDerivedColor = null;
-    updateFocusVinylColorFromDerived();
-  };
-
-  applyMetadataToLabels(
-    {
-      artist: selection.artistName,
-      song: selection.songName,
-      album: "",
-    },
-    true,
-  );
-  rebuildLabelTextures();
-
-  const updateId = ++selectionVisualUpdateId;
-  try {
-    const coverUrl = await getSelectionCoverUrl(selection);
-    // Use vibrant color for label background
-    const labelColor = await extractVibrantColor(coverUrl);
-    // Use dominant (area-based) color for vinyl body
-    const vinylColor = await extractDominantColor(coverUrl);
-
-    if (updateId !== selectionVisualUpdateId) {
-      return;
-    }
-    labelVisuals.background = labelColor;
-    // Derive vinyl color from the chosen color
-    focusVinylDerivedColor = deriveVinylColorFromAlbumColor(vinylColor);
-    updateFocusVinylColorFromDerived();
-  } catch (error) {
-    if (updateId !== selectionVisualUpdateId) {
-      return;
-    }
-    console.warn("Failed to extract dominant color, using fallback", error);
-    labelVisuals.background = FALLBACK_BACKGROUND_COLOR;
-    refreshFocusVinylColor();
-  }
-  if (updateId === selectionVisualUpdateId) {
-    rebuildLabelTextures();
-  }
-};
-
-const loadVideoForCurrentSelection = async () => {
-  if (!pendingVinylSelection || !turntableStateManager.isOnTurntable()) {
-    return;
-  }
-
-  if (currentVideoLoad) {
-    try {
-      await currentVideoLoad;
-    } catch {
-      // ignore prior failure and attempt again
-    }
-    if (
-      !pendingVinylSelection ||
-      !turntableStateManager.isOnTurntable() ||
-      (loadedSelectionVideoId &&
-        pendingVinylSelection.videoId === loadedSelectionVideoId)
-    ) {
-      return;
-    }
-  }
-
-  const selection = pendingVinylSelection;
-  const loadPromise = (async () => {
-    console.log(
-      `[loadVideoForCurrentSelection] Starting load for ${selection.artistName} - ${selection.songName}`,
-    );
-    turntableStateManager.resetFadeOut();
-    turntableController?.returnTonearmHome();
-    turntableController?.pausePlayback();
-    console.log(
-      `[loadVideoForCurrentSelection] Clearing loadedSelectionVideoId (was "${loadedSelectionVideoId}")`,
-    );
-    loadedSelectionVideoId = null;
-
-    if (selection.aspectRatio !== undefined) {
-      yt.setAspectRatio(selection.aspectRatio);
-      console.log(`[main] Applied aspect ratio: ${selection.aspectRatio}`);
-    } else {
-      yt.setAspectRatio(null as any);
-    }
-
-    await youtubePlayer.loadVideo(selection.videoId, (videoMetadata) => {
-      const correctedMetadata: VideoMetadata = {
-        artist: selection.artistName,
-        song: selection.songName,
-        album: videoMetadata?.album || "",
-      };
-      const focusMatchesSelection =
-        focusVinylState?.selection.videoId === selection.videoId;
-      if (!focusVinylState || focusMatchesSelection) {
-        applyMetadataToLabels(correctedMetadata, true);
-      }
-      if (turntableVinylState) {
-        const updatedTurntableVisuals: LabelVisualOptions = {
-          ...turntableVinylState.labelVisuals,
-          title1:
-            correctedMetadata.artist || turntableVinylState.labelVisuals.title1,
-          title2:
-            correctedMetadata.song || turntableVinylState.labelVisuals.title2,
-          title3:
-            correctedMetadata.album ?? turntableVinylState.labelVisuals.title3,
-        };
-        updateTurntableVinylVisuals(updatedTurntableVisuals);
-      }
-
-      const duration = youtubePlayer.getDuration();
-      if (duration > 0 && turntableController) {
-        turntableController.setMediaDuration(duration);
-      }
-      if (duration > 0) {
-        console.log(`[main] Video duration loaded: ${duration} seconds`);
-        window.dispatchEvent(
-          new CustomEvent("video-duration-loaded", {
-            detail: {
-              videoId: selection.videoId,
-              duration: Math.floor(duration),
-            },
-          }),
-        );
-      }
-    });
-
-    const duration = youtubePlayer.getDuration();
-    if (duration > 1 && turntableController) {
-      turntableController.setMediaDuration(duration);
-    }
-    videoControls.setProgress(0, duration);
-
-    // Preserve the current volume setting when loading a new video
-    const currentVolume = videoControls.getVolume();
-    yt.setVolume(0);
-    yt.play();
-    setTimeout(() => {
-      yt.pause();
-      yt.seek(0);
-      yt.setVolume(currentVolume);
-    }, 300);
-
-    const isOnTurntable = turntableStateManager.isOnTurntable();
-    console.log(
-      `[loadVideoForCurrentSelection] isOnTurntable=${isOnTurntable}`,
-    );
-    if (isOnTurntable) {
-      loadedSelectionVideoId = selection.videoId;
-      console.log(
-        `Loaded for turntable: ${selection.artistName} - ${selection.songName}`,
-      );
-      console.log(
-        `[loadVideoForCurrentSelection] Set loadedSelectionVideoId="${loadedSelectionVideoId}"`,
-      );
-    } else {
-      loadedSelectionVideoId = null;
-      console.log(
-        `[loadVideoForCurrentSelection] Not on turntable, cleared loadedSelectionVideoId`,
-      );
-    }
-  })();
-
-  currentVideoLoad = loadPromise;
-  try {
-    await loadPromise;
-  } finally {
-    if (currentVideoLoad === loadPromise) {
-      currentVideoLoad = null;
-    }
-  }
-
-  if (
-    pendingVinylSelection &&
-    pendingVinylSelection.videoId !== selection.videoId
-  ) {
-    void loadVideoForCurrentSelection();
-  }
-};
-
-// Listen for song clicks from the viewer
-window.addEventListener("load-vinyl-song", (event) => {
-  const detail = (event as CustomEvent<VinylSelectionDetail>).detail;
-  console.log(`[load-vinyl-song] Event received:`, detail);
-  if (!detail || !detail.videoId) {
-    console.warn(`[load-vinyl-song] Invalid detail or missing videoId`);
-    return;
-  }
-
-  pendingVinylSelection = detail;
-  void handleFocusSelection(detail);
-});
-
-async function handleFocusSelection(selection: VinylSelectionDetail) {
-  console.log(
-    `[handleFocusSelection] Starting for ${selection.artistName} - ${selection.songName}`,
-  );
-  console.log(
-    `[handleFocusSelection] State: isReturningVinyl=${isReturningVinyl}, focusVinylState=${focusVinylState ? "exists" : "null"}, pendingPromotionSource=${pendingPromotionSource}, activeVinylSource=${activeVinylSource}`,
-  );
-  const loadToken = ++focusVinylLoadToken;
-  vinylDragPointerId = null;
-
-  // If a vinyl is currently returning to the turntable (mid-animation),
-  // transfer it to the dropping state so it can continue its animation independently
-  // This allows the new focus vinyl to be created without interrupting the drop animation
-  //
-  // Case 1: Focus vinyl is still animating (hasn't been promoted yet)
-  // Case 2: Vinyl was already promoted to turntable but isReturningVinyl is still true
-  const focusVinylIsReturning =
-    isReturningVinyl && focusVinylState && pendingPromotionSource === "focus";
-  const turntableVinylIsReturning =
-    isReturningVinyl &&
-    turntableVinylState &&
-    activeVinylSource === "turntable";
-
-  if (focusVinylIsReturning && focusVinylState) {
-    console.log(
-      `[handleFocusSelection] Transferring returning FOCUS vinyl to dropping state: ${focusVinylState.selection.songName}`,
-    );
-    // Dispose any existing dropping vinyl first (max 2 vinyls rule)
-    disposeDroppingVinyl();
-    // Transfer the focus vinyl to dropping state with its own textures
-    const droppingTextures = detachFocusTexturesForTurntable();
-    droppingVinylState = {
-      model: focusVinylState.model,
-      selection: focusVinylState.selection,
-      labelTextures: droppingTextures,
-      labelVisuals: cloneLabelVisuals(labelVisuals),
-      derivedColor: focusVinylDerivedColor,
-    };
-    // Ensure dropping vinyl remains visible during animation
-    setVinylModelVisibility(
-      droppingVinylState.model,
-      "dropping",
-      true,
-      "transferred from focus to dropping",
-    );
-    // Clear focus state without disposing the model (it's now in dropping state)
-    focusVinylState = null;
-    // Switch to dropping source - this keeps vinylModel pointing to the dropping vinyl
-    setActiveVinylSource("dropping");
-  } else if (turntableVinylIsReturning && turntableVinylState) {
-    console.log(
-      `[handleFocusSelection] Transferring returning TURNTABLE vinyl to dropping state: ${turntableVinylState.selection.songName}`,
-    );
-    // Dispose any existing dropping vinyl first (max 2 vinyls rule)
-    disposeDroppingVinyl();
-    // Transfer the turntable vinyl to dropping state - it keeps its own textures
-    droppingVinylState = {
-      model: turntableVinylState.model,
-      selection: turntableVinylState.selection,
-      labelTextures: turntableVinylState.labelTextures,
-      labelVisuals: turntableVinylState.labelVisuals,
-      derivedColor: turntableVinylDerivedColor,
-    };
-    // Ensure dropping vinyl remains visible during animation
-    setVinylModelVisibility(
-      droppingVinylState.model,
-      "dropping",
-      true,
-      "transferred from turntable to dropping",
-    );
-    // Clear turntable state without disposing (model is now in dropping state)
-    turntableVinylState = null;
-    turntableStateManager.setOnTurntable(false);
-    turntableStateManager.setTurntableVinylState(null);
-    // Switch to dropping source
-    setActiveVinylSource("dropping");
-  } else {
-    // Not mid-animation, just dispose normally
-    isReturningVinyl = false;
-    isReturningToFocusCard = false;
-  }
-  setPendingPromotionSource(null, "handleFocusSelection-start");
-
-  // Hide focus vinyl immediately when loading a new selection to prevent flash
-  // (turntable vinyl should remain untouched and visible)
-  focusVinylManuallyHidden = true;
-  updateFocusVinylVisibility();
-
-  // Log turntable vinyl state before applying visuals
-  if (turntableVinylState?.model) {
-    console.log(
-      `[handleFocusSelection] Turntable vinyl BEFORE visuals: visible=${turntableVinylState.model.visible}, song=${turntableVinylState.selection.songName}`,
-    );
-  } else {
-    console.log(
-      `[handleFocusSelection] No turntable vinyl state BEFORE visuals`,
-    );
-  }
-
-  console.log(`[handleFocusSelection] Applying selection visuals...`);
-  await applySelectionVisualsToVinyl(selection);
-  console.log(`[handleFocusSelection] Selection visuals applied`);
-  restoreDroppingVinylAppearance("focusSelection");
-  if (turntableVinylState) {
-    updateTurntableVinylVisuals(turntableVinylState.labelVisuals);
-  }
-
-  // Log turntable vinyl state after applying visuals
-  if (turntableVinylState?.model) {
-    console.log(
-      `[handleFocusSelection] Turntable vinyl AFTER visuals: visible=${turntableVinylState.model.visible}, song=${turntableVinylState.selection.songName}`,
-    );
-  } else {
-    console.log(
-      `[handleFocusSelection] No turntable vinyl state AFTER visuals`,
-    );
-  }
-
-  // Dispose old focus vinyl if it wasn't transferred to dropping state
-  if (focusVinylState) {
-    disposeFocusVinyl();
-  }
-  shouldTrackFocusCard = true;
-
-  // Duration will be shown when the vinyl is placed on the turntable
-
-  try {
-    let model: Object3D | null = null;
-    if (preloadedFocusVinylModel) {
-      // CRITICAL: Ensure preloaded model is not the turntable vinyl's model
-      if (preloadedFocusVinylModel === turntableVinylState?.model) {
-        console.warn(
-          "[handleFocusSelection] Preloaded model is turntable vinyl! Loading fresh model.",
-        );
-        preloadedFocusVinylModel = null;
-        model = await loadVinylModel(vinylNormalTexture);
-      } else {
-        model = preloadedFocusVinylModel;
-        preloadedFocusVinylModel = null;
-      }
-    } else if (preloadedFocusVinylPromise) {
-      const resolved = await preloadedFocusVinylPromise;
-      preloadedFocusVinylPromise = null;
-      if (resolved && !focusVinylState) {
-        // CRITICAL: Ensure resolved model is not the turntable vinyl's model
-        if (resolved === turntableVinylState?.model) {
-          console.warn(
-            "[handleFocusSelection] Resolved preload is turntable vinyl! Loading fresh model.",
-          );
-          model = await loadVinylModel(vinylNormalTexture);
-        } else {
-          model = resolved;
-        }
-      }
-    }
-    if (!model) {
-      model = await loadVinylModel(vinylNormalTexture);
-    }
-    if (loadToken !== focusVinylLoadToken) {
-      heroGroup.remove(model);
-      if (!preloadedFocusVinylModel) {
-        preloadedFocusVinylModel = model;
-        setVinylModelVisibility(
-          model,
-          "focus-preload",
-          false,
-          "focus load token mismatch cached",
-        );
-      }
-      return;
-    }
-    focusVinylState = { model, selection };
-    applyFocusVinylColorToModel();
-    setVinylModelVisibility(
-      model,
-      "focus",
-      false,
-      "initial hide before reveal",
-    );
-    if (!model.parent) {
-      heroGroup.add(model);
-    }
-    applyLabelTextures(model, focusLabelTextures, labelOptions, labelVisuals);
-    applyFocusVinylScale(focusVinylState?.model ?? null, cameraRig);
-    // Only switch to focus source if there's no dropping vinyl animating
-    // If dropping vinyl exists, it keeps vinylModel until it lands
-    if (!droppingVinylState) {
-      setActiveVinylSource("focus");
-    }
-
-    // Log turntable vinyl state before preparing focus presentation
-    if (turntableVinylState?.model) {
-      console.log(
-        `[handleFocusSelection] Turntable vinyl BEFORE prepare: visible=${turntableVinylState.model.visible}, song=${turntableVinylState.selection.songName}`,
-      );
-    } else {
-      console.log(
-        `[handleFocusSelection] No turntable vinyl state BEFORE prepare`,
-      );
-    }
-
-    prepareFocusVinylPresentation(model, loadToken);
-
-    // Log turntable vinyl state after preparing focus presentation
-    if (turntableVinylState?.model) {
-      console.log(
-        `[handleFocusSelection] Turntable vinyl AFTER prepare: visible=${turntableVinylState.model.visible}, song=${turntableVinylState.selection.songName}`,
-      );
-    } else {
-      console.log(
-        `[handleFocusSelection] No turntable vinyl state AFTER prepare`,
-      );
-    }
-  } catch (error) {
-    console.error("Failed to load focus vinyl", error);
-  }
-}
-
-function prepareFocusVinylPresentation(model: Object3D, token: number) {
-  // Only switch to focus source if there's no dropping vinyl animating
-  if (!droppingVinylState) {
-    setActiveVinylSource("focus");
-  }
-  vinylScaleFactor = getFocusVinylScale(cameraRig);
-  vinylAnimationState.cameraRelativeOffsetValid = false;
-  updateFocusCardPosition();
-
-  // Keep vinyl invisible initially (including if not in fullscreen mode)
-  setVinylModelVisibility(
-    model,
-    "focus",
-    false,
-    "prepareFocusVinylPresentation",
-  );
-
-  resetVinylAnimationState(focusCardAnchorPosition, "focus");
-
-  // Enable billboard effect immediately
-  vinylCameraTrackingEnabled = true;
-
-  // Register callback FIRST, then trigger camera animation
-  // This ensures the callback fires even if camera is already at target position
-  cameraRig.onAnimationComplete(() => {
-    if (token === focusVinylLoadToken && focusVinylState?.model === model) {
-      // Enable vinyl visibility after camera animation
-      focusVinylManuallyHidden = false;
-      updateFocusVinylVisibility();
-      updateFocusCardPosition();
-      console.log(
-        "[load-vinyl-song] Camera animation complete, vinyl now visible",
-      );
-    }
-  });
-
-  // Now trigger the camera animation to bottom-center position
-  runWhenTurntableReady(() => {
-    turntablePositionState = "bottom-center";
-    cameraRig.setLookTarget(CAMERA_TARGETS[turntablePositionState], true);
-    vinylAnimationState.cameraRelativeOffsetValid = false;
-    cameraRig.setPolarAngle(22, true);
-  });
-}
-
-// Listen for aspect ratio updates from the focus card
-window.addEventListener("update-aspect-ratio", (event: any) => {
-  const { aspectRatio } = event.detail;
-  console.log(`[main] Updating aspect ratio live to: ${aspectRatio}`);
-  yt.setAspectRatio(aspectRatio);
-});
-
-// Listen for focus card album cover hover to shift vinyl (with animation)
-const FOCUS_VINYL_HOVER_DISTANCE_BASE = 5;
-const getFocusVinylHoverDistance = () =>
-  FOCUS_VINYL_HOVER_DISTANCE_BASE * getFocusCardScale();
-const FOCUS_VINYL_HOVER_ANIMATION_SPEED = 0.25;
-// FOCUS_VINYL_CLICK_ANIMATION_SPEED now imported from vinylInteractions.ts
-const FOCUS_COVER_CLICK_CLASS = "focus-cover-click-active";
-const FOCUS_COVER_CLICK_TIMEOUT = 3000;
-let focusVinylHoverOffset = 0;
-let focusVinylHoverOffsetTarget = 0;
-let focusCoverHoverActive = false;
-let focusCoverHoverOverride: boolean | null = null;
-let focusVinylManuallyHidden = false;
-let focusCoverZIndexActive = false;
-let focusCoverFallbackTimer: number | null = null;
-let focusCoverFallbackAnimationKey = 0;
-
-const setFocusCoverClickBodyClass = (active: boolean) => {
-  const body = document.body;
-  if (!body) {
-    return;
-  }
-  body.classList.toggle(FOCUS_COVER_CLICK_CLASS, active);
-};
-
-const applyFocusCoverHoverState = () => {
-  const effectiveHover =
-    focusCoverHoverOverride !== null
-      ? focusCoverHoverOverride
-      : focusCoverHoverActive;
-  focusVinylHoverOffsetTarget = effectiveHover
-    ? getFocusVinylHoverDistance()
-    : 0;
-};
-
-const updateFocusVinylVisibility = () => {
-  // Only show focus vinyl if there's a focus card rendered
-  const hasFocusCard = focusCardCoverContainer.childElementCount > 0;
-  const shouldShow =
-    !turntableStateManager.getIsFullscreenMode() &&
-    !isFreeLookMode &&
-    !focusVinylManuallyHidden &&
-    hasFocusCard;
-  setVinylModelVisibility(
-    focusVinylState?.model,
-    "focus",
-    shouldShow,
-    `updateFocusVinylVisibility (hasFocusCard=${hasFocusCard}, manualHidden=${focusVinylManuallyHidden}, fullscreen=${turntableStateManager.getIsFullscreenMode()}, freeLook=${isFreeLookMode})`,
-  );
-};
-
-const clearFocusCoverFallbackTimer = () => {
-  if (focusCoverFallbackTimer !== null) {
-    window.clearTimeout(focusCoverFallbackTimer);
-    focusCoverFallbackTimer = null;
-  }
-};
-
-const resetFocusCoverFallbackState = () => {
-  focusCoverFallbackAnimationKey += 1;
-  focusCoverHoverOverride = null;
-  applyFocusCoverHoverState();
-  return focusCoverFallbackAnimationKey;
-};
-
-const hideFocusCardAndVinyl = () => {
-  focusCardContainers.forEach((container) => {
-    container.innerHTML = "";
-    container.style.opacity = "0";
-    container.style.pointerEvents = "none";
-  });
-  focusVinylManuallyHidden = true;
-  focusVinylHoverOffsetTarget = 0;
-  setFocusCoverClickBodyClass(false);
-  updateFocusVinylVisibility();
-};
-
-const waitForFocusVinylOffset = (
-  target: number,
-  animationKey: number,
-): Promise<void> => {
-  return new Promise((resolve) => {
-    const check = () => {
-      if (focusCoverFallbackAnimationKey !== animationKey) {
-        resolve();
-        return;
-      }
-      if (Math.abs(focusVinylHoverOffset - target) < 0.01) {
-        resolve();
-        return;
-      }
-      requestAnimationFrame(check);
-    };
-    requestAnimationFrame(check);
-  });
-};
-
-const waitMs = (ms: number) =>
-  new Promise<void>((resolve) => {
-    window.setTimeout(resolve, ms);
-  });
-
-const beginFocusCoverFallbackSequence = () => {
-  if (!focusCoverZIndexActive) {
-    deactivateFocusCoverZIndexImmediate();
-    return;
-  }
-  clearFocusCoverFallbackTimer();
-  const animationKey = resetFocusCoverFallbackState();
-
-  const run = async () => {
-    focusCoverHoverOverride = true;
-    applyFocusCoverHoverState();
-    await waitForFocusVinylOffset(getFocusVinylHoverDistance(), animationKey);
-    if (focusCoverFallbackAnimationKey !== animationKey) {
-      return;
-    }
-
-    await waitMs(100);
-    if (focusCoverFallbackAnimationKey !== animationKey) {
-      return;
-    }
-
-    if (focusCoverZIndexActive) {
-      focusCoverZIndexActive = false;
-      setFocusCoverClickBodyClass(false);
-    }
-
-    focusCoverHoverOverride = false;
-    applyFocusCoverHoverState();
-    await waitForFocusVinylOffset(0, animationKey);
-    if (focusCoverFallbackAnimationKey !== animationKey) {
-      return;
-    }
-
-    await waitMs(150);
-    if (focusCoverFallbackAnimationKey !== animationKey) {
-      return;
-    }
-
-    resetFocusCoverFallbackState();
-  };
-
-  void run();
-};
-
-const scheduleFocusCoverFallback = () => {
-  clearFocusCoverFallbackTimer();
-  focusCoverFallbackTimer = window.setTimeout(() => {
-    focusCoverFallbackTimer = null;
-    beginFocusCoverFallbackSequence();
-  }, FOCUS_COVER_CLICK_TIMEOUT);
-};
-
-const activateFocusCoverZIndex = () => {
-  focusCoverZIndexActive = true;
-  setFocusCoverClickBodyClass(true);
-  resetFocusCoverFallbackState();
-  scheduleFocusCoverFallback();
-};
-
-const deactivateFocusCoverZIndexImmediate = () => {
-  clearFocusCoverFallbackTimer();
-  resetFocusCoverFallbackState();
-  if (focusCoverZIndexActive) {
-    focusCoverZIndexActive = false;
-    setFocusCoverClickBodyClass(false);
-  }
-};
-
-window.addEventListener("focus-cover-hover", (event: any) => {
-  const { hovered } = event.detail;
-  focusCoverHoverActive = Boolean(hovered);
-  applyFocusCoverHoverState();
-  // console.log(
-  //   `[main] Focus cover hover: ${hovered}, target offset: ${focusVinylHoverOffsetTarget}`,
-  // );
-});
-
-window.addEventListener("focus-cover-click", (event: any) => {
-  const active = Boolean(event.detail?.active);
-  if (active) {
-    activateFocusCoverZIndex();
-  } else {
-    beginFocusCoverFallbackSequence();
-  }
-});
-
-window.addEventListener("focus-cover-click-reset", () => {
-  deactivateFocusCoverZIndexImmediate();
-});
-
-window.addEventListener("focus-visibility-change", (event: any) => {
-  const visible = event.detail?.visible ?? true;
-  focusVinylManuallyHidden = !visible;
-  updateFocusVinylVisibility();
-});
-
-const getFocusVisualOffset = () => focusVinylHoverOffset;
-
-const getVisualOffsetForSource = (source: VinylSource | null) =>
-  source === "focus" ? getFocusVisualOffset() : 0;
-
-const hideFocusVinylForFullscreen = () => {
-  if (fullscreenVinylRestoreTimeout !== null) {
-    window.clearTimeout(fullscreenVinylRestoreTimeout);
-    fullscreenVinylRestoreTimeout = null;
-  }
-  if (focusVinylState?.model) {
-    setVinylModelVisibility(
-      focusVinylState.model,
-      "focus",
-      false,
-      "fullscreen hide",
-    );
-  }
-};
-
-const scheduleFocusVinylRestore = () => {
-  if (fullscreenVinylRestoreTimeout !== null) {
-    window.clearTimeout(fullscreenVinylRestoreTimeout);
-    fullscreenVinylRestoreTimeout = null;
-  }
-  if (!focusVinylState?.model) {
-    return;
-  }
-  const modelRef = focusVinylState.model;
-  setVinylModelVisibility(modelRef, "focus", false, "fullscreen restore delay");
-  fullscreenVinylRestoreTimeout = window.setTimeout(() => {
-    fullscreenVinylRestoreTimeout = null;
-    if (focusVinylState?.model === modelRef) {
-      updateFocusVinylVisibility();
-    }
-  }, 250);
-};
-
-// Listen for focus card show events to change camera position and angle
-window.addEventListener("focus-card-shown", (event: any) => {
-  const { position, polarAngle } = event.detail;
-  runWhenTurntableReady(() => {
-    console.log(
-      `[main] Focus card shown, changing camera position to: ${position}, polar angle to: ${polarAngle}°`,
-    );
-    if (position === "bottom-center") {
-      turntablePositionState = "bottom-center";
-      cameraRig.setLookTarget(CAMERA_TARGETS[turntablePositionState], true);
-      vinylAnimationState.cameraRelativeOffsetValid = false;
-    }
-    if (polarAngle !== undefined) {
-      cameraRig.setPolarAngle(polarAngle, true);
-    }
-  });
+const vinylSelectionController = createVinylSelectionController({
+  yt,
+  youtubePlayer,
+  videoControls,
+  turntableStateManager,
+  getTurntableController: () => turntableController,
+  focusCardController,
+  cameraRig,
+  cameraTargets: CAMERA_TARGETS,
+  runWhenTurntableReady,
+  setTurntablePositionState: (state) => {
+    turntablePositionState = state as TurntablePosition;
+  },
+  setVinylCameraTrackingEnabled: (value) => {
+    vinylCameraTrackingEnabled = value;
+  },
+  focusCardAnchorPosition,
+  vinylAnimationState,
+  resetVinylAnimationState,
+  setVinylModelVisibility,
+  applyLabelTextures,
+  applyFocusVinylScale,
+  getFocusVinylScale,
+  setVinylScaleFactor: (value) => {
+    vinylScaleFactor = value;
+  },
+  loadVinylModel,
+  vinylNormalTexture,
+  heroGroup,
+  getSelectionCoverUrl,
+  extractVibrantColor,
+  extractDominantColor,
+  deriveVinylColorFromAlbumColor,
+  FALLBACK_BACKGROUND_COLOR,
+  applyMetadataToLabels,
+  rebuildLabelTextures,
+  labelVisuals,
+  labelOptions,
+  getFocusLabelTextures: () => focusLabelTextures,
+  setFocusVinylDerivedColor: (value) => {
+    focusVinylDerivedColor = value;
+  },
+  getFocusVinylDerivedColor: () => focusVinylDerivedColor,
+  getTurntableVinylDerivedColor: () => turntableVinylDerivedColor,
+  updateFocusVinylColorFromDerived,
+  updateTurntableVinylVisuals,
+  restoreDroppingVinylAppearance,
+  detachFocusTexturesForTurntable,
+  cloneLabelVisuals,
+  disposeDroppingVinyl,
+  disposeFocusVinyl,
+  setActiveVinylSource,
+  getActiveVinylSource: () => activeVinylSource,
+  getPendingPromotionSource: () => pendingPromotionSource,
+  setPendingPromotionSource,
+  getFocusVinylState: () => focusVinylState,
+  setFocusVinylState: (state) => {
+    focusVinylState = state;
+  },
+  getTurntableVinylState: () => turntableVinylState,
+  setTurntableVinylState: (state) => {
+    turntableVinylState = state;
+  },
+  getDroppingVinylState: () => droppingVinylState,
+  setDroppingVinylState: (state) => {
+    droppingVinylState = state;
+  },
+  applyFocusVinylColorToModel,
+  incrementFocusVinylLoadToken: () => ++focusVinylLoadToken,
+  getFocusVinylLoadToken: () => focusVinylLoadToken,
+  setVinylDragPointerId: (value) => {
+    vinylDragPointerId = value;
+  },
+  getIsReturningVinyl: () => isReturningVinyl,
+  setIsReturningVinyl: (value) => {
+    isReturningVinyl = value;
+  },
+  setIsReturningToFocusCard: (value) => {
+    isReturningToFocusCard = value;
+  },
+  setShouldTrackFocusCard: (value) => {
+    shouldTrackFocusCard = value;
+  },
+  getPendingVinylSelection: () => pendingVinylSelection,
+  setPendingVinylSelection: (value) => {
+    pendingVinylSelection = value;
+  },
+  getLoadedSelectionVideoId: () => loadedSelectionVideoId,
+  setLoadedSelectionVideoId: (value) => {
+    loadedSelectionVideoId = value;
+  },
+  getCurrentVideoLoad: () => currentVideoLoad,
+  setCurrentVideoLoad: (value) => {
+    currentVideoLoad = value;
+  },
+  incrementSelectionVisualUpdateId: () => ++selectionVisualUpdateId,
+  getSelectionVisualUpdateId: () => selectionVisualUpdateId,
 });
 
 // YouTube player callbacks now managed by TurntableStateManager
 let isTonearmInPlayArea = false;
+let mouseInactivityTimer: number | null = null;
 turntableStateManager.initialize(cameraRig, CAMERA_TARGETS, {
   runWhenTurntableReady,
   setHeroPageVisibility,
-  hideFocusVinylForFullscreen,
-  scheduleFocusVinylRestore,
-  setTurntableUIVisible,
+  hideFocusVinylForFullscreen: () =>
+    focusCardController.hideFocusVinylForFullscreen(),
+  scheduleFocusVinylRestore: () =>
+    focusCardController.scheduleFocusVinylRestore(),
+  setTurntableUIVisible: (visible: boolean) => {
+    turntableUiController?.setTurntableUIVisible(visible);
+  },
   setTurntablePositionState: (state: string) => {
     turntablePositionState = state as TurntablePosition;
   },
@@ -3128,180 +1795,63 @@ turntableStateManager.initialize(cameraRig, CAMERA_TARGETS, {
   },
   onEnterFullscreen: () => {
     // Start cursor hide timer when entering fullscreen
-    scheduleCursorHide();
+    inputHandlers?.scheduleCursorHide();
   },
   onExitFullscreen: () => {
     // Clear timer and show cursor when exiting fullscreen
-    if (mouseInactivityTimer !== null) {
-      clearTimeout(mouseInactivityTimer);
-      mouseInactivityTimer = null;
-    }
-    canvas.style.cursor = "";
+    inputHandlers?.resetCursorHide();
   },
 });
 
-let vinylDragPointerId: number | null = null;
-let activeDragVisualOffset = 0;
-let isReturningVinyl = false;
-let hasClearedNub = false;
-let nubClearanceY = 0;
-let vinylDragExceededThreshold = false;
-// tonearm drag handled by controller
-// ON_TURNTABLE state now managed by TurntableStateManager
-// VINYL_DRAG_THRESHOLD now imported from vinylInteractions.ts
-let isReturningToFocusCard = false; // Separate state for returning to focus card
-let paperScrollDragPointerId: number | null = null;
-function setVinylOnTurntable(onTurntable: boolean) {
-  if (onTurntable === turntableStateManager.isOnTurntable()) {
-    console.log(
-      `[turntableVinyl] setVinylOnTurntable(${onTurntable}) skipped (already ${onTurntable})`,
-    );
-    return;
-  }
-  console.log(`[turntableVinyl] setVinylOnTurntable(${onTurntable})`);
+const {
+  setVinylOnTurntable,
+  clearTurntableVinylPreservingPromotion,
+  startTurntableVinylFlyaway,
+} = createTurntableVinylController({
+  yt,
+  root,
+  turntableStateManager,
+  getTurntableController: () => turntableController,
+  getPendingPromotionSource: () => pendingPromotionSource,
+  setPendingPromotionSource,
+  getFocusVinylState: () => focusVinylState,
+  setFocusVinylState: (state) => {
+    focusVinylState = state;
+  },
+  getTurntableVinylState: () => turntableVinylState,
+  setTurntableVinylState: (state) => {
+    turntableVinylState = state;
+  },
+  getFocusVinylDerivedColor: () => focusVinylDerivedColor,
+  setTurntableVinylDerivedColor: (value) => {
+    turntableVinylDerivedColor = value;
+  },
+  updateTurntableVinylColorFromDerived,
+  detachFocusTexturesForTurntable,
+  cloneLabelVisuals,
+  labelVisuals,
+  setVinylModelVisibility,
+  setActiveVinylSource,
+  setShouldTrackFocusCard: (value) => {
+    shouldTrackFocusCard = value;
+  },
+  disposeTurntableVinyl,
+  loadVideoForCurrentSelection: () =>
+    vinylSelectionController.loadVideoForCurrentSelection(),
+  getPendingVinylSelection: () => pendingVinylSelection,
+  setPendingVinylSelection: (value) => {
+    pendingVinylSelection = value;
+  },
+  getLoadedSelectionVideoId: () => loadedSelectionVideoId,
+  setLoadedSelectionVideoId: (value) => {
+    loadedSelectionVideoId = value;
+  },
+  setIsTonearmInPlayArea: (value) => {
+    isTonearmInPlayArea = value;
+  },
+  flyawayVinyls,
+});
 
-  if (onTurntable) {
-    const promotingFocus = pendingPromotionSource === "focus";
-    setPendingPromotionSource(null, "setVinylOnTurntable(true)");
-    if (promotingFocus && focusVinylState) {
-      if (turntableVinylState) {
-        disposeTurntableVinyl("promoting focus->turntable");
-      }
-      const textures = detachFocusTexturesForTurntable();
-      const snapshotVisuals = cloneLabelVisuals(labelVisuals);
-      turntableVinylState = {
-        model: focusVinylState.model,
-        selection: focusVinylState.selection,
-        labelTextures: textures,
-        labelVisuals: snapshotVisuals,
-      };
-      turntableVinylDerivedColor = focusVinylDerivedColor;
-      updateTurntableVinylColorFromDerived();
-      setVinylModelVisibility(
-        turntableVinylState.model,
-        "turntable",
-        true,
-        "promoted from focus",
-      );
-      focusVinylState = null;
-      shouldTrackFocusCard = false;
-      setActiveVinylSource("turntable");
-    }
-    if (!turntableVinylState) {
-      return;
-    }
-    setVinylModelVisibility(
-      turntableVinylState.model,
-      "turntable",
-      true,
-      "setVinylOnTurntable",
-    );
-    turntableStateManager.setOnTurntable(true);
-    turntableStateManager.setTurntableVinylState(turntableVinylState);
-    turntableController?.setVinylPresence(true);
-    // Only return tonearm home and load video if promoting from focus
-    if (promotingFocus) {
-      turntableController?.returnTonearmHome();
-      pendingVinylSelection = turntableVinylState.selection;
-      void loadVideoForCurrentSelection();
-    }
-    return;
-  }
-
-  setPendingPromotionSource(null, "setVinylOnTurntable(false) request");
-  if (!turntableStateManager.isOnTurntable()) {
-    return;
-  }
-
-  turntableStateManager.setOnTurntable(false);
-  turntableStateManager.setTurntableVinylState(null);
-  turntableController?.setVinylPresence(false);
-  yt.pause();
-  loadedSelectionVideoId = null;
-  turntableStateManager.setTonearmInPlayArea(false);
-  yt.setControlsVisible(false);
-  const viewport = root?.querySelector(
-    ".yt-player-viewport",
-  ) as HTMLElement | null;
-  if (viewport) {
-    viewport.style.height = "0px";
-  }
-  turntableController?.liftNeedle();
-  disposeTurntableVinyl("setVinylOnTurntable(false)");
-  setActiveVinylSource(focusVinylState ? "focus" : null);
-}
-
-const clearTurntableVinylPreservingPromotion = () => {
-  if (!turntableVinylState) {
-    console.log(
-      "[turntableVinyl] clearTurntableVinylPreservingPromotion skipped (no turntable state)",
-    );
-    return;
-  }
-  if (pendingPromotionSource !== "focus") {
-    console.log(
-      `[turntableVinyl] clearTurntableVinylPreservingPromotion skipped (pendingPromotionSource=${pendingPromotionSource})`,
-    );
-    return;
-  }
-  console.log(
-    `[turntableVinyl] Clearing turntable vinyl for pending promotion (${turntableVinylState.selection.songName})`,
-  );
-  const previousPromotion = pendingPromotionSource;
-  setVinylOnTurntable(false);
-  setPendingPromotionSource(
-    previousPromotion,
-    "restore after clearTurntableVinylPreservingPromotion",
-  );
-  turntableController?.returnTonearmHome();
-};
-
-const startTurntableVinylFlyaway = () => {
-  if (!turntableVinylState) {
-    return;
-  }
-  console.log(
-    `[turntableVinyl] Starting flyaway for ${turntableVinylState.selection.songName}`,
-  );
-  const { model, labelTextures, selection } = turntableVinylState;
-
-  flyawayVinyls.push({
-    model,
-    velocity: new Vector3(
-      (Math.random() - 0.5) * 2.1,
-      (1.5 + Math.random() * 0.7) * 1.5,
-      (2.2 + Math.random() * 1.2) * 1.5,
-    ),
-    spin: new Vector3(
-      (Math.random() - 0.5) * 6,
-      (Math.random() - 0.5) * 8,
-      (Math.random() - 0.5) * 6,
-    ),
-    lifetime: 0,
-    initialScale: model.scale.x,
-    textures: labelTextures,
-    selection: selection,
-  });
-  turntableVinylState = null;
-  turntableStateManager.setOnTurntable(false);
-  turntableStateManager.setTurntableVinylState(null);
-  setPendingPromotionSource(null, "startTurntableVinylFlyaway");
-  turntableController?.setVinylPresence(false);
-  turntableController?.liftNeedle();
-  yt.pause();
-  loadedSelectionVideoId = null;
-  isTonearmInPlayArea = false;
-  turntableStateManager.setTonearmInPlayArea(false);
-  yt.setControlsVisible(false);
-  yt.updateButtonVisibility();
-  const viewport = root.querySelector(
-    ".yt-player-viewport",
-  ) as HTMLElement | null;
-  if (viewport) {
-    viewport.style.height = "0px";
-  }
-  setActiveVinylSource(focusVinylState ? "focus" : null);
-};
 let vinylSpinAngle = 0;
 let vinylUserRotation = 0;
 let lastTime = performance.now();
@@ -3323,726 +1873,123 @@ cameraRig.setViewDirection(
 
 canvas.addEventListener("contextmenu", (event) => event.preventDefault());
 
-// Spacebar to toggle start/stop (only when not typing in input fields)
-let isSpacePressed = false;
+const { pickVinylUnderPointer, handleFullscreenTurntableHoverChange } =
+  createTurntablePointerUtils({
+    raycaster,
+    getFocusVinylState: () => focusVinylState,
+    getTurntableVinylState: () => turntableVinylState,
+    getFocusVisualOffset: () => focusCardController.getFocusVisualOffset(),
+    cameraRig,
+    lightingAnimator,
+    cameraTargets: CAMERA_TARGETS,
+    turntableFocusTarget,
+    fullscreenLighting: FULLSCREEN_LIGHTING,
+    fullscreenHoverLighting: FULLSCREEN_HOVER_LIGHTING,
+  });
 
-document.addEventListener("keydown", (event) => {
-  // Check if user is typing in an input, textarea, or contenteditable element
-  const target = event.target as HTMLElement;
-  const isTyping =
-    target.tagName === "INPUT" ||
-    target.tagName === "TEXTAREA" ||
-    target.isContentEditable;
-
-  // Ignore keyboard shortcuts when typing
-  if (isTyping) {
-    return;
-  }
-
-  if ((event.code === "Space" || event.key === " ") && !isSpacePressed) {
-    isSpacePressed = true;
-    event.preventDefault();
-    turntableController?.toggleStartStop();
-  }
-});
-
-document.addEventListener("keyup", (event) => {
-  if (event.code === "Space" || event.key === " ") {
-    isSpacePressed = false;
-  }
-});
-
-const pickVinylUnderPointer = () => {
-  const focusVisualOffset = getFocusVisualOffset();
-  const focusModel = focusVinylState?.model ?? null;
-  const shouldOffsetFocus = !!focusModel?.visible && focusVisualOffset !== 0;
-  if (shouldOffsetFocus && focusModel) {
-    focusModel.position.x += focusVisualOffset;
-  }
-  const hits: {
-    source: VinylSource;
-    model: Object3D;
-    hit: Intersection<Object3D>;
-  }[] = [];
-  if (focusModel?.visible) {
-    const focusHit = raycaster.intersectObject(focusModel, true);
-    if (focusHit.length) {
-      hits.push({
-        source: "focus",
-        model: focusModel,
-        hit: focusHit[0],
-      });
-    }
-  }
-  if (turntableVinylState) {
-    const tableHit = raycaster.intersectObject(turntableVinylState.model, true);
-    if (tableHit.length) {
-      hits.push({
-        source: "turntable",
-        model: turntableVinylState.model,
-        hit: tableHit[0],
-      });
-    }
-  }
-  if (shouldOffsetFocus && focusModel) {
-    focusModel.position.x -= focusVisualOffset;
-  }
-  if (!hits.length) {
-    return null;
-  }
-  hits.sort((a, b) => a.hit.distance - b.hit.distance);
-  return hits[0];
-};
-
-canvas.addEventListener("pointerdown", (event) => {
-  if (event.button === 1) {
-    if (
-      activePage !== "turntable" ||
-      pageTransitionState.active ||
-      !isFreeLookMode
-    ) {
-      return;
-    }
-    startCameraPan(event);
-    return;
-  }
-  if (event.button === 2) {
-    if (
-      (activePage !== "turntable" && activePage !== "home") ||
-      pageTransitionState.active
-    ) {
-      return;
-    }
-    startCameraOrbit(event);
-    return;
-  }
-  if (event.button !== 0) {
-    return;
-  }
-  if (!updatePointer(event, pointerNDC, canvas)) {
-    return;
-  }
-  raycaster.setFromCamera(pointerNDC, camera);
-  if (activePage !== "turntable") {
-    if (pageTransitionState.active || yt.isFullscreen()) {
-      return;
-    }
-    if (activePage === "home") {
-      if (heroGroup.children.length) {
-        const heroHits = raycaster.intersectObject(heroGroup, true);
-        if (heroHits.length) {
-          for (const hit of heroHits) {
-            const page = findPageForObject(
-              hit.object as Object3D,
-              homePageTargets,
-            );
-            if (page && page !== "home") {
-              if (page === "portfolio") {
-                void portfolioNavigationController.openPortfolioPage();
-              } else {
-                setActiveScenePage(page);
-              }
-              break;
-            }
-          }
-        }
-      }
-    } else if (activePage === BUSINESS_CARD_PAGE) {
-      if (handleBusinessCardLinkClick()) {
-        return;
-      }
-      startBusinessCardRotation();
-    } else if (activePage === "portfolio") {
-      const hoveredPaper = pickPortfolioPaperUnderPointer();
-      if (hoveredPaper) {
-        const { paperId, paper, hit } = hoveredPaper;
-        if (hit.uv) {
-          const linkUrl = portfolioPapersManager?.checkLinkAtUV(
-            paperId,
-            hit.uv.x,
-            hit.uv.y,
-          );
-          if (linkUrl) {
-            console.log(`[Portfolio] Opening link: ${linkUrl}`);
-            window.open(linkUrl, "_blank");
-            return;
-          }
-
-          if (portfolioPapersManager?.isPaperScrollable(paperId)) {
-            const canvasCoords = portfolioPapersManager.uvToCanvasCoords(
-              paperId,
-              { x: hit.uv.x, y: hit.uv.y },
-            );
-            if (canvasCoords) {
-              portfolioPapersManager.startPaperDrag(paperId, canvasCoords.y);
-              try {
-                canvas.setPointerCapture(event.pointerId);
-              } catch {
-                // ignore inability to capture pointer
-              }
-              paperScrollDragPointerId = event.pointerId;
-              event.preventDefault();
-              return;
-            }
-          }
-        }
-
-        if (paper.type === "pdf") {
-          console.log(`[Portfolio] Opening PDF in new window: ${paper.url}`);
-          window.open(paper.url, "_blank");
-          return;
-        }
-      }
-    }
-    return;
-  }
-  if (turntableController && turntableController.handlePointerDown(event)) {
-    return;
-  }
-  // Disable vinyl dragging in fullscreen mode
-  if (yt.isFullscreen()) {
-    return;
-  }
-  const vinylSelection = pickVinylUnderPointer();
-  if (!vinylSelection) {
-    return;
-  }
-  const previousSource = activeVinylSource;
-  setActiveVinylSource(vinylSelection.source);
-  if (!vinylModel) {
-    return;
-  }
-  if (
-    vinylSelection.source === "focus" &&
-    focusVinylState &&
-    previousSource !== "focus"
-  ) {
-    resetVinylAnimationState(focusCardAnchorPosition, "focus");
-  } else if (
-    vinylSelection.source === "turntable" &&
-    turntableVinylState &&
-    previousSource !== "turntable"
-  ) {
-    resetVinylAnimationState(turntableAnchorPosition, "turntable");
-  }
-  // Set drag plane perpendicular to camera forward direction for unrestricted dragging
-  camera.getWorldDirection(cameraForward);
-  const selectionVisualOffset = getVisualOffsetForSource(vinylSelection.source);
-  activeDragVisualOffset = selectionVisualOffset;
-  vinylDisplayPosition.copy(vinylModel.position);
-  if (selectionVisualOffset !== 0) {
-    vinylDisplayPosition.x += selectionVisualOffset;
-  }
-  dragPlane.setFromNormalAndCoplanarPoint(cameraForward, vinylDisplayPosition);
-
-  const hit = raycaster.ray.intersectPlane(dragPlane, dragIntersectPoint);
-  if (!hit) {
-    return;
-  }
-
-  vinylDragPointerId = event.pointerId;
-  currentDragSource = vinylSelection.source;
-  isReturningVinyl = false;
-  hasClearedNub = false;
-  vinylDragExceededThreshold = false;
-  (window as any).VINYL_DRAG_ACTIVE = true;
-  if (vinylSelection.source === "turntable") {
-    turntableController?.liftNeedle();
-    turntableController?.setVinylPresence(false);
-  }
-  if (selectionVisualOffset !== 0) {
-    hit.x -= selectionVisualOffset;
-  }
-
-  currentPointerWorld.copy(hit);
-  pointerAttachmentOffset.copy(vinylModel.position).sub(hit);
-  vinylTargetPosition.copy(vinylModel.position);
-  lastTargetPosition.copy(vinylModel.position);
-  swingState.targetX = 0;
-  swingState.targetZ = 0;
-  canvas.setPointerCapture(event.pointerId);
-  document.body.classList.add("vinyl-drag-active");
-});
-
-let isTurntableHovered = false;
-
-// Mouse cursor auto-hide in fullscreen
-let mouseInactivityTimer: number | null = null;
-const MOUSE_HIDE_DELAY = 2000; // Hide after 2 seconds of inactivity
-
-const showCursor = () => {
-  canvas.style.cursor = "";
-  if (mouseInactivityTimer !== null) {
-    clearTimeout(mouseInactivityTimer);
-  }
-};
-
-const scheduleCursorHide = () => {
-  if (mouseInactivityTimer !== null) {
-    clearTimeout(mouseInactivityTimer);
-  }
-  if (yt.isFullscreen()) {
-    mouseInactivityTimer = window.setTimeout(() => {
-      canvas.style.cursor = "none";
-    }, MOUSE_HIDE_DELAY);
-  }
-};
-
-canvas.addEventListener("pointermove", (event) => {
-  // Show cursor on movement and schedule hide in fullscreen
-  if (yt.isFullscreen()) {
-    showCursor();
-    scheduleCursorHide();
-  }
-  if (
-    activePage === BUSINESS_CARD_PAGE &&
-    updatePointer(event, pointerNDC, canvas)
-  ) {
-    raycaster.setFromCamera(pointerNDC, camera);
-    updateBusinessCardHoverState();
-  } else if (activePage !== BUSINESS_CARD_PAGE) {
-    setBusinessCardContactHighlight(null);
-    canvas.style.cursor = "";
-  }
-  if (handleBusinessCardRotationMove(event)) {
-    return;
-  }
-  if (handleCameraPanMove(event)) {
-    return;
-  }
-  if (handleCameraOrbitMove(event)) {
-    return;
-  }
-
-  // Handle click-drag scrolling for portfolio papers
-  if (portfolioPapersManager && portfolioPapersManager.isDraggingPaper()) {
-    const draggingPaperId = portfolioPapersManager.getDraggingPaperId();
-    if (draggingPaperId) {
-      let canvasCoords: { x: number; y: number } | null = null;
-      if (updatePointer(event, pointerNDC, canvas)) {
-        raycaster.setFromCamera(pointerNDC, camera);
-        const mesh = portfolioPapersManager
-          .getPaperMeshes()
-          .get(draggingPaperId);
-        if (mesh) {
-          const hits = raycaster.intersectObject(mesh, true);
-          if (hits.length > 0 && hits[0].uv) {
-            canvasCoords = portfolioPapersManager.uvToCanvasCoords(
-              draggingPaperId,
-              { x: hits[0].uv.x, y: hits[0].uv.y },
-            );
-          }
-        }
-      }
-      if (!canvasCoords) {
-        canvasCoords = portfolioPapersManager.clientToCanvasCoords(
-          draggingPaperId,
-          event.clientX,
-          event.clientY,
-          canvas,
-        );
-      }
-      if (canvasCoords) {
-        portfolioPapersManager.updatePaperDrag(canvasCoords.y);
-      }
-    }
-    return;
-  }
-
-  if (turntableController && turntableController.handlePointerMove(event)) {
-    return;
-  }
-
-  // Check if hovering over clickable home page navigation elements
-  if (activePage === "home" && !pageTransitionState.active) {
-    if (updatePointer(event, pointerNDC, canvas)) {
-      raycaster.setFromCamera(pointerNDC, camera);
-      const heroHits = raycaster.intersectObject(heroGroup, true);
-      let foundClickable = false;
-
-      if (heroHits.length) {
-        for (const hit of heroHits) {
-          const page = findPageForObject(
-            hit.object as Object3D,
-            homePageTargets,
-          );
-          if (page && page !== "home") {
-            foundClickable = true;
-            break;
-          }
-        }
-      }
-
-      canvas.style.cursor = foundClickable ? "pointer" : "";
-    }
-  }
-
-  // Check if hovering over clickable vinyl records or turntable controls on turntable page
-  if (
-    activePage === "turntable" &&
-    !pageTransitionState.active &&
-    !yt.isFullscreen()
-  ) {
-    if (updatePointer(event, pointerNDC, canvas)) {
-      raycaster.setFromCamera(pointerNDC, camera);
-      const vinylPick = pickVinylUnderPointer();
-      const hoveringControls =
-        turntableController?.isHoveringControls() ?? false;
-
-      if (vinylPick || hoveringControls) {
-        canvas.style.cursor = "pointer";
-      } else {
-        canvas.style.cursor = "";
-      }
-    }
-  }
-
-  // Check if hovering over turntable in fullscreen mode
-  if (yt.isFullscreen() && turntablePositionState === "fullscreen") {
-    if (!updatePointer(event, pointerNDC, canvas)) {
-      return;
-    }
-    raycaster.setFromCamera(pointerNDC, camera);
-
-    // Check if hovering over turntable (heroGroup contains turntable and vinyl)
-    // Filter to only check visible objects to avoid invisible models triggering hovers
-    const turntableHits = raycaster
-      .intersectObject(heroGroup, true)
-      .filter((hit) => {
-        // Check if this object and all its parents up to heroGroup are visible
-        let obj: Object3D | null = hit.object;
-        while (obj && obj !== heroGroup) {
-          if (!obj.visible) return false;
-          obj = obj.parent;
-        }
-        return true;
-      });
-    const wasHovered = isTurntableHovered;
-    isTurntableHovered = turntableHits.length > 0;
-
-    // Only change polar angle and Z position if hover state changed
-    if (isTurntableHovered && !wasHovered) {
-      cameraRig.setPolarAngle(88, true);
-      // Set Z to 0 (reset to default) when hovered
-      const hoveredTarget = new Vector3(
-        CAMERA_TARGETS["fullscreen"].x,
-        CAMERA_TARGETS["fullscreen"].y - 18,
-        turntableFocusTarget.z - 23.4,
-      );
-      cameraRig.setLookTarget(hoveredTarget, true);
-      // Boost lighting when hovering in fullscreen
-      lightingAnimator.setTargetState(FULLSCREEN_HOVER_LIGHTING, true);
-    } else if (!isTurntableHovered && wasHovered) {
-      cameraRig.setPolarAngle(2, true);
-      // Restore fullscreen Z position when unhovered
-      cameraRig.setLookTarget(CAMERA_TARGETS["fullscreen"], true);
-      // Restore fullscreen lighting when unhovered
-      lightingAnimator.setTargetState(FULLSCREEN_LIGHTING, true);
-    }
-  }
-
-  if (
-    vinylDragPointerId === null ||
-    event.pointerId !== vinylDragPointerId ||
-    !vinylModel
-  ) {
-    return;
-  }
-  const hit = pickPointOnPlane(event);
-  if (!hit) {
-    return;
-  }
-  if (currentDragSource === "focus" && activeDragVisualOffset !== 0) {
-    hit.x -= activeDragVisualOffset;
-  }
-  currentPointerWorld.copy(hit);
-});
-
-const endDrag = (event: PointerEvent) => {
-  if (vinylDragPointerId === null || event.pointerId !== vinylDragPointerId) {
-    return;
-  }
-
-  const dragSource = currentDragSource;
-  vinylDragPointerId = null;
-  currentDragSource = null;
-  activeDragVisualOffset = 0;
-  (window as any).VINYL_DRAG_ACTIVE = false;
-  document.body.classList.remove("vinyl-drag-active");
-  pointerAttachmentOffset.copy(hangOffset);
-  if (vinylModel) {
-    currentPointerWorld.copy(vinylModel.position);
-    vinylTargetPosition.copy(vinylModel.position);
-    lastTargetPosition.copy(vinylModel.position);
-  } else {
-    currentPointerWorld.copy(vinylAnchorPosition);
-    vinylTargetPosition.copy(vinylAnchorPosition);
-    lastTargetPosition.copy(vinylAnchorPosition);
-  }
-
-  let launchedTurntableFlyaway = false;
-  if (
-    dragSource === "turntable" &&
-    vinylModel &&
-    vinylModel.position.y >= VINYL_DRAG_THRESHOLD
-  ) {
-    startTurntableVinylFlyaway();
-    launchedTurntableFlyaway = true;
-  }
-
-  // Determine which anchor to return to based on Y position threshold
-  if (
-    !launchedTurntableFlyaway &&
-    vinylModel &&
-    vinylModel.position.y < VINYL_DRAG_THRESHOLD
-  ) {
-    // Below threshold: return to turntable with full animation (nub clearance, etc.)
-    if (!isReturningVinyl && !isReturningToFocusCard) {
-      isReturningVinyl = true;
-      isReturningToFocusCard = false;
-      hasClearedNub = false;
-      // Only set pendingPromotionSource if dragging from focus (not if already on turntable)
-      setPendingPromotionSource(
-        dragSource === "turntable" ? null : dragSource,
-        "start vinyl return from drag",
-      );
-      // If there's already a dropping vinyl, dispose it (max 2 vinyls rule)
-      if (dragSource !== "turntable" && droppingVinylState) {
-        disposeDroppingVinyl();
-      }
-      if (dragSource !== "turntable" && turntableVinylState) {
-        clearTurntableVinylPreservingPromotion();
-      }
-      // Switch anchor to turntable when starting return (but keep shouldTrackFocusCard - only disable when actually on turntable)
-      setVinylAnchorPosition(turntableAnchorPosition, "turntable");
-      // Reset target positions to vinyl's current position after anchor switch to prevent teleporting
-      vinylTargetPosition.copy(vinylModel.position);
-      lastTargetPosition.copy(vinylModel.position);
-    }
-  } else if (
-    vinylModel &&
-    vinylModel.position.y >= VINYL_DRAG_THRESHOLD &&
-    shouldTrackFocusCard
-  ) {
-    // Above threshold with focus card tracking: return to focus card with simple animation
-    if (!isReturningVinyl && !isReturningToFocusCard) {
-      isReturningVinyl = false;
-      isReturningToFocusCard = true;
-      setPendingPromotionSource(null, "returning focus vinyl to card");
-      // Switch anchor to focus card when starting return
-      setVinylAnchorPosition(focusCardAnchorPosition, "focus");
-    }
-  }
-
-  if (
-    !vinylDragExceededThreshold &&
-    vinylModel &&
-    vinylModel.position.y < VINYL_DRAG_THRESHOLD &&
-    dragSource === "turntable"
-  ) {
-    turntableController?.setVinylPresence(true);
-  }
-  vinylDragExceededThreshold = false;
-
-  try {
-    canvas.releasePointerCapture(event.pointerId);
-  } catch {
-    // ignore if pointer was already released
-  }
-
-  swingState.targetX = 0;
-  swingState.targetZ = 0;
-  // Only switch back to focus if we're not returning to turntable and not returning to focus card
-  if (
-    focusVinylState &&
-    activeVinylSource !== "focus" &&
-    !isReturningVinyl &&
-    !isReturningToFocusCard &&
-    !launchedTurntableFlyaway
-  ) {
-    setActiveVinylSource("focus");
-  }
-  deactivateFocusCoverZIndexImmediate();
-};
-
-canvas.addEventListener("pointerup", endDrag);
-canvas.addEventListener("pointercancel", endDrag);
-canvas.addEventListener("pointerleave", endDrag);
-
-const endTonearmDrag = (event: PointerEvent) => {
-  turntableController?.handlePointerUp(event);
-};
-
-canvas.addEventListener("pointerup", endTonearmDrag);
-canvas.addEventListener("pointercancel", endTonearmDrag);
-canvas.addEventListener("pointerleave", endTonearmDrag);
-// hover state handled by controller
-canvas.addEventListener("pointerup", endCameraOrbit);
-canvas.addEventListener("pointercancel", endCameraOrbit);
-canvas.addEventListener("pointerleave", endCameraOrbit);
-canvas.addEventListener("pointerup", endCameraPan);
-canvas.addEventListener("pointercancel", endCameraPan);
-canvas.addEventListener("pointerleave", endCameraPan);
-canvas.addEventListener("pointerleave", () => {
-  setBusinessCardContactHighlight(null);
-  canvas.style.cursor = "";
-});
-canvas.addEventListener("pointerup", endBusinessCardRotation);
-canvas.addEventListener("pointercancel", endBusinessCardRotation);
-canvas.addEventListener("pointerleave", endBusinessCardRotation);
-
-const endPaperScrollDrag = () => {
-  portfolioPapersManager?.endPaperDrag();
-  if (paperScrollDragPointerId !== null) {
-    try {
-      canvas.releasePointerCapture(paperScrollDragPointerId);
-    } catch {
-      // ignore
-    }
-    paperScrollDragPointerId = null;
-  }
-};
-
-canvas.addEventListener("pointerup", endPaperScrollDrag);
-canvas.addEventListener("pointercancel", endPaperScrollDrag);
-canvas.addEventListener("pointerleave", endPaperScrollDrag);
-
-type PortfolioPaperHit = {
-  paperId: string;
-  paper: PaperConfig;
-  hit: Intersection<Object3D>;
-};
-
-const pickPortfolioPaperUnderPointer = (
-  options: { requireScrollable?: boolean } = {},
-): PortfolioPaperHit | null => {
-  if (!portfolioPapersManager) {
-    return null;
-  }
-  const { requireScrollable = false } = options;
-  const paperMeshes = portfolioPapersManager.getPaperMeshes();
-  const currentPaperId = portfolioPapersManager.getCurrentPaperId();
-  const topLeftStackPaperId = portfolioPapersManager.getTopLeftStackPaperId();
-  const papersById = new Map(
-    portfolioPapersManager.getPapers().map((paper) => [paper.id, paper]),
-  );
-  let bestHit: PortfolioPaperHit | null = null;
-
-  for (const [paperId, mesh] of paperMeshes) {
-    const hits = raycaster.intersectObject(mesh, true);
-    if (!hits.length) {
-      continue;
-    }
-    const texturedHit = hits.find((hit) => hit.uv);
-    if (!texturedHit) {
-      continue;
-    }
-    const paper = papersById.get(paperId);
-    if (!paper) {
-      continue;
-    }
-    if (
-      requireScrollable &&
-      !portfolioPapersManager.isPaperScrollable(paperId)
-    ) {
-      continue;
-    }
-    const allowLeftStackInteraction =
-      isMarkdownPaperConfig(paper) || isResumePaperConfig(paper);
-    const isLeftStack = portfolioPapersManager.isPaperInLeftStack(paperId);
-    const isCurrentPaper = paperId === currentPaperId;
-    const isTopLeftStackPaper = paperId === topLeftStackPaperId;
-    if (isLeftStack) {
-      if (!allowLeftStackInteraction) {
-        continue;
-      }
-      if (!isTopLeftStackPaper) {
-        continue;
-      }
-    } else if (!isCurrentPaper) {
-      continue;
-    }
-    const hit = texturedHit;
-    if (!bestHit || hit.distance < bestHit.hit.distance) {
-      bestHit = { paperId, paper, hit };
-    }
-  }
-  return bestHit;
-};
-
-const handlePortfolioPaperScroll = (event: WheelEvent): boolean => {
-  if (activePage !== "portfolio" || !portfolioPapersManager) {
-    return false;
-  }
-
-  let hoveredPaper: PortfolioPaperHit | null = null;
-  if (updatePointer(event, pointerNDC, canvas)) {
-    raycaster.setFromCamera(pointerNDC, camera);
-    hoveredPaper = pickPortfolioPaperUnderPointer();
-  }
-
-  const targetPaperId =
-    hoveredPaper &&
-    portfolioPapersManager.isPaperScrollable(hoveredPaper.paperId)
-      ? hoveredPaper.paperId
-      : null;
-
-  if (targetPaperId) {
-    return portfolioPapersManager.scrollPaper(targetPaperId, event.deltaY);
-  }
-
-  return false;
-};
-
-// Scroll wheel camera orbit on home page and scroll papers on portfolio page
-canvas.addEventListener(
-  "wheel",
-  (event) => {
-    const scrolledPaper = handlePortfolioPaperScroll(event);
-    if (scrolledPaper) {
-      event.preventDefault();
-      return;
-    }
-
-    if (pageTransitionState.active) {
-      return;
-    }
-
-    if (isFreeLookMode) {
-      event.preventDefault();
-      const zoomMultiplier = Math.pow(1.0015, -event.deltaY);
-      const candidateZoom = cameraRig.getZoomFactor() * zoomMultiplier;
-      cameraRig.setZoomFactor(Math.max(FREE_LOOK_MIN_ZOOM, candidateZoom));
-      window.dispatchEvent(
-        new CustomEvent("free-look-action", {
-          detail: { action: "zoom" as FreeLookTutorialAction },
-        }),
-      );
-      return;
-    }
-
-    if (activePage !== "home") {
-      return;
-    }
-
-    event.preventDefault();
-
-    const sensitivity = 0.001; // Scroll sensitivity for orbit
-    const deltaY = event.deltaY;
-
-    // Update auto-orbit direction based on scroll direction
-    if (Math.abs(deltaY) > 5) {
-      autoOrbitDirection = deltaY > 0 ? 1 : -1;
-      // Reset speed multiplier to full when user manually interacts
-      autoOrbitSpeedMultiplier = 1.0;
-    }
-
-    // Positive deltaY = scroll down = orbit right (positive azimuth)
-    // Negative deltaY = scroll up = orbit left (negative azimuth)
-    cameraRig.orbit(deltaY * sensitivity, 0);
+inputHandlers = registerInputHandlers({
+  canvas,
+  camera,
+  cameraRig,
+  raycaster,
+  pointerNDC,
+  cameraForward,
+  dragPlane,
+  dragIntersectPoint,
+  updatePointer,
+  getActivePage: () => activePage,
+  isPageTransitionActive: () => pageTransitionState.active,
+  isFreeLookModeActive: () => isFreeLookModeActive(),
+  updateBusinessCardMousePosition: (x, y) =>
+    businessCardAnimation.updateMousePosition(x, y),
+  getBusinessCardRoot: () =>
+    (pageSceneRoots[BUSINESS_CARD_PAGE] as Object3D) ?? null,
+  setBusinessCardHovered: (hovered) => {
+    businessCardAnimation.setIsHovered(hovered);
   },
-  { passive: false },
-);
+  setBusinessCardContactHighlight,
+  findBusinessCardLinkUnderRay,
+  updateBusinessCardHoverState,
+  handleBusinessCardRotationMove,
+  startBusinessCardRotation,
+  endBusinessCardRotation,
+  handleBusinessCardLinkClick,
+  heroGroup,
+  homePageTargets,
+  findPageForObject,
+  openPortfolioPage: () => {
+    void portfolioNavigationController.openPortfolioPage();
+  },
+  setActiveScenePage,
+  portfolioInteractions,
+  BUSINESS_CARD_PAGE,
+  getTurntableController: () => turntableController,
+  yt,
+  getTurntablePositionState: () => turntablePositionState,
+  onFullscreenTurntableHoverChange: handleFullscreenTurntableHoverChange,
+  pickVinylUnderPointer,
+  getVinylModel: () => vinylModel,
+  getFocusVinylState: () => focusVinylState,
+  getTurntableVinylState: () => turntableVinylState,
+  resetVinylAnimationState,
+  getFocusCardAnchorPosition: () => focusCardAnchorPosition,
+  getTurntableAnchorPosition: () => turntableAnchorPosition,
+  getVisualOffsetForSource: (source) =>
+    focusCardController.getVisualOffsetForSource(source),
+  setActiveVinylSource,
+  getActiveVinylSource: () => activeVinylSource,
+  setPendingPromotionSource,
+  setVinylAnchorPosition,
+  clearTurntableVinylPreservingPromotion,
+  disposeDroppingVinyl,
+  startTurntableVinylFlyaway,
+  getVinylDragThreshold: () => VINYL_DRAG_THRESHOLD,
+  getVinylDisplayPosition: () => vinylDisplayPosition,
+  getCurrentPointerWorld: () => currentPointerWorld,
+  getPointerAttachmentOffset: () => pointerAttachmentOffset,
+  getHangOffset: () => hangOffset,
+  getVinylTargetPosition: () => vinylTargetPosition,
+  getLastTargetPosition: () => lastTargetPosition,
+  getSwingState: () => swingState,
+  setVinylDragPointerId: (value) => {
+    vinylDragPointerId = value;
+  },
+  getVinylDragPointerId: () => vinylDragPointerId,
+  setCurrentDragSource: (value) => {
+    currentDragSource = value;
+  },
+  getCurrentDragSource: () => currentDragSource,
+  setActiveDragVisualOffset: (value) => {
+    activeDragVisualOffset = value;
+  },
+  getActiveDragVisualOffset: () => activeDragVisualOffset,
+  setIsReturningVinyl: (value) => {
+    isReturningVinyl = value;
+  },
+  getIsReturningVinyl: () => isReturningVinyl,
+  setIsReturningToFocusCard: (value) => {
+    isReturningToFocusCard = value;
+  },
+  getIsReturningToFocusCard: () => isReturningToFocusCard,
+  setHasClearedNub: (value) => {
+    hasClearedNub = value;
+  },
+  setVinylDragExceededThreshold: (value) => {
+    vinylDragExceededThreshold = value;
+  },
+  getVinylDragExceededThreshold: () => vinylDragExceededThreshold,
+  getShouldTrackFocusCard: () => shouldTrackFocusCard,
+  setMouseInactivityTimer: (value) => {
+    mouseInactivityTimer = value;
+  },
+  getMouseInactivityTimer: () => mouseInactivityTimer,
+  notifyFreeLookAction: (action) => {
+    turntableUiController?.notifyFreeLookAction(action);
+  },
+  CAMERA_ORBIT_SENSITIVITY,
+  PAN_SENSITIVITY,
+  FREE_LOOK_MIN_ZOOM,
+});
 
 loadTurntableModel()
   .then((turntable) => {
@@ -4176,7 +2123,7 @@ loadPortfolioModel()
     heroGroup.add(portfolioModel);
     pageSceneRoots["portfolio"] = portfolioModel;
     registerHomePageTarget(portfolioModel, "portfolio");
-    setupPortfolioCover(portfolioModel);
+    portfolioFeature.setupCover(portfolioModel);
     // Center camera on model origin instead of bounding box center
     const focusPoint = circlePos.clone().add(PORTFOLIO_CAMERA_TARGET_OFFSET);
     pageCameraSettings.portfolio.target.copy(focusPoint);
@@ -4196,294 +2143,6 @@ loadPortfolioModel()
   .catch((error) => {
     console.error("Failed to load portfolio model:", error);
   });
-
-const getLiveFocusCoverCenter = (): { x: number; y: number } | null => {
-  const coverElement = document.querySelector(
-    ".focus-card-cover-container .album-cover",
-  ) as HTMLElement | null;
-  if (!coverElement) {
-    return null;
-  }
-  const rect = coverElement.getBoundingClientRect();
-  return {
-    x: rect.left + rect.width / 2,
-    y: rect.top + rect.height / 2,
-  };
-};
-
-const updateFocusCardPosition = (override?: {
-  screenX: number;
-  screenY: number;
-}) => {
-  if (!shouldTrackFocusCard || !focusVinylState) {
-    return;
-  }
-
-  let screenX: number | null = null;
-  let screenY: number | null = null;
-
-  if (override) {
-    screenX = override.screenX;
-    screenY = override.screenY;
-  } else {
-    const liveCenter = getLiveFocusCoverCenter();
-    if (liveCenter) {
-      screenX = liveCenter.x;
-      screenY = liveCenter.y;
-      focusCardScreenHint = liveCenter;
-    } else if (focusCardScreenHint) {
-      screenX = focusCardScreenHint.x;
-      screenY = focusCardScreenHint.y;
-    } else {
-      return;
-    }
-  }
-
-  if (screenX === null || screenY === null) {
-    return;
-  }
-
-  const ndcX = (screenX / window.innerWidth) * 2 - 1;
-  const ndcY = -(screenY / window.innerHeight) * 2 + 1;
-
-  const trackingRaycaster = new Raycaster();
-  trackingRaycaster.setFromCamera(new Vector2(ndcX, ndcY), camera);
-
-  const distanceFromCamera = 100;
-  const vinylPosition = trackingRaycaster.ray.origin
-    .clone()
-    .add(
-      trackingRaycaster.ray.direction
-        .clone()
-        .multiplyScalar(distanceFromCamera),
-    );
-
-  focusCardAnchorPosition.copy(vinylPosition);
-
-  if (vinylDragPointerId !== null && activeVinylSource === "focus") {
-    return;
-  }
-
-  const model = focusVinylState.model;
-  model.position.copy(vinylPosition);
-  setVinylAnchorPosition(focusCardAnchorPosition, "focus");
-  if (activeVinylSource === "focus") {
-    vinylTargetPosition.copy(vinylPosition);
-    lastTargetPosition.copy(vinylPosition);
-    updateDragPlaneDepthLocal(vinylPosition.z);
-    applyFocusVinylScale(focusVinylState?.model ?? null, cameraRig);
-  }
-};
-
-let focusCardScreenHint: { x: number; y: number } | null = null;
-let focusCardMotionFrame: number | null = null;
-let pendingFocusVinylRevealFrame: number | null = null;
-let isFocusCardAnimationActive = false;
-
-const projectScreenPointToWorld = (
-  screenX: number,
-  screenY: number,
-  distanceFromCamera = 100,
-) => {
-  const ndcX = (screenX / window.innerWidth) * 2 - 1;
-  const ndcY = -(screenY / window.innerHeight) * 2 + 1;
-  const raycaster = new Raycaster();
-  raycaster.setFromCamera(new Vector2(ndcX, ndcY), camera);
-  return raycaster.ray.origin
-    .clone()
-    .add(raycaster.ray.direction.clone().multiplyScalar(distanceFromCamera));
-};
-
-const getFocusCardContainerCenter = (): { x: number; y: number } | null => {
-  const rect = focusCardCoverContainer.getBoundingClientRect();
-  if (rect.width === 0 && rect.height === 0) {
-    return null;
-  }
-  return {
-    x: rect.left + rect.width / 2,
-    y: rect.top + rect.height / 2,
-  };
-};
-
-const clearPreloadedFocusVinyl = () => {
-  focusVinylPreloadToken += 1;
-  preloadedFocusVinylPromise = null;
-  if (preloadedFocusVinylModel) {
-    heroGroup.remove(preloadedFocusVinylModel);
-    preloadedFocusVinylModel = null;
-  }
-};
-
-const ensureFocusVinylPreloaded = () => {
-  if (
-    focusVinylState ||
-    preloadedFocusVinylModel ||
-    preloadedFocusVinylPromise
-  ) {
-    return;
-  }
-  const liveCenter = getLiveFocusCoverCenter();
-  const fallbackCenter = liveCenter ?? getFocusCardContainerCenter();
-  if (!fallbackCenter) {
-    return;
-  }
-  const anchor = projectScreenPointToWorld(fallbackCenter.x, fallbackCenter.y);
-  preloadedFocusVinylAnchor.copy(anchor);
-  const preloadToken = ++focusVinylPreloadToken;
-  preloadedFocusVinylPromise = loadVinylModel(vinylNormalTexture)
-    .then((model) => {
-      if (preloadToken !== focusVinylPreloadToken) {
-        heroGroup.remove(model);
-        return null;
-      }
-      preloadedFocusVinylPromise = null;
-      if (focusVinylState) {
-        heroGroup.remove(model);
-        return null;
-      }
-      preloadedFocusVinylModel = model;
-      setVinylModelVisibility(model, "focus-preload", false, "preloading");
-      model.position.copy(preloadedFocusVinylAnchor);
-      applyFocusVinylScale(model, cameraRig);
-      heroGroup.add(model);
-      return model;
-    })
-    .catch((error) => {
-      console.error("[Focus Vinyl] Failed to preload vinyl model:", error);
-      preloadedFocusVinylPromise = null;
-      return null;
-    });
-};
-
-const cancelPendingFocusVinylReveal = () => {
-  if (pendingFocusVinylRevealFrame !== null) {
-    cancelAnimationFrame(pendingFocusVinylRevealFrame);
-    pendingFocusVinylRevealFrame = null;
-  }
-};
-const hideFocusVinyl = () => {
-  cancelPendingFocusVinylReveal();
-  focusVinylManuallyHidden = true;
-  setVinylModelVisibility(
-    focusVinylState?.model,
-    "focus",
-    false,
-    "hideFocusVinyl",
-  );
-};
-const scheduleFocusVinylReveal = (framesRemaining: number = 1) => {
-  cancelPendingFocusVinylReveal();
-  const step = () => {
-    const liveCenter = getLiveFocusCoverCenter();
-    if (liveCenter) {
-      focusCardScreenHint = liveCenter;
-      updateFocusCardPosition({ screenX: liveCenter.x, screenY: liveCenter.y });
-    } else {
-      updateFocusCardPosition();
-    }
-    if (framesRemaining > 0) {
-      framesRemaining -= 1;
-      pendingFocusVinylRevealFrame = requestAnimationFrame(step);
-    } else {
-      pendingFocusVinylRevealFrame = null;
-      focusVinylManuallyHidden = false;
-      updateFocusVinylVisibility();
-    }
-  };
-  pendingFocusVinylRevealFrame = requestAnimationFrame(step);
-};
-const stopFocusCardMotionLoop = () => {
-  if (focusCardMotionFrame !== null) {
-    cancelAnimationFrame(focusCardMotionFrame);
-    focusCardMotionFrame = null;
-  }
-};
-const runFocusCardMotionLoop = () => {
-  const liveCenter = getLiveFocusCoverCenter();
-  if (liveCenter) {
-    focusCardScreenHint = liveCenter;
-    updateFocusCardPosition({ screenX: liveCenter.x, screenY: liveCenter.y });
-  } else {
-    updateFocusCardPosition();
-  }
-  updateFocusVinylVisibility();
-  focusCardMotionFrame = requestAnimationFrame(runFocusCardMotionLoop);
-};
-
-window.addEventListener("focus-card-motion", (event: any) => {
-  const animating = Boolean(event.detail?.animating);
-  if (animating) {
-    isFocusCardAnimationActive = true;
-    hideFocusVinyl();
-    const liveCenter = getLiveFocusCoverCenter();
-    if (liveCenter) {
-      focusCardScreenHint = liveCenter;
-    }
-    // Re-anchor vinyl to the current cover position when the slide begins
-    if (
-      focusVinylState?.model &&
-      shouldTrackFocusCard &&
-      vinylDragPointerId === null
-    ) {
-      updateFocusCardPosition(
-        liveCenter
-          ? { screenX: liveCenter.x, screenY: liveCenter.y }
-          : undefined,
-      );
-      resetVinylAnimationState(focusCardAnchorPosition, "focus");
-      vinylAnimationState.cameraRelativeOffsetValid = false;
-    }
-    if (focusCardMotionFrame === null) {
-      runFocusCardMotionLoop();
-    }
-    return;
-  }
-
-  stopFocusCardMotionLoop();
-  isFocusCardAnimationActive = false;
-  if (
-    focusVinylState?.model &&
-    shouldTrackFocusCard &&
-    vinylDragPointerId === null
-  ) {
-    const liveCenter = getLiveFocusCoverCenter();
-    updateFocusCardPosition(
-      liveCenter ? { screenX: liveCenter.x, screenY: liveCenter.y } : undefined,
-    );
-    resetVinylAnimationState(focusCardAnchorPosition, "focus");
-    vinylAnimationState.cameraRelativeOffsetValid = false;
-    swingState.targetX = 0;
-    swingState.targetZ = 0;
-    swingState.currentX = 0;
-    swingState.currentZ = 0;
-  }
-  scheduleFocusVinylReveal(2);
-});
-
-window.addEventListener("focus-card-layout-updated", (event: any) => {
-  const { coverCenterX, coverCenterY, layoutChanged } = event.detail || {};
-  const hasCoords =
-    typeof coverCenterX === "number" && typeof coverCenterY === "number";
-  if (!hasCoords) {
-    return;
-  }
-
-  focusCardScreenHint = { x: coverCenterX, y: coverCenterY };
-  updateFocusCardPosition({ screenX: coverCenterX, screenY: coverCenterY });
-  if (
-    focusVinylState?.model &&
-    shouldTrackFocusCard &&
-    vinylDragPointerId === null
-  ) {
-    resetVinylAnimationState(focusCardAnchorPosition, "focus");
-    vinylAnimationState.cameraRelativeOffsetValid = false;
-  }
-
-  if (!isFocusCardAnimationActive && layoutChanged) {
-    hideFocusVinyl();
-    scheduleFocusVinylReveal(2);
-  }
-});
 
 const updateCameraTargetsForWindowSize = () => {
   const canvas = document.querySelector("canvas");
@@ -4530,10 +2189,10 @@ const updateCameraTargetsForWindowSize = () => {
   }
 
   // Update focus card position on window resize
-  updateFocusCardPosition();
+  focusCardController.updateFocusCardPosition();
 };
 cameraRig.onAnimationComplete(() => {
-  updateFocusCardPosition();
+  focusCardController.updateFocusCardPosition();
 });
 
 const updateFocusVinylForResize = () => {
@@ -4544,16 +2203,11 @@ const updateFocusVinylForResize = () => {
     // Apply scale to model immediately
     focusVinylState.model.scale.setScalar(vinylScaleFactor);
     // Update hover offset to match new scale
-    const wasHovering = focusVinylHoverOffsetTarget > 0;
-    if (wasHovering) {
-      const newHoverDistance = getFocusVinylHoverDistance();
-      focusVinylHoverOffsetTarget = newHoverDistance;
-      focusVinylHoverOffset = newHoverDistance;
-    }
+    focusCardController.syncHoverDistanceOnResize();
     // Invalidate camera-relative offset to force recalculation
     vinylAnimationState.cameraRelativeOffsetValid = false;
     // Update focus card position (this updates focusCardAnchorPosition)
-    updateFocusCardPosition();
+    focusCardController.updateFocusCardPosition();
     // Reset ALL vinyl animation state to the new anchor position (like first click)
     resetVinylAnimationState(focusCardAnchorPosition, "focus");
   }
@@ -4733,7 +2387,7 @@ const animate = (time: number) => {
         turntableController?.setVinylPresence(true);
         turntableController?.returnTonearmHome();
         pendingVinylSelection = turntableVinylState.selection;
-        void loadVideoForCurrentSelection();
+        void vinylSelectionController.loadVideoForCurrentSelection();
 
         // Reset animation state and switch to focus vinyl if available
         isReturningVinyl = false;
@@ -4769,21 +2423,11 @@ const animate = (time: number) => {
     const baseVinylY = vinylModel.position.y;
 
     // Smoothly animate hover offset for focus vinyl
-    const hoverAnimationSpeed =
-      focusCoverHoverOverride !== null
-        ? FOCUS_VINYL_CLICK_ANIMATION_SPEED
-        : FOCUS_VINYL_HOVER_ANIMATION_SPEED;
-    if (Math.abs(focusVinylHoverOffsetTarget - focusVinylHoverOffset) > 0.001) {
-      focusVinylHoverOffset +=
-        (focusVinylHoverOffsetTarget - focusVinylHoverOffset) *
-        hoverAnimationSpeed;
-    } else {
-      focusVinylHoverOffset = focusVinylHoverOffsetTarget;
-    }
+    focusCardController.updateHoverOffsetAnimation();
 
     renderVisualOffset =
       activeVinylSource === "focus" && !isReturningVinyl
-        ? getFocusVisualOffset()
+        ? focusCardController.getFocusVisualOffset()
         : 0;
 
     // Scale based on distance to TURNTABLE (not current anchor) - reaches 1.0 before threshold
@@ -4804,10 +2448,13 @@ const animate = (time: number) => {
   // The focus vinyl stays at the focus card position independently
   if (activeVinylSource === "dropping" && focusVinylState?.model) {
     // Position focus vinyl at focus card anchor
-    focusVinylState.model.position.copy(focusCardAnchorPosition);
+    focusVinylState.model.position.copy(
+      focusCardController.getFocusCardAnchorPosition(),
+    );
     // Apply hover offset
-    if (focusVinylHoverOffset !== 0) {
-      focusVinylState.model.position.x += focusVinylHoverOffset;
+    const focusVisualOffset = focusCardController.getFocusVisualOffset();
+    if (focusVisualOffset !== 0) {
+      focusVinylState.model.position.x += focusVisualOffset;
     }
     // Apply focus vinyl scale
     applyFocusVinylScale(focusVinylState.model, cameraRig);
@@ -4916,7 +2563,8 @@ const animate = (time: number) => {
           "[Flyaway] Reloading vinyl to focus position:",
           entry.selection.songName,
         );
-        void handleFocusSelection(entry.selection);
+        pendingVinylSelection = entry.selection;
+        void vinylSelectionController.handleFocusSelection(entry.selection);
       }
     }
   }
@@ -4926,7 +2574,7 @@ const animate = (time: number) => {
     Boolean(turntableVinylState?.model) ||
     flyawayVinyls.length > 0;
   if (!hasActiveVinyl) {
-    deactivateFocusCoverZIndexImmediate();
+    focusCardController.deactivateFocusCoverZIndexImmediate();
   }
 
   if (vinylModel && renderVisualOffset !== 0) {
@@ -4934,8 +2582,7 @@ const animate = (time: number) => {
   }
 
   // Update auto-orbit and momentum
-  updateAutoOrbit();
-  updateCameraOrbitMomentum();
+  inputHandlers?.updateAutoOrbit();
 
   renderer.render(scene, camera);
   if (vinylModel && renderVisualOffset !== 0) {
@@ -4989,7 +2636,7 @@ const animate = (time: number) => {
 };
 
 // Start auto-orbit on initial page (home)
-startAutoOrbit();
+inputHandlers?.startAutoOrbit();
 
 requestAnimationFrame(animate);
 
@@ -5036,7 +2683,7 @@ function updateTurntableNubClearance(turntable: Object3D) {
   nubClearanceY = nubTopY + RETURN_CLEARANCE;
 }
 
-function resetVinylAnimationState(anchor: Vector3, type: VinylAnchorType) {
+function resetVinylAnimationState(anchor: Vector3, type: VinylSource) {
   setVinylAnchorPosition(anchor, type);
   vinylTargetPosition.copy(anchor);
   lastTargetPosition.copy(anchor);
@@ -5047,25 +2694,6 @@ function resetVinylAnimationState(anchor: Vector3, type: VinylAnchorType) {
   if (vinylModel) {
     vinylModel.position.copy(anchor);
   }
-}
-
-function pickPointOnPlane(event: PointerEvent) {
-  if (!updatePointer(event, pointerNDC, canvas)) {
-    return null;
-  }
-
-  raycaster.setFromCamera(pointerNDC, camera);
-  const hit = raycaster.ray.intersectPlane(dragPlane, dragIntersectPoint);
-  if (!hit) {
-    return null;
-  }
-
-  // Constrain Y position to not go below 14
-  if (dragIntersectPoint.y < 14) {
-    dragIntersectPoint.y = 14;
-  }
-
-  return dragIntersectPoint;
 }
 
 // start/stop + speed slide handled by controller
@@ -5168,261 +2796,13 @@ function applyCartridgeColor(object: Object3D) {
 
 // updateDragPlaneDepth now imported from vinylHelpers.ts
 // Local wrapper to access dragPlane
-const updateDragPlaneDepthLocal = (z: number) => {
+function updateDragPlaneDepthLocal(z: number) {
   dragPlane.constant = -z;
-};
+}
 
 // moved to utils.ts
 
 // rpm helper moved to controller
-
-function startAutoOrbit() {
-  if (activePage !== "home" || pageTransitionState.active) {
-    cameraOrbitState.isAutoOrbiting = false;
-    return;
-  }
-
-  // Start auto-orbit on home page (will be paused if hovering)
-  cameraOrbitState.isAutoOrbiting = true;
-  // Reset speed multiplier to full when starting/resuming auto-orbit
-  autoOrbitSpeedMultiplier = 1.0;
-  if (autoOrbitStartTime === 0) {
-    autoOrbitStartTime = performance.now();
-  }
-}
-
-function updateAutoOrbit() {
-  if (
-    !cameraOrbitState.isAutoOrbiting ||
-    activePage !== "home" ||
-    cameraOrbitState.isOrbiting ||
-    pageTransitionState.active
-  ) {
-    return;
-  }
-
-  // Gradual deceleration when hovering, acceleration when not hovering
-  if (cameraOrbitState.isHoveringModel) {
-    // Decelerate when hovering over a model
-    autoOrbitSpeedMultiplier *= AUTO_ORBIT_DECEL_RATE;
-    if (autoOrbitSpeedMultiplier < 0.01) {
-      autoOrbitSpeedMultiplier = 0;
-    }
-  } else {
-    // Accelerate back to full speed when not hovering
-    autoOrbitSpeedMultiplier += (1.0 - autoOrbitSpeedMultiplier) * 0.08;
-    if (autoOrbitSpeedMultiplier > 0.99) {
-      autoOrbitSpeedMultiplier = 1.0;
-    }
-  }
-
-  // Apply auto-orbit rotation with speed multiplier
-  const effectiveSpeed =
-    AUTO_ORBIT_SPEED * autoOrbitDirection * autoOrbitSpeedMultiplier;
-  if (Math.abs(effectiveSpeed) > 0.00001) {
-    cameraRig.orbit(effectiveSpeed, 0);
-  }
-}
-
-function startCameraOrbitMomentum() {
-  if (
-    activePage !== "home" ||
-    pageTransitionState.active ||
-    isCameraOrbitDecelerating
-  ) {
-    return;
-  }
-
-  // Only apply momentum if velocity is significant
-  if (
-    Math.abs(cameraOrbitState.velocityX) < MOMENTUM_MIN_VELOCITY &&
-    Math.abs(cameraOrbitState.velocityY) < MOMENTUM_MIN_VELOCITY
-  ) {
-    return;
-  }
-
-  isCameraOrbitDecelerating = true;
-}
-
-function updateCameraOrbitMomentum() {
-  if (!isCameraOrbitDecelerating) {
-    return;
-  }
-
-  // Apply friction to velocity
-  cameraOrbitState.velocityX *= MOMENTUM_FRICTION;
-  cameraOrbitState.velocityY *= MOMENTUM_FRICTION;
-
-  // Stop momentum when velocity becomes negligible
-  if (
-    Math.abs(cameraOrbitState.velocityX) < MOMENTUM_MIN_VELOCITY &&
-    Math.abs(cameraOrbitState.velocityY) < MOMENTUM_MIN_VELOCITY
-  ) {
-    isCameraOrbitDecelerating = false;
-    cameraOrbitState.velocityX = 0;
-    cameraOrbitState.velocityY = 0;
-    return;
-  }
-
-  // Apply the decelerating velocity to camera orbit
-  cameraRig.orbit(cameraOrbitState.velocityX, 0);
-}
-
-function startCameraOrbit(event: PointerEvent) {
-  if (
-    (activePage !== "turntable" && activePage !== "home") ||
-    pageTransitionState.active
-  ) {
-    return;
-  }
-  cameraOrbitState.isOrbiting = true;
-  cameraOrbitState.pointerId = event.pointerId;
-  cameraOrbitState.lastX = event.clientX;
-  cameraOrbitState.lastY = event.clientY;
-  cameraOrbitState.mode = activePage;
-
-  if (activePage === "turntable" && !isFreeLookMode) {
-    cameraRig.saveRotationState();
-  }
-
-  if (isFreeLookMode) {
-    window.dispatchEvent(
-      new CustomEvent("free-look-action", {
-        detail: { action: "rotate" as FreeLookTutorialAction },
-      }),
-    );
-  }
-
-  canvas.setPointerCapture(event.pointerId);
-}
-
-function handleCameraOrbitMove(event: PointerEvent) {
-  if (
-    (activePage !== "turntable" && activePage !== "home") ||
-    pageTransitionState.active ||
-    !cameraOrbitState.isOrbiting ||
-    event.pointerId !== cameraOrbitState.pointerId
-  ) {
-    return false;
-  }
-  const deltaX = event.clientX - cameraOrbitState.lastX;
-  const deltaY = event.clientY - cameraOrbitState.lastY;
-  cameraOrbitState.lastX = event.clientX;
-  cameraOrbitState.lastY = event.clientY;
-
-  // Track velocity for momentum deceleration
-  cameraOrbitState.velocityX = deltaX * CAMERA_ORBIT_SENSITIVITY;
-  cameraOrbitState.velocityY = deltaY * CAMERA_ORBIT_SENSITIVITY;
-  cameraOrbitState.lastDeltaX = deltaX;
-  cameraOrbitState.lastDeltaY = deltaY;
-
-  // Update auto-orbit direction based on current movement (for home page)
-  if (cameraOrbitState.mode === "home" && Math.abs(deltaX) > 0.5) {
-    autoOrbitDirection = deltaX > 0 ? 1 : -1;
-    // Reset speed multiplier to full when user manually interacts
-    autoOrbitSpeedMultiplier = 1.0;
-  }
-
-  const allowPolar = cameraOrbitState.mode === "turntable";
-  cameraRig.orbit(
-    deltaX * CAMERA_ORBIT_SENSITIVITY,
-    allowPolar ? deltaY * CAMERA_ORBIT_SENSITIVITY : 0,
-  );
-  return true;
-}
-
-function endCameraOrbit(event: PointerEvent) {
-  if (
-    !cameraOrbitState.isOrbiting ||
-    event.pointerId !== cameraOrbitState.pointerId
-  ) {
-    return;
-  }
-  cameraOrbitState.isOrbiting = false;
-  cameraOrbitState.pointerId = -1;
-
-  if (cameraOrbitState.mode === "turntable" && !isFreeLookMode) {
-    // Restore to saved rotation state with animation
-    cameraRig.restoreRotationState();
-  } else if (cameraOrbitState.mode === "home") {
-    // Capture the direction of the last movement for auto-orbit
-    if (Math.abs(cameraOrbitState.velocityX) > 0.0001) {
-      autoOrbitDirection = cameraOrbitState.velocityX > 0 ? 1 : -1;
-    }
-    // Apply momentum deceleration on home page
-    startCameraOrbitMomentum();
-  }
-
-  cameraOrbitState.mode = null;
-
-  try {
-    canvas.releasePointerCapture(event.pointerId);
-  } catch {
-    // ignore fallback
-  }
-}
-
-function startCameraPan(event: PointerEvent) {
-  if (
-    activePage !== "turntable" ||
-    pageTransitionState.active ||
-    !isFreeLookMode
-  ) {
-    return;
-  }
-  cameraPanState.isPanning = true;
-  cameraPanState.pointerId = event.pointerId;
-  cameraPanState.lastX = event.clientX;
-  cameraPanState.lastY = event.clientY;
-  if (isFreeLookMode) {
-    window.dispatchEvent(
-      new CustomEvent("free-look-action", {
-        detail: { action: "pan" as FreeLookTutorialAction },
-      }),
-    );
-  }
-  canvas.setPointerCapture(event.pointerId);
-}
-
-function handleCameraPanMove(event: PointerEvent) {
-  if (
-    activePage !== "turntable" ||
-    pageTransitionState.active ||
-    !isFreeLookMode ||
-    !cameraPanState.isPanning ||
-    event.pointerId !== cameraPanState.pointerId
-  ) {
-    return false;
-  }
-  const deltaX = event.clientX - cameraPanState.lastX;
-  const deltaY = event.clientY - cameraPanState.lastY;
-  cameraPanState.lastX = event.clientX;
-  cameraPanState.lastY = event.clientY;
-
-  // Pan sensitivity scaled by zoom for consistent feel
-  const zoomScale = 1 / cameraRig.getZoomFactor();
-  cameraRig.pan(
-    -deltaX * PAN_SENSITIVITY * zoomScale,
-    deltaY * PAN_SENSITIVITY * zoomScale,
-  );
-  return true;
-}
-
-function endCameraPan(event: PointerEvent) {
-  if (
-    !cameraPanState.isPanning ||
-    event.pointerId !== cameraPanState.pointerId
-  ) {
-    return;
-  }
-  cameraPanState.isPanning = false;
-  cameraPanState.pointerId = -1;
-  try {
-    canvas.releasePointerCapture(event.pointerId);
-  } catch {
-    // ignore fallback
-  }
-}
 
 // hover handled by controller
 
