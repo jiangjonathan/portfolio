@@ -166,6 +166,9 @@ export class TurntableController {
       this.tonearmDragLastX = e.clientX;
       this.canvas.setPointerCapture(e.pointerId);
 
+      // Show clenched hand cursor while dragging
+      this.canvas.style.cursor = "grabbing";
+
       // Dispatch event for tutorial tracking
       window.dispatchEvent(new CustomEvent("tonearm-drag-start"));
 
@@ -190,6 +193,7 @@ export class TurntableController {
     }
     // hover state
     this.isHoveringTonearm = this.hit(this.tonearm);
+
     return false;
   }
 
@@ -208,6 +212,10 @@ export class TurntableController {
   handlePointerUp(e: PointerEvent): void {
     if (!this.isDraggingTonearm) return;
     this.isDraggingTonearm = false;
+
+    // Reset cursor when dragging ends
+    this.canvas.style.cursor = this.isHoveringTonearm ? "grab" : "default";
+
     try {
       this.canvas.releasePointerCapture(e.pointerId);
     } catch {}
@@ -550,6 +558,14 @@ export class TurntableController {
     ) {
       this.mediaCurrentTime = clampValue(externalTime, 0, this.mediaDuration);
     }
+  }
+
+  getIsDraggingTonearm(): boolean {
+    return this.isDraggingTonearm;
+  }
+
+  getIsHoveringTonearm(): boolean {
+    return this.isHoveringTonearm;
   }
 }
 

@@ -1488,7 +1488,55 @@ export class VinylLibraryViewer {
     const entry = this.library.find((e) => e.id === this.focusedEntryId);
     if (entry) {
       this.renderFocusCard(entry);
+      this.showFocusCardUI();
     }
+  }
+
+  /**
+   * Fade in the focus card UI containers (called during camera animation)
+   * @param delayMs - Delay in milliseconds before showing the card (0 = immediate, 150ms = early during animation)
+   */
+  public showFocusCardUI(delayMs: number = 150): void {
+    const focusCoverContainer = document.getElementById(
+      "vinyl-focus-card-cover-root",
+    );
+    const focusInfoContainer = document.getElementById(
+      "vinyl-focus-card-info-root",
+    );
+    if (!focusCoverContainer || !focusInfoContainer) return;
+
+    const containers = [focusCoverContainer, focusInfoContainer];
+
+    setTimeout(() => {
+      requestAnimationFrame(() => {
+        containers.forEach((container) => {
+          // Force reflow
+          void container.offsetHeight;
+          // Now enable transition and fade to opacity 1
+          container.style.transition = "opacity 0.4s ease-out";
+          container.style.opacity = "1";
+        });
+      });
+    }, delayMs);
+  }
+
+  /**
+   * Show the focus card immediately without fade-in
+   */
+  public showFocusCardUIImmediate(): void {
+    const focusCoverContainer = document.getElementById(
+      "vinyl-focus-card-cover-root",
+    );
+    const focusInfoContainer = document.getElementById(
+      "vinyl-focus-card-info-root",
+    );
+    if (!focusCoverContainer || !focusInfoContainer) return;
+
+    const containers = [focusCoverContainer, focusInfoContainer];
+    containers.forEach((container) => {
+      container.style.transition = "none";
+      container.style.opacity = "1";
+    });
   }
 
   /**
@@ -1621,6 +1669,9 @@ export class VinylLibraryViewer {
     this.focusedEntryVideoId = entry.youtubeId || null;
     this.applyFocusCardTurntableState();
 
+    // Store the entry ID for use in click handler to check if it matches turntable vinyl
+    const focusedEntryVideoId = this.focusedEntryVideoId;
+
     // Don't dispatch visibility change immediately - let the camera animation complete first
     // The vinyl will be made visible by the camera animation callback in main.ts
     // This prevents the vinyl from flashing during the focus card fade-in
@@ -1696,16 +1747,8 @@ export class VinylLibraryViewer {
     dispatchCoverHoverEvent(false);
     dispatchCoverClickEvent(false);
 
-    // Force a reflow to ensure opacity 0 is applied, then enable transition and fade in
-    requestAnimationFrame(() => {
-      containers.forEach((container) => {
-        // Force reflow
-        void container.offsetHeight;
-        // Now enable transition and fade to opacity 1
-        container.style.transition = "opacity 0.01s";
-        container.style.opacity = "1";
-      });
-    });
+    // Keep containers at opacity 0 for now - they will be shown after camera animation completes
+    // by calling showFocusCardUI()
 
     // Attach delete button listener if present
     const deleteBtn = focusCoverContainer.querySelector(".delete-btn");
@@ -1829,9 +1872,43 @@ export class VinylLibraryViewer {
       albumCoverWrapper.addEventListener("mouseleave", () => {
         toggleCoverHover(false);
       });
-      albumCoverWrapper.addEventListener("click", () => {
-        handleCoverClickToggle();
+      albumCoverWrapper.addEventListener("click", (e) => {
+        // Check if focus vinyl matches turntable vinyl by comparing video IDs
+        const getTurntableVinylState = (window as any).getTurntableVinylState;
+
+        let shouldIgnoreClick = false;
+        if (getTurntableVinylState && focusedEntryVideoId) {
+          const turntableVinyl = getTurntableVinylState();
+
+          // If turntable has a vinyl and it matches the focus card's video ID, ignore the click
+          if (turntableVinyl?.selection?.videoId === focusedEntryVideoId) {
+            shouldIgnoreClick = true;
+          }
+        }
+
+        if (!shouldIgnoreClick) {
+          handleCoverClickToggle();
+        }
       });
+
+      // Update cursor based on clickability
+      const updateCursorState = () => {
+        const getTurntableVinylState = (window as any).getTurntableVinylState;
+        let isClickable = true;
+
+        if (getTurntableVinylState && focusedEntryVideoId) {
+          const turntableVinyl = getTurntableVinylState();
+          if (turntableVinyl?.selection?.videoId === focusedEntryVideoId) {
+            isClickable = false;
+          }
+        }
+
+        albumCoverWrapper.style.cursor = isClickable ? "pointer" : "default";
+      };
+
+      updateCursorState();
+      albumCoverWrapper.addEventListener("mouseenter", updateCursorState);
+      albumCoverWrapper.addEventListener("mouseover", updateCursorState);
     }
 
     // Attach hide focus button listener
@@ -2119,6 +2196,16 @@ export class VinylLibraryViewer {
       ".vinyl-viewer-widget .album-card",
     );
     albumCards.forEach((card) => {
+      // Add pointer cursor on hover
+      card.addEventListener("mouseenter", () => {
+        const albumCoverWrapper = card.querySelector(
+          ".album-cover-wrapper",
+        ) as HTMLElement;
+        if (albumCoverWrapper) {
+          albumCoverWrapper.style.cursor = "pointer";
+        }
+      });
+
       card.addEventListener("click", (e) => {
         // Only trigger on album cover or its children (not the whole card)
         const target = e.target as HTMLElement;

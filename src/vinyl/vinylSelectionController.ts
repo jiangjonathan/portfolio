@@ -149,6 +149,8 @@ type VinylSelectionController = {
 export const createVinylSelectionController = (
   deps: VinylSelectionControllerDeps,
 ): VinylSelectionController => {
+  let hasFocusCardRendered = false;
+
   const applySelectionVisualsToVinyl = async (
     selection: VinylSelectionDetail,
   ) => {
@@ -361,6 +363,7 @@ export const createVinylSelectionController = (
         deps.focusCardController.setFocusVinylManuallyHidden(false);
         deps.focusCardController.updateFocusVinylVisibility();
         deps.focusCardController.updateFocusCardPosition();
+
         console.log(
           "[load-vinyl-song] Camera animation complete, vinyl now visible",
         );
@@ -371,6 +374,22 @@ export const createVinylSelectionController = (
       deps.setTurntablePositionState("bottom-center");
       deps.cameraRig.setLookTarget(deps.cameraTargets["bottom-center"], true);
       deps.vinylAnimationState.cameraRelativeOffsetValid = false;
+
+      // Show focus card with fade-in only if there's no focus card rendered yet
+      if (!hasFocusCardRendered) {
+        hasFocusCardRendered = true;
+        const viewer = (window as any).vinylLibraryViewer;
+        if (viewer?.showFocusCardUI) {
+          viewer.showFocusCardUI(0); // Show immediately as camera starts moving
+        }
+      } else {
+        // Show immediately without fade-in for subsequent cards
+        const viewer = (window as any).vinylLibraryViewer;
+        if (viewer?.showFocusCardUIImmediate) {
+          viewer.showFocusCardUIImmediate();
+        }
+      }
+
       deps.cameraRig.setPolarAngle(22, true);
     });
   };
@@ -577,8 +596,13 @@ export const createVinylSelectionController = (
     void handleFocusSelection(detail);
   });
 
+  const resetFocusCardState = () => {
+    hasFocusCardRendered = false;
+  };
+
   return {
     loadVideoForCurrentSelection,
     handleFocusSelection,
+    resetFocusCardState,
   };
 };

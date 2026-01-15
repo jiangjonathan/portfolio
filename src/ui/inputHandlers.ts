@@ -577,6 +577,9 @@ export const registerInputHandlers = (deps: InputHandlersDeps) => {
     vinylDragStartScreen.set(event.clientX, event.clientY);
     vinylDragHasMoved = false;
     (window as any).VINYL_DRAG_ACTIVE = true;
+
+    // Show clenched hand cursor while dragging vinyl
+    deps.canvas.style.cursor = "grabbing";
     if (vinylSelection.source === "turntable") {
       deps.getTurntableController()?.liftNeedle();
       deps.getTurntableController()?.setVinylPresence(false);
@@ -762,6 +765,9 @@ export const registerInputHandlers = (deps: InputHandlersDeps) => {
     deps.setActiveDragVisualOffset(0);
     (window as any).VINYL_DRAG_ACTIVE = false;
     document.body.classList.remove("vinyl-drag-active");
+
+    // Reset cursor when vinyl drag ends
+    deps.canvas.style.cursor = "default";
     deps.getPointerAttachmentOffset().copy(deps.getHangOffset());
     const vinylModel = deps.getVinylModel();
     if (vinylModel) {

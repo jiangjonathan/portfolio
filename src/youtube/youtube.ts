@@ -980,21 +980,24 @@ export function createYouTubePlayer(): YouTubeBridge {
         appDiv.style.background = "transparent";
       }
 
+      viewport.style.transition = "none";
+      playerSize.style.transition = "none";
       viewport.style.width = `${windowWidth}px`;
       viewport.style.height = `${windowHeight}px`;
       viewport.style.opacity = "0";
-      viewport.style.transition = "opacity 0.5s ease-out";
-      void viewport.offsetHeight;
-      viewport.style.opacity = "1";
-
-      wrapper.style.transition = "opacity 0.5s ease-out";
-      void wrapper.offsetHeight;
-      wrapper.style.opacity = "1";
-
       Object.assign(playerSize.style, {
         width: `${playerWidth}px`,
         height: `${playerHeight}px`,
       });
+      void viewport.offsetHeight;
+      viewport.style.transition = "opacity 0.5s ease-out";
+      playerSize.style.transition = "none";
+      viewport.style.opacity = "1";
+
+      wrapper.style.transition = "opacity 0.5s ease-out";
+      wrapper.style.opacity = "0";
+      void wrapper.offsetHeight;
+      wrapper.style.opacity = "1";
 
       if (controlsContainer) {
         (controlsContainer as HTMLDivElement).style.display = "none";
@@ -1083,7 +1086,6 @@ export function createYouTubePlayer(): YouTubeBridge {
         updateSmallPlayerDimensions();
         viewport.style.height = "0px";
         viewport.style.opacity = "1";
-        void viewport.offsetHeight;
 
         Object.assign(wrapper.style, {
           position: "absolute",
@@ -1108,8 +1110,10 @@ export function createYouTubePlayer(): YouTubeBridge {
           fullscreenControls.style.display = "none";
         }
 
-        viewport.style.transition = SMALL_PLAYER_RESIZE_TRANSITION;
         void viewport.offsetHeight;
+        viewport.style.transition = SMALL_PLAYER_RESIZE_TRANSITION;
+        playerSize.style.transition = SMALL_PLAYER_RESIZE_TRANSITION;
+        wrapper.style.transition = "all 0.3s ease-in-out";
 
         // Only show player if tonearm is in play area
         const isTonearmInPlayArea = isTonearmInPlayAreaQuery?.() ?? false;

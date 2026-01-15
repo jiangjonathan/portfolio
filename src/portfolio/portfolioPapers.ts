@@ -1484,6 +1484,18 @@ export class PortfolioPapersManager {
     });
   }
 
+  hideAllPapersExceptFirst(): void {
+    const papersList = this.getPapers();
+    const firstPaperId = papersList.length > 0 ? papersList[0].id : null;
+    const lastPaperId =
+      papersList.length > 0 ? papersList[papersList.length - 1].id : null;
+
+    this.paperMeshes.forEach((mesh, paperId) => {
+      // Show first and last paper, hide all others to prevent z-fighting
+      mesh.visible = paperId === firstPaperId || paperId === lastPaperId;
+    });
+  }
+
   getCurrentPaperId(): string | null {
     return this.currentPaperId;
   }
@@ -1502,11 +1514,12 @@ export class PortfolioPapersManager {
       return;
     }
     const topPaperId = papersList[0].id;
-    const bottomPaperId = papersList[papersList.length - 1]?.id;
+    const lastPaperId = papersList[papersList.length - 1].id;
 
     this.paperMeshes.forEach((mesh, paperId) => {
+      // Show top and bottom paper, hide all others to prevent z-fighting
       const shouldRemainVisible =
-        paperId === topPaperId || paperId === bottomPaperId;
+        paperId === topPaperId || paperId === lastPaperId;
       if (!shouldRemainVisible && mesh.visible) {
         mesh.visible = false;
       } else if (shouldRemainVisible && !mesh.visible) {

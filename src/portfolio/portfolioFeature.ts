@@ -315,6 +315,10 @@ export function createPortfolioFeature(
           error,
         );
       } finally {
+        // Ensure only the first paper is visible to prevent z-fighting during camera pullback
+        if (portfolioPapersManager) {
+          portfolioPapersManager.hideAllPapersExceptFirst();
+        }
         void animatePortfolioCoverFlip(true);
       }
     })();

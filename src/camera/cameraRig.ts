@@ -361,4 +361,12 @@ export class CameraRig {
   onAnimationComplete(callback: () => void) {
     this.animationCompleteCallbacks.push(callback);
   }
+
+  isAnimatingToTarget(): boolean {
+    return this.isAnimating;
+  }
+
+  getAnimationProgress(): number {
+    return this.animationProgress;
+  }
 }
