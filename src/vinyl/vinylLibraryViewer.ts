@@ -1788,7 +1788,7 @@ export class VinylLibraryViewer {
     // Attach album cover hover listener to shift vinyl (using wrapper for extended hitbox)
     const albumCoverWrapper = focusCoverContainer.querySelector(
       ".album-cover-wrapper",
-    );
+    ) as HTMLElement | null;
     if (albumCoverWrapper) {
       const toggleCoverHover = (isHovered: boolean) => {
         // Don't allow hover effects if this vinyl is currently playing on turntable
@@ -1890,7 +1890,7 @@ export class VinylLibraryViewer {
       albumCoverWrapper.addEventListener("mouseleave", () => {
         toggleCoverHover(false);
       });
-      albumCoverWrapper.addEventListener("click", (e) => {
+      albumCoverWrapper.addEventListener("click", () => {
         // Check if focus vinyl matches turntable vinyl by comparing video IDs
         const getTurntableVinylState = (window as any).getTurntableVinylState;
 

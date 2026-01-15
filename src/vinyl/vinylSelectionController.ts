@@ -144,6 +144,7 @@ type DroppingVinylState = {
 type VinylSelectionController = {
   loadVideoForCurrentSelection: () => Promise<void>;
   handleFocusSelection: (selection: VinylSelectionDetail) => Promise<void>;
+  resetFocusCardState: () => void;
 };
 
 export const createVinylSelectionController = (
