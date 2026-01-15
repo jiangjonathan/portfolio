@@ -2254,49 +2254,31 @@ const animate = (time: number) => {
   // Update lighting animations
   lightingAnimator.update();
 
-  // Update cursor based on drag state and hover
-  const isVinylDragging = (window as any).VINYL_DRAG_ACTIVE ?? false;
-  const isTonearmDragging =
-    turntableController?.getIsDraggingTonearm?.() ?? false;
+  // Update cursor based on drag state and hover (non-turntable pages only)
+  if (activePage !== "turntable") {
+    const isVinylDragging = (window as any).VINYL_DRAG_ACTIVE ?? false;
+    const isTonearmDragging =
+      turntableController?.getIsDraggingTonearm?.() ?? false;
+    let isHomePageModelHovering = false;
 
-  // Check if pointer is over vinyl model
-  let isVinylHovering = false;
-  let isButtonHovering = false;
-  let isHomePageModelHovering = false;
-
-  if (vinylModel && activePage === "turntable") {
-    raycaster.setFromCamera(pointerNDC, camera);
-    const vinylIntersects = raycaster.intersectObject(vinylModel, true);
-    isVinylHovering = vinylIntersects.length > 0;
-
-    // Check if hovering over start-stop button or speed slider
-    const isHoveringControls =
-      turntableController?.isHoveringControls?.() ?? false;
-    isButtonHovering = isHoveringControls;
-  }
-
-  // Check if hovering over home page models
-  if (activePage === "home") {
-    raycaster.setFromCamera(pointerNDC, camera);
-    for (const { model } of homePageTargets) {
-      const intersects = raycaster.intersectObject(model, true);
-      if (intersects.length > 0) {
-        isHomePageModelHovering = true;
-        break;
+    if (activePage === "home") {
+      raycaster.setFromCamera(pointerNDC, camera);
+      for (const { model } of homePageTargets) {
+        const intersects = raycaster.intersectObject(model, true);
+        if (intersects.length > 0) {
+          isHomePageModelHovering = true;
+          break;
+        }
       }
     }
-  }
 
-  if (isVinylDragging || isTonearmDragging) {
-    renderer.domElement.style.cursor = "grabbing";
-  } else if (turntableController?.getIsHoveringTonearm?.() || isVinylHovering) {
-    renderer.domElement.style.cursor = "grab";
-  } else if (isButtonHovering) {
-    renderer.domElement.style.cursor = "pointer";
-  } else if (isHomePageModelHovering) {
-    renderer.domElement.style.cursor = "pointer";
-  } else {
-    renderer.domElement.style.cursor = "default";
+    if (isVinylDragging || isTonearmDragging) {
+      renderer.domElement.style.cursor = "grabbing";
+    } else if (isHomePageModelHovering) {
+      renderer.domElement.style.cursor = "pointer";
+    } else {
+      renderer.domElement.style.cursor = "default";
+    }
   }
 
   // const isTonearmPlaying = turntableController?.isPlaying() ?? false;

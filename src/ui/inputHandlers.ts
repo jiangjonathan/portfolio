@@ -372,6 +372,13 @@ export const registerInputHandlers = (deps: InputHandlersDeps) => {
   };
 
   document.addEventListener("mousemove", (event) => {
+    const isVinylDragging = deps.getVinylDragPointerId() !== null;
+    const isTonearmDragging =
+      deps.getTurntableController()?.getIsDraggingTonearm?.() ?? false;
+    if (isVinylDragging || isTonearmDragging) {
+      deps.canvas.style.cursor = "grabbing";
+      return;
+    }
     const x = event.clientX / window.innerWidth;
     const y = event.clientY / window.innerHeight;
     deps.updateBusinessCardMousePosition(x, y);
@@ -622,6 +629,13 @@ export const registerInputHandlers = (deps: InputHandlersDeps) => {
   };
 
   deps.canvas.addEventListener("pointermove", (event) => {
+    const isVinylDragging = deps.getVinylDragPointerId() !== null;
+    const isTonearmDragging =
+      deps.getTurntableController()?.getIsDraggingTonearm?.() ?? false;
+    const shouldLockDragCursor = isVinylDragging || isTonearmDragging;
+    if (shouldLockDragCursor) {
+      deps.canvas.style.cursor = "grabbing";
+    }
     if (deps.yt.isFullscreen()) {
       showCursor();
       scheduleCursorHide();
@@ -632,7 +646,10 @@ export const registerInputHandlers = (deps: InputHandlersDeps) => {
     ) {
       deps.raycaster.setFromCamera(deps.pointerNDC, deps.camera);
       deps.updateBusinessCardHoverState();
-    } else if (deps.getActivePage() !== deps.BUSINESS_CARD_PAGE) {
+    } else if (
+      deps.getActivePage() !== deps.BUSINESS_CARD_PAGE &&
+      !shouldLockDragCursor
+    ) {
       deps.setBusinessCardContactHighlight(null);
       deps.canvas.style.cursor = "";
     }
@@ -654,7 +671,11 @@ export const registerInputHandlers = (deps: InputHandlersDeps) => {
       return;
     }
 
-    if (deps.getActivePage() === "home" && !deps.isPageTransitionActive()) {
+    if (
+      deps.getActivePage() === "home" &&
+      !deps.isPageTransitionActive() &&
+      !shouldLockDragCursor
+    ) {
       if (deps.updatePointer(event, deps.pointerNDC, deps.canvas)) {
         deps.raycaster.setFromCamera(deps.pointerNDC, deps.camera);
         const heroHits = deps.raycaster.intersectObject(deps.heroGroup, true);
@@ -680,15 +701,20 @@ export const registerInputHandlers = (deps: InputHandlersDeps) => {
     if (
       deps.getActivePage() === "turntable" &&
       !deps.isPageTransitionActive() &&
-      !deps.yt.isFullscreen()
+      !deps.yt.isFullscreen() &&
+      !shouldLockDragCursor
     ) {
       if (deps.updatePointer(event, deps.pointerNDC, deps.canvas)) {
         deps.raycaster.setFromCamera(deps.pointerNDC, deps.camera);
         const vinylPick = deps.pickVinylUnderPointer();
+        const isHoveringTonearm =
+          deps.getTurntableController()?.getIsHoveringTonearm?.() ?? false;
         const hoveringControls =
           deps.getTurntableController()?.isHoveringControls() ?? false;
 
-        if (vinylPick || hoveringControls) {
+        if (vinylPick || isHoveringTonearm) {
+          deps.canvas.style.cursor = "grab";
+        } else if (hoveringControls) {
           deps.canvas.style.cursor = "pointer";
         } else {
           deps.canvas.style.cursor = "";
@@ -729,6 +755,9 @@ export const registerInputHandlers = (deps: InputHandlersDeps) => {
       !vinylModel
     ) {
       return;
+    }
+    if (deps.updatePointer(event, deps.pointerNDC, deps.canvas)) {
+      deps.raycaster.setFromCamera(deps.pointerNDC, deps.camera);
     }
     const hit = deps.raycaster.ray.intersectPlane(
       deps.dragPlane,
