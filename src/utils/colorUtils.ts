@@ -270,7 +270,7 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 const GRAYSCALE_SATURATION_THRESHOLD = 0.12;
-const DARK_LUMINANCE_THRESHOLD = 0.02;
+const DARK_LUMINANCE_THRESHOLD = 0.01;
 
 function rgbToHslNormalized(
   r: number,
