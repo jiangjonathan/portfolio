@@ -1,7 +1,6 @@
 import { Vector3 } from "three";
 import type { Object3D } from "three";
 import type { CameraRig } from "./cameraRig";
-import type { mx_hash_int_3 } from "three/src/nodes/materialx/lib/mx_noise.js";
 
 export type ScenePage =
   | "home"
