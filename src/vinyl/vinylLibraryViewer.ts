@@ -356,17 +356,35 @@ export class VinylLibraryViewer {
     // Apply search filter if active
     if (this.searchQuery.trim()) {
       const lowerQuery = this.searchQuery.toLowerCase();
+      // Remove hyphens and spaces from query for flexible matching
+      const normalizedQuery = lowerQuery.replace(/[\s\-]/g, "");
+
       this.library = this.library.filter((entry) => {
         const artist = (entry.artistName || "").toLowerCase();
         const song = (entry.songName || "").toLowerCase();
         const genre = (entry.genre || "").toLowerCase();
         const note = (entry.note || "").toLowerCase();
-        return (
+
+        // Direct match with original query
+        const directMatch =
           artist.includes(lowerQuery) ||
           song.includes(lowerQuery) ||
           genre.includes(lowerQuery) ||
-          note.includes(lowerQuery)
-        );
+          note.includes(lowerQuery);
+
+        // Flexible match by removing hyphens and spaces
+        const normalizedArtist = artist.replace(/[\s\-]/g, "");
+        const normalizedSong = song.replace(/[\s\-]/g, "");
+        const normalizedGenre = genre.replace(/[\s\-]/g, "");
+        const normalizedNote = note.replace(/[\s\-]/g, "");
+
+        const flexibleMatch =
+          normalizedArtist.includes(normalizedQuery) ||
+          normalizedSong.includes(normalizedQuery) ||
+          normalizedGenre.includes(normalizedQuery) ||
+          normalizedNote.includes(normalizedQuery);
+
+        return directMatch || flexibleMatch;
       });
     }
 
@@ -2223,7 +2241,8 @@ export class VinylLibraryViewer {
         this.focusedEntryId = entryId;
 
         // Update custom order immediately so the list reorders right away
-        if (entryId) {
+        // But only if NOT in sorted mode - keep sorted order when sorted
+        if (entryId && !this.sortState.category) {
           this.customOrder.set(entryId, Date.now());
           this.savePersistedViewerState();
           this.mergeLibraries();
