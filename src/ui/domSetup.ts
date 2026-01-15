@@ -50,6 +50,7 @@ export interface DOMElements {
   settingsPanel: HTMLDivElement;
   coloredVinylsCheckbox: HTMLInputElement;
   sfxCheckbox: HTMLInputElement;
+  songCommentsCheckbox: HTMLInputElement;
   contactButton: HTMLButtonElement;
   cameraDebugPanel: HTMLDivElement;
   portfolioPapersContainer: HTMLDivElement;
@@ -190,16 +191,43 @@ export function setupDOM(): DOMElements {
     updateVinylViewerScale();
   });
 
+  const bottomRightControls = document.createElement("div");
+  bottomRightControls.id = "vinyl-bottom-right-controls";
+  bottomRightControls.style.cssText = `
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    display: flex;
+    flex-direction: row;
+    gap: ${GLOBAL_CONTROLS_TURNTABLE.gap};
+    align-items: flex-end;
+    z-index: ${HIDE_BUTTON_Z_INDEX};
+    pointer-events: auto;
+  `;
+
+  const showFocusBtn = document.createElement("button");
+  showFocusBtn.id = "vinyl-show-focus-btn";
+  showFocusBtn.className = "vinyl-hyperlink";
+  showFocusBtn.textContent = "show focus";
+  showFocusBtn.style.cssText = `
+    transition: opacity 0.3s ease, transform 0.3s ease;
+    opacity: 1;
+    display: none;
+  `;
+  showFocusBtn.addEventListener("click", () => {
+    const viewer = (window as any).vinylLibraryViewer;
+    if (viewer) {
+      viewer.showFocusCard();
+    }
+  });
+  bottomRightControls.appendChild(showFocusBtn);
+
   // Create hide/show library button
   const hideLibraryBtn = document.createElement("button");
   hideLibraryBtn.id = "vinyl-hide-library-btn";
   hideLibraryBtn.className = "vinyl-hyperlink";
   hideLibraryBtn.textContent = "hide library";
   hideLibraryBtn.style.cssText = `
-    position: fixed;
-    bottom: 20px;
-    right: 20px;
-    z-index: ${HIDE_BUTTON_Z_INDEX};
     transition: opacity 0.3s ease, transform 0.3s ease;
     opacity: 1;
   `;
@@ -242,7 +270,8 @@ export function setupDOM(): DOMElements {
       hideLibraryBtn.textContent = "show library";
     }
   });
-  root.appendChild(hideLibraryBtn);
+  bottomRightControls.appendChild(hideLibraryBtn);
+  root.appendChild(bottomRightControls);
 
   // Create focus card containers
   const focusCardCoverContainer = document.createElement("div");
@@ -397,28 +426,6 @@ export function setupDOM(): DOMElements {
   applyFocusCardScale();
   window.addEventListener("resize", applyFocusCardScale);
 
-  // Create show focus button
-  const showFocusBtn = document.createElement("button");
-  showFocusBtn.id = "vinyl-show-focus-btn";
-  showFocusBtn.className = "vinyl-hyperlink";
-  showFocusBtn.textContent = "show focus";
-  showFocusBtn.style.cssText = `
-    position: fixed;
-    bottom: 20px;
-    right: 110px;
-    z-index: ${HIDE_BUTTON_Z_INDEX};
-    transition: opacity 0.3s ease, transform 0.3s ease;
-    opacity: 1;
-    display: none;
-  `;
-  showFocusBtn.addEventListener("click", () => {
-    const viewer = (window as any).vinylLibraryViewer;
-    if (viewer) {
-      viewer.showFocusCard();
-    }
-  });
-  root.appendChild(showFocusBtn);
-
   // Add global styles
   const style = document.createElement("style");
   style.textContent = `
@@ -572,17 +579,21 @@ export function setupDOM(): DOMElements {
     position: "absolute",
     bottom: "calc(100% + 8px)",
     left: "0",
-    background: "#ffffff",
+    background: "#f7f7f2",
     color: "#000000",
     border: "1px solid #dddddd",
     padding: "0.5rem 0.75rem",
-    display: "none",
+    display: "flex",
     flexDirection: "column",
     gap: "0.4rem",
     minWidth: "160px",
     boxShadow: "0 2px 8px rgba(0, 0, 0, 0.08)",
     zIndex: String(HIDE_BUTTON_Z_INDEX + 5),
     userSelect: "none",
+    opacity: "0",
+    transform: "translateY(4px)",
+    pointerEvents: "none",
+    transition: "opacity 0.15s ease, transform 0.15s ease",
   });
   settingsWrapper.appendChild(settingsPanel);
 
@@ -642,6 +653,12 @@ export function setupDOM(): DOMElements {
 
   const sfxOption = createSettingsOption("sfx-toggle", "sfx");
   settingsPanel.appendChild(sfxOption.wrapper);
+
+  const songCommentsOption = createSettingsOption(
+    "song-comments-toggle",
+    "song comments",
+  );
+  settingsPanel.appendChild(songCommentsOption.wrapper);
 
   // Create camera debug panel (debug - hidden)
   const cameraDebugPanel = document.createElement("div");
@@ -798,6 +815,7 @@ export function setupDOM(): DOMElements {
 
   const coloredVinylsCheckbox = coloredVinylsOption.checkbox;
   const sfxCheckbox = sfxOption.checkbox;
+  const songCommentsCheckbox = songCommentsOption.checkbox;
 
   return {
     root,
@@ -821,6 +839,7 @@ export function setupDOM(): DOMElements {
     settingsPanel,
     coloredVinylsCheckbox,
     sfxCheckbox,
+    songCommentsCheckbox,
     contactButton,
     cameraDebugPanel,
     portfolioPapersContainer,

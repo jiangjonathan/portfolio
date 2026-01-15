@@ -651,7 +651,9 @@ export const registerInputHandlers = (deps: InputHandlersDeps) => {
       !shouldLockDragCursor
     ) {
       deps.setBusinessCardContactHighlight(null);
-      deps.canvas.style.cursor = "";
+      if (deps.getActivePage() !== "home") {
+        deps.canvas.style.cursor = "";
+      }
     }
     if (deps.handleBusinessCardRotationMove(event)) {
       return;
@@ -678,23 +680,6 @@ export const registerInputHandlers = (deps: InputHandlersDeps) => {
     ) {
       if (deps.updatePointer(event, deps.pointerNDC, deps.canvas)) {
         deps.raycaster.setFromCamera(deps.pointerNDC, deps.camera);
-        const heroHits = deps.raycaster.intersectObject(deps.heroGroup, true);
-        let foundClickable = false;
-
-        if (heroHits.length) {
-          for (const hit of heroHits) {
-            const page = deps.findPageForObject(
-              hit.object as Object3D,
-              deps.homePageTargets,
-            );
-            if (page && page !== "home") {
-              foundClickable = true;
-              break;
-            }
-          }
-        }
-
-        deps.canvas.style.cursor = foundClickable ? "pointer" : "";
       }
     }
 

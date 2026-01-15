@@ -184,6 +184,7 @@ const {
   settingsPanel,
   coloredVinylsCheckbox,
   sfxCheckbox,
+  songCommentsCheckbox,
   contactButton,
   // cameraDebugPanel, // Debug UI - disabled
   portfolioPrevArrow,
@@ -202,12 +203,14 @@ contactButton.style.display = "block";
 resetTutorialButton.style.display = "none";
 freeLookButton.style.display = "none";
 settingsButton.style.display = "none";
-settingsPanel.style.display = "none";
+settingsPanel.style.display = "flex";
 
 let isSettingsPanelVisible = false;
 const setSettingsPanelVisible = (visible: boolean) => {
   isSettingsPanelVisible = visible;
-  settingsPanel.style.display = visible ? "flex" : "none";
+  settingsPanel.style.opacity = visible ? "1" : "0";
+  settingsPanel.style.pointerEvents = visible ? "auto" : "none";
+  settingsPanel.style.transform = visible ? "translateY(0)" : "translateY(4px)";
   settingsButton.setAttribute("aria-expanded", visible ? "true" : "false");
 };
 settingsButton.setAttribute("aria-haspopup", "true");
@@ -1180,6 +1183,7 @@ let pendingPromotionSource: VinylSource | null = null;
 setupSettingsPersistence({
   coloredVinylsCheckbox,
   sfxCheckbox,
+  songCommentsCheckbox,
   onColoredVinylsChange: (enabled) => {
     coloredVinylsEnabled = enabled;
     updateFocusVinylColorFromDerived();
@@ -1189,6 +1193,9 @@ setupSettingsPersistence({
   onSfxChange: (enabled) => {
     sfx_on = enabled;
     window.sfx_on = sfx_on;
+  },
+  onSongCommentsChange: (enabled) => {
+    document.body.classList.toggle("song-comments-hidden", !enabled);
   },
 });
 

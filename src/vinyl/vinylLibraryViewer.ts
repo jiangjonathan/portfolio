@@ -736,6 +736,10 @@ export class VinylLibraryViewer {
             overflow: hidden;
           }
 
+          body.song-comments-hidden .focus-card-info-container .album-note-right {
+            display: none;
+          }
+
           .vinyl-viewer-widget .album-metadata {
             display: none;
           }
@@ -1191,12 +1195,22 @@ export class VinylLibraryViewer {
             position: absolute;
             top: 100%;
             left: 0;
-            background: white;
+            background: #f7f7f2;
             border: 1px solid #ddd;
             margin-top: calc(0.25rem * var(--font-scale, 1));
             min-width: calc(120px * var(--font-scale, 1));
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
             z-index: 1000;
+            opacity: 0;
+            transform: translateY(4px);
+            pointer-events: none;
+            transition: opacity 0.15s ease, transform 0.15s ease;
+          }
+
+          .vinyl-viewer-widget .sort-dropdown.is-open {
+            opacity: 1;
+            transform: translateY(0);
+            pointer-events: auto;
           }
 
           .vinyl-viewer-widget .sort-option {
@@ -1316,7 +1330,7 @@ export class VinylLibraryViewer {
           <div class="filter-buttons">
             <div class="sort-container">
               <button id="vinyl-sort-btn" class="filter-btn vinyl-hyperlink">sort</button>
-              <div id="vinyl-sort-dropdown" class="sort-dropdown" style="display: none;">
+              <div id="vinyl-sort-dropdown" class="sort-dropdown">
                 <div class="sort-option" data-category="artist">artist</div>
                 <div class="sort-option" data-category="genre">genre</div>
                 <div class="sort-option" data-category="year">year</div>
@@ -1505,8 +1519,17 @@ export class VinylLibraryViewer {
 
     const entry = this.library.find((e) => e.id === this.focusedEntryId);
     if (entry) {
+      const fadeDelayMs = 150;
+      const fadeDurationMs = 400;
       this.renderFocusCard(entry);
-      this.showFocusCardUI();
+      this.showFocusCardUI(fadeDelayMs);
+      window.setTimeout(() => {
+        window.dispatchEvent(
+          new CustomEvent("focus-visibility-change", {
+            detail: { visible: true },
+          }),
+        );
+      }, fadeDelayMs + fadeDurationMs);
     }
   }
 
@@ -2377,8 +2400,7 @@ export class VinylLibraryViewer {
 
         if (this.sortState.category === null) {
           // No category selected - show dropdown
-          sortDropdown.style.display =
-            sortDropdown.style.display === "none" ? "block" : "none";
+          sortDropdown.classList.toggle("is-open");
         } else {
           // Category selected - toggle direction or reset
           if (this.sortState.direction === "asc") {
@@ -2407,7 +2429,7 @@ export class VinylLibraryViewer {
             "data-category",
           ) as "artist" | "genre" | "year";
           this.sortState = { category, direction: "asc" };
-          sortDropdown.style.display = "none";
+          sortDropdown.classList.remove("is-open");
           this.applySorting();
           this.updateSortButtonText();
           this.savePersistedViewerState();
@@ -2416,7 +2438,7 @@ export class VinylLibraryViewer {
 
       // Close dropdown when clicking outside
       document.addEventListener("click", () => {
-        sortDropdown.style.display = "none";
+        sortDropdown.classList.remove("is-open");
       });
     }
 

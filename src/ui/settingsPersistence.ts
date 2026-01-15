@@ -1,13 +1,16 @@
 type SettingsPersistenceDeps = {
   coloredVinylsCheckbox: HTMLInputElement;
   sfxCheckbox: HTMLInputElement;
+  songCommentsCheckbox: HTMLInputElement;
   onColoredVinylsChange: (enabled: boolean) => void;
   onSfxChange: (enabled: boolean) => void;
+  onSongCommentsChange: (enabled: boolean) => void;
 };
 
 type SettingsState = {
   coloredVinylsEnabled?: boolean;
   sfxEnabled?: boolean;
+  songCommentsEnabled?: boolean;
 };
 
 const STORAGE_KEY = "vinylSettings";
@@ -50,6 +53,9 @@ export const setupSettingsPersistence = (deps: SettingsPersistenceDeps) => {
   if (typeof state.sfxEnabled === "boolean") {
     deps.sfxCheckbox.checked = state.sfxEnabled;
   }
+  if (typeof state.songCommentsEnabled === "boolean") {
+    deps.songCommentsCheckbox.checked = state.songCommentsEnabled;
+  }
 
   deps.coloredVinylsCheckbox.addEventListener("change", () => {
     const enabled = deps.coloredVinylsCheckbox.checked;
@@ -69,9 +75,21 @@ export const setupSettingsPersistence = (deps: SettingsPersistenceDeps) => {
     }
   });
 
+  deps.songCommentsCheckbox.addEventListener("change", () => {
+    const enabled = deps.songCommentsCheckbox.checked;
+    deps.onSongCommentsChange(enabled);
+    if (!isInitializing) {
+      state.songCommentsEnabled = enabled;
+      saveSettings(state);
+    }
+  });
+
   deps.coloredVinylsCheckbox.dispatchEvent(
     new Event("change", { bubbles: true }),
   );
   deps.sfxCheckbox.dispatchEvent(new Event("change", { bubbles: true }));
+  deps.songCommentsCheckbox.dispatchEvent(
+    new Event("change", { bubbles: true }),
+  );
   isInitializing = false;
 };
