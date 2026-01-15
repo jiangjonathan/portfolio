@@ -143,6 +143,7 @@ import {
   GLOBAL_CONTROLS_TURNTABLE,
 } from "./ui/domSetup";
 import { registerInputHandlers } from "./ui/inputHandlers";
+import { setupSettingsPersistence } from "./ui/settingsPersistence";
 import type { PortfolioPapersManager } from "./portfolio/portfolioPapers";
 import { createPortfolioFeature } from "./portfolio/portfolioFeature";
 import { createPortfolioInteractions } from "./portfolio/portfolioInteractions";
@@ -202,8 +203,6 @@ resetTutorialButton.style.display = "none";
 freeLookButton.style.display = "none";
 settingsButton.style.display = "none";
 settingsPanel.style.display = "none";
-coloredVinylsCheckbox.checked = coloredVinylsEnabled;
-sfxCheckbox.checked = sfx_on;
 
 let isSettingsPanelVisible = false;
 const setSettingsPanelVisible = (visible: boolean) => {
@@ -237,18 +236,6 @@ document.addEventListener("click", (event) => {
     return;
   }
   setSettingsPanelVisible(false);
-});
-
-coloredVinylsCheckbox.addEventListener("change", () => {
-  coloredVinylsEnabled = coloredVinylsCheckbox.checked;
-  updateFocusVinylColorFromDerived();
-  updateTurntableVinylColorFromDerived();
-  restoreDroppingVinylAppearance("coloredVinylToggle");
-});
-
-sfxCheckbox.addEventListener("change", () => {
-  sfx_on = sfxCheckbox.checked;
-  window.sfx_on = sfx_on;
 });
 
 // Initialize IndexedDB cache for album covers
@@ -1186,6 +1173,21 @@ const turntableBoundsCenter = new Vector3();
 let activeVinylSource: VinylSource | null = null;
 let currentDragSource: VinylSource | null = null;
 let pendingPromotionSource: VinylSource | null = null;
+
+setupSettingsPersistence({
+  coloredVinylsCheckbox,
+  sfxCheckbox,
+  onColoredVinylsChange: (enabled) => {
+    coloredVinylsEnabled = enabled;
+    updateFocusVinylColorFromDerived();
+    updateTurntableVinylColorFromDerived();
+    restoreDroppingVinylAppearance("coloredVinylToggle");
+  },
+  onSfxChange: (enabled) => {
+    sfx_on = enabled;
+    window.sfx_on = sfx_on;
+  },
+});
 
 function setPendingPromotionSource(
   value: VinylSource | null,

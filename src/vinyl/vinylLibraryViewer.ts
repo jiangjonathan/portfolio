@@ -48,7 +48,7 @@ export class VinylLibraryViewer {
   private scrollContainer: HTMLElement | null = null;
 
   private suppressNextLibraryUpdateEvent: boolean = false;
-  private customOrder: Map<string, number> = new Map(); // Session-based custom ordering
+  private customOrder: Map<string, number> = new Map(); // Persisted custom ordering
   private isEditMode: boolean = false; // Toggle for showing delete buttons
   private focusedEntryId: string | null = null; // Track currently focused entry
   private focusedEntryVideoId: string | null = null;
@@ -116,8 +116,13 @@ export class VinylLibraryViewer {
     // Recreate blob URLs for cached covers in both libraries
     await this.recreateBlobUrls();
 
+    this.loadPersistedViewerState();
+
     // Merge and mark libraries
     this.mergeLibraries();
+    if (this.sortState.category) {
+      this.applySorting();
+    }
     console.log("📦 Merged library:", this.library.length, "total entries");
 
     // Render viewer
@@ -129,6 +134,70 @@ export class VinylLibraryViewer {
     // Listen for video duration updates from the player
     this.watchVideoDurationUpdates();
     this.watchTurntableStateUpdates();
+  }
+
+  private loadPersistedViewerState(): void {
+    if (typeof window === "undefined") {
+      return;
+    }
+    try {
+      const stored = window.localStorage.getItem("vinylLibraryViewerState");
+      if (!stored) {
+        return;
+      }
+      const parsed = JSON.parse(stored) as {
+        sortState?: {
+          category: "artist" | "genre" | "year" | null;
+          direction: "asc" | "desc";
+        };
+        customOrder?: Array<[string, number]>;
+      };
+      if (parsed?.sortState) {
+        const category = parsed.sortState.category;
+        const direction = parsed.sortState.direction;
+        const validCategory =
+          category === "artist" ||
+          category === "genre" ||
+          category === "year" ||
+          category === null;
+        const validDirection = direction === "asc" || direction === "desc";
+        if (validCategory && validDirection) {
+          this.sortState = { category, direction };
+        }
+      }
+      if (Array.isArray(parsed?.customOrder)) {
+        this.customOrder.clear();
+        parsed.customOrder.forEach((entry) => {
+          if (!Array.isArray(entry) || entry.length !== 2) {
+            return;
+          }
+          const [id, timestamp] = entry;
+          if (typeof id === "string" && typeof timestamp === "number") {
+            this.customOrder.set(id, timestamp);
+          }
+        });
+      }
+    } catch (error) {
+      console.warn("[vinylLibraryViewer] Failed to load viewer state:", error);
+    }
+  }
+
+  private savePersistedViewerState(): void {
+    if (typeof window === "undefined") {
+      return;
+    }
+    try {
+      const state = {
+        sortState: this.sortState,
+        customOrder: Array.from(this.customOrder.entries()),
+      };
+      window.localStorage.setItem(
+        "vinylLibraryViewerState",
+        JSON.stringify(state),
+      );
+    } catch (error) {
+      console.warn("[vinylLibraryViewer] Failed to save viewer state:", error);
+    }
   }
 
   /**
@@ -2069,6 +2138,7 @@ export class VinylLibraryViewer {
         // Update custom order immediately so the list reorders right away
         if (entryId) {
           this.customOrder.set(entryId, Date.now());
+          this.savePersistedViewerState();
           this.mergeLibraries();
           this.updateVisibleItems();
           this.attachCardListeners();
@@ -2209,6 +2279,7 @@ export class VinylLibraryViewer {
             this.sortState.direction = "desc";
             this.applySorting();
             this.updateSortButtonText();
+            this.savePersistedViewerState();
           } else {
             // Reset to no sort
             this.sortState = { category: null, direction: "asc" };
@@ -2217,6 +2288,7 @@ export class VinylLibraryViewer {
             this.updateVisibleItems();
             this.attachCardListeners();
             this.updateSortButtonText();
+            this.savePersistedViewerState();
           }
         }
       });
@@ -2232,6 +2304,7 @@ export class VinylLibraryViewer {
           sortDropdown.style.display = "none";
           this.applySorting();
           this.updateSortButtonText();
+          this.savePersistedViewerState();
         });
       });
 
@@ -2240,6 +2313,8 @@ export class VinylLibraryViewer {
         sortDropdown.style.display = "none";
       });
     }
+
+    this.updateSortButtonText();
 
     const editBtn = document.getElementById("vinyl-edit-btn");
     if (editBtn) {
@@ -2644,6 +2719,7 @@ export class VinylLibraryViewer {
         );
         // Give new entry the highest timestamp so it stays at the top when custom order is applied
         this.customOrder.set(newEntryId, Date.now());
+        this.savePersistedViewerState();
         this.mergeLibraries(newEntryId);
       } else {
         console.log(

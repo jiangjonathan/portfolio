@@ -582,6 +582,7 @@ export function setupDOM(): DOMElements {
     minWidth: "160px",
     boxShadow: "0 2px 8px rgba(0, 0, 0, 0.08)",
     zIndex: String(HIDE_BUTTON_Z_INDEX + 5),
+    userSelect: "none",
   });
   settingsWrapper.appendChild(settingsPanel);
 
@@ -600,6 +601,7 @@ export function setupDOM(): DOMElements {
     option.style.width = "100%";
     option.style.whiteSpace = "nowrap";
     option.style.justifyContent = "flex-start";
+    option.style.userSelect = "none";
 
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
@@ -622,9 +624,10 @@ export function setupDOM(): DOMElements {
     option.appendChild(indicator);
     option.appendChild(span);
     option.appendChild(checkbox);
-    option.addEventListener("click", () => {
+    option.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
       checkbox.checked = !checkbox.checked;
-      updateIndicator();
       checkbox.dispatchEvent(new Event("change", { bubbles: true }));
     });
     checkbox.addEventListener("change", updateIndicator);

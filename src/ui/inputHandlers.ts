@@ -146,6 +146,9 @@ export const registerInputHandlers = (deps: InputHandlersDeps) => {
     lastX: 0,
     lastY: 0,
   };
+  const vinylDragStartScreen = new Vector2();
+  let vinylDragHasMoved = false;
+  const VINYL_DRAG_RESET_THRESHOLD = 4;
   let isCameraOrbitDecelerating = false;
   let autoOrbitStartTime = 0;
   let autoOrbitDirection = 1;
@@ -571,6 +574,8 @@ export const registerInputHandlers = (deps: InputHandlersDeps) => {
     deps.setIsReturningVinyl(false);
     deps.setHasClearedNub(false);
     deps.setVinylDragExceededThreshold(false);
+    vinylDragStartScreen.set(event.clientX, event.clientY);
+    vinylDragHasMoved = false;
     (window as any).VINYL_DRAG_ACTIVE = true;
     if (vinylSelection.source === "turntable") {
       deps.getTurntableController()?.liftNeedle();
@@ -736,6 +741,13 @@ export const registerInputHandlers = (deps: InputHandlersDeps) => {
       hit.x -= deps.getActiveDragVisualOffset();
     }
     deps.getCurrentPointerWorld().copy(hit);
+    if (!vinylDragHasMoved) {
+      const dx = event.clientX - vinylDragStartScreen.x;
+      const dy = event.clientY - vinylDragStartScreen.y;
+      if (Math.hypot(dx, dy) >= VINYL_DRAG_RESET_THRESHOLD) {
+        vinylDragHasMoved = true;
+      }
+    }
   });
 
   const endDrag = (event: PointerEvent) => {
@@ -826,6 +838,9 @@ export const registerInputHandlers = (deps: InputHandlersDeps) => {
     const swingState = deps.getSwingState();
     swingState.targetX = 0;
     swingState.targetZ = 0;
+    if (vinylDragHasMoved) {
+      window.dispatchEvent(new Event("focus-cover-click-reset"));
+    }
     if (
       deps.getFocusVinylState() &&
       deps.getActiveVinylSource() !== "focus" &&
@@ -904,6 +919,9 @@ export const registerInputHandlers = (deps: InputHandlersDeps) => {
       event.preventDefault();
 
       const deltaY = event.deltaY;
+      const scrollSensitivity = 0.001;
+      deps.cameraRig.orbit(deltaY * scrollSensitivity, 0);
+
       if (Math.abs(deltaY) > 5) {
         autoOrbitDirection = deltaY > 0 ? 1 : -1;
         autoOrbitSpeedMultiplier = 1.0;

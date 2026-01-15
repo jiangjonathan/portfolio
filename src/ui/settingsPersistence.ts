@@ -1,0 +1,77 @@
+type SettingsPersistenceDeps = {
+  coloredVinylsCheckbox: HTMLInputElement;
+  sfxCheckbox: HTMLInputElement;
+  onColoredVinylsChange: (enabled: boolean) => void;
+  onSfxChange: (enabled: boolean) => void;
+};
+
+type SettingsState = {
+  coloredVinylsEnabled?: boolean;
+  sfxEnabled?: boolean;
+};
+
+const STORAGE_KEY = "vinylSettings";
+
+const loadSettings = (): SettingsState => {
+  if (typeof window === "undefined") {
+    return {};
+  }
+  try {
+    const stored = window.localStorage.getItem(STORAGE_KEY);
+    if (!stored) {
+      return {};
+    }
+    const parsed = JSON.parse(stored) as SettingsState;
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (error) {
+    console.warn("[settingsPersistence] Failed to load settings:", error);
+    return {};
+  }
+};
+
+const saveSettings = (state: SettingsState) => {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch (error) {
+    console.warn("[settingsPersistence] Failed to save settings:", error);
+  }
+};
+
+export const setupSettingsPersistence = (deps: SettingsPersistenceDeps) => {
+  const state: SettingsState = loadSettings();
+  let isInitializing = true;
+
+  if (typeof state.coloredVinylsEnabled === "boolean") {
+    deps.coloredVinylsCheckbox.checked = state.coloredVinylsEnabled;
+  }
+  if (typeof state.sfxEnabled === "boolean") {
+    deps.sfxCheckbox.checked = state.sfxEnabled;
+  }
+
+  deps.coloredVinylsCheckbox.addEventListener("change", () => {
+    const enabled = deps.coloredVinylsCheckbox.checked;
+    deps.onColoredVinylsChange(enabled);
+    if (!isInitializing) {
+      state.coloredVinylsEnabled = enabled;
+      saveSettings(state);
+    }
+  });
+
+  deps.sfxCheckbox.addEventListener("change", () => {
+    const enabled = deps.sfxCheckbox.checked;
+    deps.onSfxChange(enabled);
+    if (!isInitializing) {
+      state.sfxEnabled = enabled;
+      saveSettings(state);
+    }
+  });
+
+  deps.coloredVinylsCheckbox.dispatchEvent(
+    new Event("change", { bubbles: true }),
+  );
+  deps.sfxCheckbox.dispatchEvent(new Event("change", { bubbles: true }));
+  isInitializing = false;
+};

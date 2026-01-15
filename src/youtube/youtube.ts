@@ -107,6 +107,8 @@ export function createYouTubePlayer(): YouTubeBridge {
   const FOCUS_COVER_GAP_PX = 20;
   const MIN_SMALL_PLAYER_WIDTH_PX = 250;
   const FOCUS_COVER_VERTICAL_GAP_PX = 16;
+  const SMALL_PLAYER_RESIZE_TRANSITION =
+    "width 0.5s ease-out, height 0.5s ease-out";
 
   const wrapper = document.createElement("div");
   wrapper.className = "yt-shell";
@@ -123,7 +125,7 @@ export function createYouTubePlayer(): YouTubeBridge {
   viewport.className = "yt-player-viewport";
   viewport.style.width = `${DEFAULT_SMALL_PLAYER_WIDTH}px`;
   viewport.style.height = "0px";
-  viewport.style.transition = "height 0.5s ease-out";
+  viewport.style.transition = SMALL_PLAYER_RESIZE_TRANSITION;
   viewport.style.transformOrigin = "center center";
   wrapper.appendChild(viewport);
 
@@ -312,6 +314,7 @@ export function createYouTubePlayer(): YouTubeBridge {
   playerSize.id = "player-size";
   playerSize.style.width = `${DEFAULT_SMALL_PLAYER_WIDTH}px`;
   playerSize.style.height = `${DEFAULT_SMALL_PLAYER_WIDTH * SMALL_PLAYER_HEIGHT_RATIO}px`;
+  playerSize.style.transition = SMALL_PLAYER_RESIZE_TRANSITION;
   viewport.appendChild(playerSize);
 
   const playerHostId = "player";
@@ -461,7 +464,7 @@ export function createYouTubePlayer(): YouTubeBridge {
     const safeAspect = DYNAMIC_VIDEO_ASPECT || 1;
     const rawHeight =
       safeAspect > 0 ? smallPlayerWidth / safeAspect : smallPlayerWidth;
-    return roundDownPx(rawHeight);
+    return Math.max(0, roundDownPx(rawHeight) - 1);
   };
 
   // Function to update viewport height based on aspect ratio
@@ -1105,7 +1108,7 @@ export function createYouTubePlayer(): YouTubeBridge {
           fullscreenControls.style.display = "none";
         }
 
-        viewport.style.transition = "height 0.5s ease-out";
+        viewport.style.transition = SMALL_PLAYER_RESIZE_TRANSITION;
         void viewport.offsetHeight;
 
         // Only show player if tonearm is in play area
