@@ -7,6 +7,7 @@ import { Vector3 } from "three";
 interface CameraRig {
   setLookTarget(target: Vector3, smooth: boolean): void;
   setPolarAngle(angle: number, smooth: boolean): void;
+  onAnimationComplete(callback: () => void): void;
 }
 
 export class TurntableStateManager {
@@ -68,6 +69,10 @@ export class TurntableStateManager {
         callbacks.setHeroPageVisibility(isFullscreen ? "turntable" : null);
         if (isFullscreen) {
           this.isFullscreenMode = true;
+
+          // Set transition on focus card containers BEFORE setTurntableUIVisible hides them
+          this.setFocusCardTransition("opacity 0.2s ease");
+
           callbacks.hideFocusVinylForFullscreen();
           callbacks.setTurntableUIVisible(false);
           callbacks.setGroundShadowsVisible(false);
@@ -94,6 +99,14 @@ export class TurntableStateManager {
           cameraRig.setLookTarget(cameraTargets["bottom-center"], true);
           // Restore bottom-center polar angle (22 degrees)
           cameraRig.setPolarAngle(22, true);
+
+          // Fade in focus card after camera animation completes
+          // Only if still not in fullscreen (prevents race condition when spamming)
+          cameraRig.onAnimationComplete(() => {
+            if (!this.isFullscreenMode) {
+              this.fadeFocusCardContainers(1);
+            }
+          });
         }
       });
     });
@@ -160,6 +173,39 @@ export class TurntableStateManager {
 
   getIsFullscreenMode(): boolean {
     return this.isFullscreenMode;
+  }
+
+  private setFocusCardTransition(transition: string): void {
+    const focusCoverContainer = document.getElementById(
+      "vinyl-focus-card-cover-root",
+    );
+    const focusInfoContainer = document.getElementById(
+      "vinyl-focus-card-info-root",
+    );
+
+    if (!focusCoverContainer || !focusInfoContainer) return;
+
+    const containers = [focusCoverContainer, focusInfoContainer];
+    containers.forEach((container) => {
+      container.style.transition = transition;
+    });
+  }
+
+  private fadeFocusCardContainers(targetOpacity: number): void {
+    const focusCoverContainer = document.getElementById(
+      "vinyl-focus-card-cover-root",
+    );
+    const focusInfoContainer = document.getElementById(
+      "vinyl-focus-card-info-root",
+    );
+
+    if (!focusCoverContainer || !focusInfoContainer) return;
+
+    const containers = [focusCoverContainer, focusInfoContainer];
+    containers.forEach((container) => {
+      container.style.transition = "opacity 0.3s ease";
+      container.style.opacity = targetOpacity.toString();
+    });
   }
 
   private notifyState(): void {

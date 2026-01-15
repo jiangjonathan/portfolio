@@ -840,6 +840,14 @@ export const registerInputHandlers = (deps: InputHandlersDeps) => {
         );
         deps.getVinylTargetPosition().copy(vinylModel.position);
         deps.getLastTargetPosition().copy(vinylModel.position);
+
+        // Clamp Y position to prevent vinyl from being below turntable surface
+        const MIN_Y_OFFSET = 8;
+        const minY = deps.getTurntableAnchorPosition().y + MIN_Y_OFFSET;
+        if (deps.getVinylTargetPosition().y < minY) {
+          deps.getVinylTargetPosition().y = minY;
+          deps.getLastTargetPosition().y = minY;
+        }
       }
     } else if (
       vinylModel &&

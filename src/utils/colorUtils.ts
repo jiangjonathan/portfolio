@@ -1,3 +1,7 @@
+// Color extraction caches
+const vibrantColorCache = new Map<string, string>();
+const dominantColorCache = new Map<string, string>();
+
 /**
  * Calculates vibrance (saturation * luminance weight) of an RGB color
  * Higher vibrance = more "pop"
@@ -27,6 +31,12 @@ function calculateVibrance(r: number, g: number, b: number): number {
  * Extracts the most vibrant color from an image (for labels)
  */
 export function extractVibrantColor(imageUrl: string): Promise<string> {
+  // Check cache first
+  const cached = vibrantColorCache.get(imageUrl);
+  if (cached) {
+    return Promise.resolve(cached);
+  }
+
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.crossOrigin = "anonymous";
@@ -69,6 +79,8 @@ export function extractVibrantColor(imageUrl: string): Promise<string> {
           }
         }
 
+        // Cache the result
+        vibrantColorCache.set(imageUrl, bestColor);
         resolve(bestColor);
       } catch (error) {
         reject(error);
@@ -79,7 +91,9 @@ export function extractVibrantColor(imageUrl: string): Promise<string> {
       console.warn(
         `[extractVibrantColor] CORS error loading ${imageUrl}, using fallback color`,
       );
-      resolve("#b0b0b0");
+      const fallbackColor = "#b0b0b0";
+      vibrantColorCache.set(imageUrl, fallbackColor);
+      resolve(fallbackColor);
     };
 
     img.src = imageUrl;
@@ -90,6 +104,12 @@ export function extractVibrantColor(imageUrl: string): Promise<string> {
  * Extracts the dominant color from an image using area-weighted scoring (for vinyl body color)
  */
 export function extractDominantColor(imageUrl: string): Promise<string> {
+  // Check cache first
+  const cached = dominantColorCache.get(imageUrl);
+  if (cached) {
+    return Promise.resolve(cached);
+  }
+
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.crossOrigin = "anonymous";
@@ -187,7 +207,10 @@ export function extractDominantColor(imageUrl: string): Promise<string> {
           }
         }
 
-        resolve(bestScore > 0 ? bestColor : fallbackMostCommon);
+        const result = bestScore > 0 ? bestColor : fallbackMostCommon;
+        // Cache the result
+        dominantColorCache.set(imageUrl, result);
+        resolve(result);
       } catch (error) {
         reject(error);
       }
@@ -197,7 +220,9 @@ export function extractDominantColor(imageUrl: string): Promise<string> {
       console.warn(
         `[extractDominantColor] CORS error loading ${imageUrl}, using fallback color`,
       );
-      resolve("#b0b0b0");
+      const fallbackColor = "#b0b0b0";
+      dominantColorCache.set(imageUrl, fallbackColor);
+      resolve(fallbackColor);
     };
 
     img.src = imageUrl;
