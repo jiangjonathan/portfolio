@@ -2277,14 +2277,15 @@ const animate = (time: number) => {
           break;
         }
       }
-    }
-
-    if (isVinylDragging || isTonearmDragging) {
+      if (isVinylDragging || isTonearmDragging) {
+        renderer.domElement.style.cursor = "grabbing";
+      } else if (isHomePageModelHovering) {
+        renderer.domElement.style.cursor = "pointer";
+      } else {
+        renderer.domElement.style.cursor = "default";
+      }
+    } else if (isVinylDragging || isTonearmDragging) {
       renderer.domElement.style.cursor = "grabbing";
-    } else if (isHomePageModelHovering) {
-      renderer.domElement.style.cursor = "pointer";
-    } else {
-      renderer.domElement.style.cursor = "default";
     }
   }
 

@@ -648,6 +648,8 @@ export const registerInputHandlers = (deps: InputHandlersDeps) => {
       deps.updateBusinessCardHoverState();
     } else if (
       deps.getActivePage() !== deps.BUSINESS_CARD_PAGE &&
+      deps.getActivePage() !== "home" &&
+      deps.getActivePage() !== "portfolio" &&
       !shouldLockDragCursor
     ) {
       deps.setBusinessCardContactHighlight(null);

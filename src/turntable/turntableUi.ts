@@ -49,6 +49,7 @@ export const createTurntableUiController = (deps: TurntableUiDeps) => {
   let isFreeLookMode = false;
   let freeLookWasPlayerCollapsed = false;
   let freeLookFocusHidden = false;
+  let vinylViewerHideToken = 0;
 
   const setTurntableUIVisible = (visible: boolean) => {
     const effective =
@@ -57,11 +58,26 @@ export const createTurntableUiController = (deps: TurntableUiDeps) => {
       !deps.turntableStateManager.getIsFullscreenMode() &&
       deps.getActivePage() === "turntable" &&
       !isFreeLookMode;
+    const fadeMs = 300;
+    deps.vinylViewerContainer.style.transition =
+      "opacity 0.3s ease, transform 0.3s ease";
     deps.vinylViewerContainer.style.opacity = effective ? "1" : "0";
     deps.vinylViewerContainer.style.pointerEvents = effective ? "auto" : "none";
-    deps.vinylViewerContainer.style.visibility = effective
-      ? "visible"
-      : "hidden";
+    if (effective) {
+      vinylViewerHideToken += 1;
+      deps.vinylViewerContainer.style.visibility = "visible";
+    } else {
+      const hideToken = (vinylViewerHideToken += 1);
+      deps.vinylViewerContainer.style.visibility = "visible";
+      window.setTimeout(() => {
+        if (
+          vinylViewerHideToken === hideToken &&
+          deps.vinylViewerContainer.style.opacity === "0"
+        ) {
+          deps.vinylViewerContainer.style.visibility = "hidden";
+        }
+      }, fadeMs);
+    }
     deps.vinylViewerContainer.style.transform = effective
       ? "translateY(0)"
       : "translateY(8px)";
@@ -69,6 +85,7 @@ export const createTurntableUiController = (deps: TurntableUiDeps) => {
     deps.hideLibraryBtn.style.pointerEvents = effective ? "auto" : "none";
     deps.focusCardContainers.forEach((container) => {
       const shouldShow = effective && container.childElementCount > 0;
+      container.style.transition = "opacity 0.3s ease";
       container.style.opacity = shouldShow ? "1" : "0";
       container.style.pointerEvents = shouldShow ? "auto" : "none";
     });
