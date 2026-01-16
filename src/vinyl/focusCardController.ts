@@ -2,6 +2,7 @@ import { Raycaster, Vector2 } from "three";
 import type { Camera, Object3D, Vector3 } from "three";
 import type { CameraRig } from "../camera/cameraRig";
 import type { FocusVinylState, VinylSource } from "./vinylInteractions";
+import { getFocusVinylScale } from "./vinylHelpers";
 
 type FocusCardControllerDeps = {
   focusCardContainers: HTMLElement[];
@@ -70,7 +71,7 @@ type FocusCardController = {
   cachePreloadedFocusVinyl: (model: Object3D) => void;
 };
 
-const FOCUS_VINYL_HOVER_DISTANCE_BASE = 5;
+const FOCUS_VINYL_HOVER_DISTANCE_BASE = 8.8;
 const FOCUS_VINYL_HOVER_ANIMATION_SPEED = 0.25;
 const FOCUS_COVER_CLICK_CLASS = "focus-cover-click-active";
 const FOCUS_COVER_CLICK_TIMEOUT = 3000;
@@ -97,7 +98,7 @@ export const createFocusCardController = (
   const focusCardAnchorPosition = deps.cameraTargets.default.clone();
 
   const getFocusVinylHoverDistance = () =>
-    FOCUS_VINYL_HOVER_DISTANCE_BASE * deps.getFocusCardScale();
+    FOCUS_VINYL_HOVER_DISTANCE_BASE * getFocusVinylScale(deps.cameraRig);
 
   const setFocusCoverClickBodyClass = (active: boolean) => {
     const body = document.body;
