@@ -1222,6 +1222,18 @@ type FlyawayVinyl = {
   selection: VinylSelectionDetail;
 };
 const flyawayVinyls: FlyawayVinyl[] = [];
+type FadingVinyl = {
+  model: Object3D;
+  textures: LabelTextures;
+  lifetime: number;
+  duration: number;
+  materials: Array<{
+    material: Material & { opacity: number; transparent?: boolean };
+    baseOpacity: number;
+  }>;
+};
+const fadingVinyls: FadingVinyl[] = [];
+const VINYL_FADE_OUT_DURATION = 0.45;
 // isFullscreenMode now managed by TurntableStateManager
 
 function applyFocusVinylColorToModel(): void {
@@ -1372,6 +1384,54 @@ const disposeTurntableVinyl = (reason: string = "unknown") => {
   heroGroup.remove(turntableVinylState.model);
   turntableVinylState.labelTextures.sideA.dispose();
   turntableVinylState.labelTextures.sideB.dispose();
+  turntableVinylState = null;
+  turntableVinylDerivedColor = null;
+  turntableVinylBodyColor = getEffectiveVinylColor(turntableVinylDerivedColor);
+  if (activeVinylSource === "turntable") {
+    setActiveVinylSource(focusVinylState ? "focus" : null);
+  }
+};
+
+const startTurntableVinylFadeOut = (reason: string = "unknown") => {
+  if (!turntableVinylState) {
+    console.log(
+      `[turntableVinyl] fade-out skipped (no state) reason=${reason}`,
+    );
+    return;
+  }
+  console.log(
+    `[turntableVinyl] Fading ${turntableVinylState.selection.songName} (reason=${reason})`,
+  );
+
+  const { model, labelTextures } = turntableVinylState;
+  const materials: FadingVinyl["materials"] = [];
+  const seen = new Set<Material>();
+  model.traverse((child) => {
+    if (!("isMesh" in child) || !(child as Mesh).isMesh) return;
+    const mesh = child as Mesh;
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    mats.forEach((mat) => {
+      if (!mat || seen.has(mat)) return;
+      if (!("opacity" in mat)) return;
+      seen.add(mat);
+      const fadeMat = mat as Material & {
+        opacity: number;
+        transparent?: boolean;
+      };
+      materials.push({ material: fadeMat, baseOpacity: fadeMat.opacity ?? 1 });
+      fadeMat.transparent = true;
+      fadeMat.needsUpdate = true;
+    });
+  });
+
+  fadingVinyls.push({
+    model,
+    textures: labelTextures,
+    lifetime: 0,
+    duration: VINYL_FADE_OUT_DURATION,
+    materials,
+  });
+
   turntableVinylState = null;
   turntableVinylDerivedColor = null;
   turntableVinylBodyColor = getEffectiveVinylColor(turntableVinylDerivedColor);
@@ -1848,6 +1908,7 @@ const {
     shouldTrackFocusCard = value;
   },
   disposeTurntableVinyl,
+  startTurntableVinylFadeOut,
   loadVideoForCurrentSelection: () =>
     vinylSelectionController.loadVideoForCurrentSelection(),
   getPendingVinylSelection: () => pendingVinylSelection,
@@ -2401,7 +2462,7 @@ const animate = (time: number) => {
         );
         // Dispose any existing turntable vinyl
         if (turntableVinylState) {
-          disposeTurntableVinyl(
+          startTurntableVinylFadeOut(
             "dropping landed - replacing existing turntable vinyl",
           );
         }
@@ -2567,6 +2628,22 @@ const animate = (time: number) => {
   }
   if (turntableVinylState) {
     turntableVinylState.model.rotation.y += angularStep;
+  }
+
+  for (let i = fadingVinyls.length - 1; i >= 0; i--) {
+    const entry = fadingVinyls[i];
+    entry.lifetime += delta;
+    const progress = Math.min(1, entry.lifetime / entry.duration);
+    const opacityScale = Math.max(0, 1 - progress);
+    entry.materials.forEach(({ material, baseOpacity }) => {
+      material.opacity = baseOpacity * opacityScale;
+    });
+    if (progress >= 1) {
+      heroGroup.remove(entry.model);
+      entry.textures.sideA.dispose();
+      entry.textures.sideB.dispose();
+      fadingVinyls.splice(i, 1);
+    }
   }
 
   for (let i = flyawayVinyls.length - 1; i >= 0; i--) {

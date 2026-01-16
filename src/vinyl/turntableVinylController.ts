@@ -47,6 +47,7 @@ type TurntableVinylControllerDeps = {
   setActiveVinylSource: (source: VinylSource | null) => void;
   setShouldTrackFocusCard: (value: boolean) => void;
   disposeTurntableVinyl: (reason: string) => void;
+  startTurntableVinylFadeOut: (reason: string) => void;
   loadVideoForCurrentSelection: () => Promise<void>;
   getPendingVinylSelection: () => VinylSelectionDetail | null;
   setPendingVinylSelection: (value: VinylSelectionDetail | null) => void;
@@ -87,7 +88,7 @@ export const createTurntableVinylController = (
       deps.setPendingPromotionSource(null, "setVinylOnTurntable(true)");
       if (promotingFocus && deps.getFocusVinylState()) {
         if (deps.getTurntableVinylState()) {
-          deps.disposeTurntableVinyl("promoting focus->turntable");
+          deps.startTurntableVinylFadeOut("promoting focus->turntable");
         }
         const textures = deps.detachFocusTexturesForTurntable();
         const snapshotVisuals = deps.cloneLabelVisuals(deps.labelVisuals);
@@ -131,6 +132,7 @@ export const createTurntableVinylController = (
       return;
     }
 
+    const shouldFadeOnClear = deps.getPendingPromotionSource() === "focus";
     deps.setPendingPromotionSource(null, "setVinylOnTurntable(false) request");
     if (!deps.turntableStateManager.isOnTurntable()) {
       return;
@@ -150,7 +152,11 @@ export const createTurntableVinylController = (
       viewport.style.height = "0px";
     }
     deps.getTurntableController()?.liftNeedle();
-    deps.disposeTurntableVinyl("setVinylOnTurntable(false)");
+    if (shouldFadeOnClear) {
+      deps.startTurntableVinylFadeOut("setVinylOnTurntable(false)");
+    } else {
+      deps.disposeTurntableVinyl("setVinylOnTurntable(false)");
+    }
     deps.setActiveVinylSource(deps.getFocusVinylState() ? "focus" : null);
   };
 
