@@ -769,6 +769,19 @@ const setActiveScenePage = (page: ScenePage) => {
     businessCardAnimation.resetToHome();
     businessCardAnimation.setMouseReactiveRotation(false);
   }
+  // Clean up vinyl models and reset camera state before capturing when leaving turntable
+  if (previousPage === "turntable" && page !== "turntable") {
+    // Remove vinyl models from heroGroup before bounding box calculation
+    focusCardController.hideFocusCardAndVinyl();
+    focusCardController.clearPreloadedFocusVinyl();
+    disposeFocusVinyl();
+    disposeDroppingVinyl();
+    // Reset camera target to default if focus card had changed it
+    if (turntablePositionState !== "default") {
+      cameraRig.setLookTarget(pageCameraSettings.turntable.target, false);
+      turntablePositionState = "default";
+    }
+  }
   const fromSettings = captureCameraState(cameraRig);
   if (previousPage === "home" && page !== "home") {
     rememberedHomeCameraState = cloneCameraSettings(fromSettings);
@@ -849,9 +862,6 @@ const setActiveScenePage = (page: ScenePage) => {
     isTonearmInPlayArea = false;
     turntableStateManager.setTonearmInPlayArea(false);
     yt?.updateButtonVisibility();
-    focusCardController.clearPreloadedFocusVinyl();
-    // Clean up any dropping vinyl
-    disposeDroppingVinyl();
     isReturningVinyl = false;
     setPendingPromotionSource(null, "leaving turntable page");
   }
