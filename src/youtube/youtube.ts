@@ -738,6 +738,8 @@ export function createYouTubePlayer(): YouTubeBridge {
           iv_load_policy: 3,
           showinfo: 0,
           cc_load_policy: 0,
+          enablejsapi: 1,
+          origin: window.location.origin,
         },
         events: {
           onReady: () => {
@@ -763,6 +765,9 @@ export function createYouTubePlayer(): YouTubeBridge {
               onVideoLoadedCallback?.();
               onVideoLoadedCallback = null;
             }
+          },
+          onError: (event: any) => {
+            console.error(`[YouTube] Player error: ${event.data}`);
           },
         },
       });
