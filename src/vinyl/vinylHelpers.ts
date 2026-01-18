@@ -134,11 +134,8 @@ export async function applySelectionVisualsToVinyl(
   const updateId = getUpdateId();
   let derivedVinylColor: string | null = null;
 
-  // Check if we have cached colors - if so, use them directly
+  // Colors should ALWAYS be present - they're extracted when songs are added
   if (selection.labelColor && selection.vinylColor) {
-    console.log(
-      "[applySelectionVisualsToVinyl] Using cached colors from database",
-    );
     labelVisuals.background = selection.labelColor;
     derivedVinylColor = deriveVinylColorFromAlbumColor(selection.vinylColor);
     if (updateId === getUpdateId()) {
@@ -147,9 +144,9 @@ export async function applySelectionVisualsToVinyl(
     return derivedVinylColor;
   }
 
-  // No cached colors - extract them from the image
-  console.log(
-    "[applySelectionVisualsToVinyl] No cached colors, extracting from image",
+  // Missing colors - this should only happen for old/corrupted data
+  console.warn(
+    `[applySelectionVisualsToVinyl] Missing colors for entry ${selection.entryId || selection.videoId} - this indicates old or corrupted data. Extracting colors as fallback.`,
   );
   try {
     const coverUrl = await getSelectionCoverUrl(selection);
@@ -165,18 +162,15 @@ export async function applySelectionVisualsToVinyl(
     // Lazy migration: Save extracted colors back to database if this entry has an ID
     if (selection.entryId) {
       const viewer = (window as any).vinylLibraryViewer;
-      if (viewer?.updateEntryColors) {
-        console.log(
-          `[applySelectionVisualsToVinyl] Lazy migration: saving extracted colors for entry ${selection.entryId}`,
-        );
+      if (
+        viewer?.updateEntryColors &&
+        viewer?.canUpdateEntry?.(selection.entryId)
+      ) {
         // Don't await - let this happen in the background
         viewer
           .updateEntryColors(selection.entryId, vinylColor, labelColor)
-          .catch((error: Error) => {
-            console.warn(
-              "[applySelectionVisualsToVinyl] Failed to save colors:",
-              error,
-            );
+          .catch(() => {
+            // Silently fail - not critical
           });
       }
     }

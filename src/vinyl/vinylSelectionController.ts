@@ -155,11 +155,6 @@ export const createVinylSelectionController = (
   const applySelectionVisualsToVinyl = async (
     selection: VinylSelectionDetail,
   ) => {
-    const refreshFocusVinylColor = () => {
-      deps.setFocusVinylDerivedColor(null);
-      deps.updateFocusVinylColorFromDerived();
-    };
-
     deps.applyMetadataToLabels(
       {
         artist: selection.artistName,
@@ -172,11 +167,8 @@ export const createVinylSelectionController = (
 
     const updateId = deps.incrementSelectionVisualUpdateId();
 
-    // Check if we have cached colors - if so, use them directly
+    // Colors should ALWAYS be present - they're extracted when songs are added
     if (selection.labelColor && selection.vinylColor) {
-      console.log(
-        "[applySelectionVisualsToVinyl] Using cached colors from database",
-      );
       deps.labelVisuals.background = selection.labelColor;
       deps.setFocusVinylDerivedColor(
         deps.deriveVinylColorFromAlbumColor(selection.vinylColor),
@@ -188,10 +180,13 @@ export const createVinylSelectionController = (
       return;
     }
 
-    // No cached colors - extract them from the image
-    console.log(
-      "[applySelectionVisualsToVinyl] No cached colors, extracting from image",
+    // Missing colors - this should only happen for:
+    // 1. Old entries added before color caching was implemented
+    // 2. Corrupted/incomplete data
+    console.warn(
+      `[applySelectionVisualsToVinyl] Missing colors for entry ${selection.entryId || selection.videoId} - this indicates old or corrupted data. Extracting colors as fallback.`,
     );
+
     try {
       const coverUrl = await deps.getSelectionCoverUrl(selection);
       const labelColor = await deps.extractVibrantColor(coverUrl);
@@ -206,21 +201,17 @@ export const createVinylSelectionController = (
       );
       deps.updateFocusVinylColorFromDerived();
 
-      // Lazy migration: Save extracted colors back to database if this entry has an ID
+      // Lazy migration: Save extracted colors back to database
       if (selection.entryId) {
         const viewer = (window as any).vinylLibraryViewer;
-        if (viewer?.updateEntryColors) {
-          console.log(
-            `[applySelectionVisualsToVinyl] Lazy migration: saving extracted colors for entry ${selection.entryId}`,
-          );
-          // Don't await - let this happen in the background
+        if (
+          viewer?.updateEntryColors &&
+          viewer?.canUpdateEntry?.(selection.entryId)
+        ) {
           viewer
             .updateEntryColors(selection.entryId, vinylColor, labelColor)
-            .catch((error: Error) => {
-              console.warn(
-                "[applySelectionVisualsToVinyl] Failed to save colors:",
-                error,
-              );
+            .catch(() => {
+              // Silently fail - not critical
             });
         }
       }
@@ -228,9 +219,13 @@ export const createVinylSelectionController = (
       if (updateId !== deps.getSelectionVisualUpdateId()) {
         return;
       }
-      console.warn("Failed to extract dominant color, using fallback", error);
+      console.error(
+        "[applySelectionVisualsToVinyl] Failed to extract colors, using fallback",
+        error,
+      );
       deps.labelVisuals.background = deps.FALLBACK_BACKGROUND_COLOR;
-      refreshFocusVinylColor();
+      deps.setFocusVinylDerivedColor(null);
+      deps.updateFocusVinylColorFromDerived();
     }
     if (updateId === deps.getSelectionVisualUpdateId()) {
       deps.rebuildLabelTextures();
@@ -263,20 +258,13 @@ export const createVinylSelectionController = (
 
     const selection = pending;
     const loadPromise = (async () => {
-      console.log(
-        `[loadVideoForCurrentSelection] Starting load for ${selection.artistName} - ${selection.songName}`,
-      );
       deps.turntableStateManager.resetFadeOut();
       deps.getTurntableController()?.returnTonearmHome();
       deps.getTurntableController()?.pausePlayback();
-      console.log(
-        `[loadVideoForCurrentSelection] Clearing loadedSelectionVideoId (was "${deps.getLoadedSelectionVideoId()}")`,
-      );
       deps.setLoadedSelectionVideoId(null);
 
       if (selection.aspectRatio !== undefined) {
         deps.yt.setAspectRatio(selection.aspectRatio);
-        console.log(`[main] Applied aspect ratio: ${selection.aspectRatio}`);
       } else {
         deps.yt.setAspectRatio(null as any);
       }
@@ -313,7 +301,6 @@ export const createVinylSelectionController = (
           deps.getTurntableController()?.setMediaDuration(duration);
         }
         if (duration > 0) {
-          console.log(`[main] Video duration loaded: ${duration} seconds`);
           window.dispatchEvent(
             new CustomEvent("video-duration-loaded", {
               detail: {
@@ -341,22 +328,10 @@ export const createVinylSelectionController = (
       }, 300);
 
       const isOnTurntable = deps.turntableStateManager.isOnTurntable();
-      console.log(
-        `[loadVideoForCurrentSelection] isOnTurntable=${isOnTurntable}`,
-      );
       if (isOnTurntable) {
         deps.setLoadedSelectionVideoId(selection.videoId);
-        console.log(
-          `Loaded for turntable: ${selection.artistName} - ${selection.songName}`,
-        );
-        console.log(
-          `[loadVideoForCurrentSelection] Set loadedSelectionVideoId="${deps.getLoadedSelectionVideoId()}"`,
-        );
       } else {
         deps.setLoadedSelectionVideoId(null);
-        console.log(
-          `[loadVideoForCurrentSelection] Not on turntable, cleared loadedSelectionVideoId`,
-        );
       }
     })();
 
@@ -404,10 +379,6 @@ export const createVinylSelectionController = (
         deps.focusCardController.setFocusVinylManuallyHidden(false);
         deps.focusCardController.updateFocusVinylVisibility();
         deps.focusCardController.updateFocusCardPosition();
-
-        console.log(
-          "[load-vinyl-song] Camera animation complete, vinyl now visible",
-        );
       }
     });
 
@@ -436,12 +407,6 @@ export const createVinylSelectionController = (
   };
 
   const handleFocusSelection = async (selection: VinylSelectionDetail) => {
-    console.log(
-      `[handleFocusSelection] Starting for ${selection.artistName} - ${selection.songName}`,
-    );
-    console.log(
-      `[handleFocusSelection] State: isReturningVinyl=${deps.getIsReturningVinyl()}, focusVinylState=${deps.getFocusVinylState() ? "exists" : "null"}, pendingPromotionSource=${deps.getPendingPromotionSource()}, activeVinylSource=${deps.getActiveVinylSource()}`,
-    );
     const loadToken = deps.incrementFocusVinylLoadToken();
     deps.setVinylDragPointerId(null);
 
@@ -506,33 +471,12 @@ export const createVinylSelectionController = (
     deps.focusCardController.setFocusVinylManuallyHidden(true);
     deps.focusCardController.updateFocusVinylVisibility();
 
-    if (deps.getTurntableVinylState()?.model) {
-      console.log(
-        `[handleFocusSelection] Turntable vinyl BEFORE visuals: visible=${deps.getTurntableVinylState()!.model.visible}, song=${deps.getTurntableVinylState()!.selection.songName}`,
-      );
-    } else {
-      console.log(
-        `[handleFocusSelection] No turntable vinyl state BEFORE visuals`,
-      );
-    }
-
-    console.log(`[handleFocusSelection] Applying selection visuals...`);
     await applySelectionVisualsToVinyl(selection);
-    console.log(`[handleFocusSelection] Selection visuals applied`);
+
     deps.restoreDroppingVinylAppearance("focusSelection");
     if (deps.getTurntableVinylState()) {
       deps.updateTurntableVinylVisuals(
         deps.getTurntableVinylState()!.labelVisuals,
-      );
-    }
-
-    if (deps.getTurntableVinylState()?.model) {
-      console.log(
-        `[handleFocusSelection] Turntable vinyl AFTER visuals: visible=${deps.getTurntableVinylState()!.model.visible}, song=${deps.getTurntableVinylState()!.selection.songName}`,
-      );
-    } else {
-      console.log(
-        `[handleFocusSelection] No turntable vinyl state AFTER visuals`,
       );
     }
 
@@ -599,27 +543,7 @@ export const createVinylSelectionController = (
         deps.setActiveVinylSource("focus");
       }
 
-      if (deps.getTurntableVinylState()?.model) {
-        console.log(
-          `[handleFocusSelection] Turntable vinyl BEFORE prepare: visible=${deps.getTurntableVinylState()!.model.visible}, song=${deps.getTurntableVinylState()!.selection.songName}`,
-        );
-      } else {
-        console.log(
-          `[handleFocusSelection] No turntable vinyl state BEFORE prepare`,
-        );
-      }
-
       prepareFocusVinylPresentation(model, loadToken);
-
-      if (deps.getTurntableVinylState()?.model) {
-        console.log(
-          `[handleFocusSelection] Turntable vinyl AFTER prepare: visible=${deps.getTurntableVinylState()!.model.visible}, song=${deps.getTurntableVinylState()!.selection.songName}`,
-        );
-      } else {
-        console.log(
-          `[handleFocusSelection] No turntable vinyl state AFTER prepare`,
-        );
-      }
     } catch (error) {
       console.error("Failed to load focus vinyl", error);
     }
@@ -627,9 +551,7 @@ export const createVinylSelectionController = (
 
   window.addEventListener("load-vinyl-song", (event) => {
     const detail = (event as CustomEvent<VinylSelectionDetail>).detail;
-    console.log(`[load-vinyl-song] Event received:`, detail);
     if (!detail || !detail.videoId) {
-      console.warn(`[load-vinyl-song] Invalid detail or missing videoId`);
       return;
     }
 

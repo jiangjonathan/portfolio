@@ -2943,6 +2943,20 @@ export class VinylLibraryViewer {
   }
 
   /**
+   * Check if we can update an entry (prevents unnecessary warnings in non-admin mode)
+   */
+  public canUpdateEntry(entryId: string): boolean {
+    const entry = this.library.find((e) => e.id === entryId);
+    if (!entry) return false;
+
+    // Can always update visitor entries (localStorage)
+    if (!entry.isOwnerEntry) return true;
+
+    // Can only update owner entries if admin
+    return !!(this.config.apiUrl && this.config.adminToken);
+  }
+
+  /**
    * Update colors for an entry (lazy migration for old entries)
    * This is called when colors are extracted for an old entry that didn't have them cached
    */
@@ -2951,14 +2965,9 @@ export class VinylLibraryViewer {
     vinylColor: string,
     labelColor: string,
   ): Promise<void> {
-    console.log(
-      `[updateEntryColors] Updating colors for entry ${entryId}: vinyl=${vinylColor}, label=${labelColor}`,
-    );
-
     // Find the entry in our libraries
     const entry = this.library.find((e) => e.id === entryId);
     if (!entry) {
-      console.warn(`[updateEntryColors] Entry ${entryId} not found`);
       return;
     }
 
@@ -2986,30 +2995,19 @@ export class VinylLibraryViewer {
             },
           );
 
-          if (response.ok) {
-            console.log(
-              `[updateEntryColors] ✓ Colors saved to Cloudflare KV for entry ${entryId}`,
-            );
-          } else {
+          if (!response.ok) {
             console.error(
-              `[updateEntryColors] Failed to update colors in backend:`,
+              `[updateEntryColors] Failed to update colors in KV:`,
               await response.text(),
             );
           }
         } catch (error) {
           console.error(`[updateEntryColors] Error updating colors:`, error);
         }
-      } else {
-        console.warn(
-          `[updateEntryColors] Cannot save colors for owner entry ${entryId} - not in admin mode`,
-        );
       }
     } else {
       // Update in localStorage
       this.updateVisitorEntry(entry);
-      console.log(
-        `[updateEntryColors] ✓ Colors saved to localStorage for entry ${entryId}`,
-      );
     }
   }
 
