@@ -766,9 +766,6 @@ export function createYouTubePlayer(): YouTubeBridge {
               onVideoLoadedCallback = null;
             }
           },
-          onError: (event: any) => {
-            console.error(`[YouTube] Player error: ${event.data}`);
-          },
         },
       });
     });

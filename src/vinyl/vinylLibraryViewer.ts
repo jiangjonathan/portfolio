@@ -2289,6 +2289,8 @@ export class VinylLibraryViewer {
                 imageUrl: entry.imageUrl,
                 originalImageUrl: entry.originalImageUrl,
                 releaseId: entry.releaseId,
+                vinylColor: entry.vinylColor,
+                labelColor: entry.labelColor,
               },
             }),
           );
@@ -2938,6 +2940,77 @@ export class VinylLibraryViewer {
     this.mergeLibraries();
     this.updateVisibleItems();
     this.attachCardListeners();
+  }
+
+  /**
+   * Update colors for an entry (lazy migration for old entries)
+   * This is called when colors are extracted for an old entry that didn't have them cached
+   */
+  public async updateEntryColors(
+    entryId: string,
+    vinylColor: string,
+    labelColor: string,
+  ): Promise<void> {
+    console.log(
+      `[updateEntryColors] Updating colors for entry ${entryId}: vinyl=${vinylColor}, label=${labelColor}`,
+    );
+
+    // Find the entry in our libraries
+    const entry = this.library.find((e) => e.id === entryId);
+    if (!entry) {
+      console.warn(`[updateEntryColors] Entry ${entryId} not found`);
+      return;
+    }
+
+    // Update the entry with the colors
+    entry.vinylColor = vinylColor;
+    entry.labelColor = labelColor;
+
+    // Save based on whether it's an owner or visitor entry
+    if (entry.isOwnerEntry) {
+      // Update in backend (only if admin)
+      if (this.config.apiUrl && this.config.adminToken) {
+        try {
+          const response = await fetch(
+            `${this.config.apiUrl}/api/library/${entryId}`,
+            {
+              method: "PUT",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${this.config.adminToken}`,
+              },
+              body: JSON.stringify({
+                vinylColor,
+                labelColor,
+              }),
+            },
+          );
+
+          if (response.ok) {
+            console.log(
+              `[updateEntryColors] ✓ Colors saved to Cloudflare KV for entry ${entryId}`,
+            );
+          } else {
+            console.error(
+              `[updateEntryColors] Failed to update colors in backend:`,
+              await response.text(),
+            );
+          }
+        } catch (error) {
+          console.error(`[updateEntryColors] Error updating colors:`, error);
+        }
+      } else {
+        console.warn(
+          `[updateEntryColors] Cannot save colors for owner entry ${entryId} - not in admin mode`,
+        );
+      }
+    } else {
+      // Update in localStorage
+      this.updateVisitorEntry(entry);
+      console.log(
+        `[updateEntryColors] ✓ Colors saved to localStorage for entry ${entryId}`,
+      );
+    }
   }
 
   /**

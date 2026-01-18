@@ -15,6 +15,8 @@ export interface LibraryEntry {
   releaseId?: string; // MusicBrainz release ID for caching
   aspectRatio?: number; // Video aspect ratio (16/9, 4/3, 1, etc.)
   originalImageUrl?: string; // Original image URL stored as fallback for stale blob URLs
+  vinylColor?: string; // Cached dominant vinyl color (hex) - speeds up rendering
+  labelColor?: string; // Cached vibrant label color (hex) - speeds up rendering
   addedAt: string;
 }
 
@@ -168,6 +170,8 @@ async function handlePostLibrary(
     releaseId,
     aspectRatio,
     originalImageUrl,
+    vinylColor,
+    labelColor,
   } = body;
 
   if (!rawYoutubeId || typeof rawYoutubeId !== "string") {
@@ -250,6 +254,8 @@ async function handlePostLibrary(
     releaseId: releaseId || undefined,
     aspectRatio: aspectRatio || undefined,
     originalImageUrl: originalImageUrl || imageUrl, // Store the original URL as fallback for blob URLs
+    vinylColor: vinylColor || undefined,
+    labelColor: labelColor || undefined,
     addedAt: new Date().toISOString(),
   };
 
@@ -392,6 +398,14 @@ async function handlePutLibrary(
       body.aspectRatio !== undefined
         ? body.aspectRatio
         : existingEntry.aspectRatio,
+    vinylColor:
+      body.vinylColor !== undefined
+        ? body.vinylColor
+        : existingEntry.vinylColor,
+    labelColor:
+      body.labelColor !== undefined
+        ? body.labelColor
+        : existingEntry.labelColor,
   };
 
   // Save updated entry

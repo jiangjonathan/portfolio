@@ -23,6 +23,8 @@ import {
   initializeCache,
 } from "../utils/albumCoverCache";
 
+import { extractVibrantColor, extractDominantColor } from "../utils/colorUtils";
+
 interface WidgetConfig {
   apiUrl: string;
   containerId: string;
@@ -687,9 +689,32 @@ export class VinylLibraryManager {
         return;
       }
 
+      // Step 3: Extract colors from the album art for faster rendering
+      this.showStatus("extracting colors for vinyl", "loading");
+      let vinylColor: string | undefined;
+      let labelColor: string | undefined;
+
+      try {
+        // Extract colors from the cover art
+        const coverUrl = enrichedMetadata.imageUrl;
+        [labelColor, vinylColor] = await Promise.all([
+          extractVibrantColor(coverUrl),
+          extractDominantColor(coverUrl),
+        ]);
+        console.log(
+          `[handleAddSong] Extracted colors - vinyl: ${vinylColor}, label: ${labelColor}`,
+        );
+      } catch (error) {
+        console.warn(
+          "[handleAddSong] Failed to extract colors, will extract on-demand later:",
+          error,
+        );
+        // Continue without colors - they'll be extracted on first render
+      }
+
       this.showStatus("saving to your collection", "loading");
 
-      // Step 3: Add to backend (admin) or localStorage (visitor)
+      // Step 4: Add to backend (admin) or localStorage (visitor)
       let entry = null;
 
       console.log(
@@ -715,6 +740,8 @@ export class VinylLibraryManager {
           enrichedMetadata.releaseId,
           enrichedMetadata.aspectRatio,
           enrichedMetadata.originalImageUrl,
+          vinylColor,
+          labelColor,
         );
         console.log(`[handleAddSong] Backend returned entry:`, entry);
       } else {
@@ -732,6 +759,8 @@ export class VinylLibraryManager {
           enrichedMetadata.aspectRatio,
           enrichedMetadata.genre,
           enrichedMetadata.releaseYear,
+          vinylColor,
+          labelColor,
         );
         console.log(`[handleAddSong] localStorage returned entry:`, entry);
       }

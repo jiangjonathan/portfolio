@@ -17,6 +17,8 @@ export interface VisitorEntry {
   releaseYear?: string; // Release year metadata
   originalImageUrl?: string; // Original image URL stored as fallback for stale blob URLs
   duration?: string; // Video duration in seconds (client-side only, not stored in backend)
+  vinylColor?: string; // Cached dominant vinyl color (hex) - speeds up rendering
+  labelColor?: string; // Cached vibrant label color (hex) - speeds up rendering
 }
 
 const STORAGE_KEY = "visitorLibrary";
@@ -91,6 +93,8 @@ export function saveVisitorLibrary(entries: VisitorEntry[]): boolean {
  * @param aspectRatio Optional video aspect ratio
  * @param genre Optional genre metadata
  * @param releaseYear Optional release year metadata
+ * @param vinylColor Optional cached vinyl color (hex)
+ * @param labelColor Optional cached label color (hex)
  * @returns The created entry if successful, null otherwise
  */
 export function addVisitorLink(
@@ -103,6 +107,8 @@ export function addVisitorLink(
   aspectRatio?: number,
   genre?: string,
   releaseYear?: string,
+  vinylColor?: string,
+  labelColor?: string,
 ): VisitorEntry | null {
   const youtubeId = extractYouTubeId(youtubeLink);
 
@@ -124,6 +130,8 @@ export function addVisitorLink(
     originalImageUrl: imageUrl, // Store the original URL as fallback for blob URLs
     genre,
     releaseYear,
+    vinylColor,
+    labelColor,
   };
 
   const library = loadVisitorLibrary();
@@ -229,6 +237,8 @@ export async function addToOwnerLibrary(
   releaseId?: string,
   aspectRatio?: number,
   originalImageUrl?: string,
+  vinylColor?: string,
+  labelColor?: string,
 ): Promise<VisitorEntry | null> {
   try {
     const headers: Record<string, string> = {
@@ -263,6 +273,12 @@ export async function addToOwnerLibrary(
     }
     if (originalImageUrl) {
       requestBody.originalImageUrl = originalImageUrl;
+    }
+    if (vinylColor) {
+      requestBody.vinylColor = vinylColor;
+    }
+    if (labelColor) {
+      requestBody.labelColor = labelColor;
     }
 
     const response = await fetch(`${apiUrl}/api/library`, {

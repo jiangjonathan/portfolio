@@ -171,6 +171,27 @@ export const createVinylSelectionController = (
     deps.rebuildLabelTextures();
 
     const updateId = deps.incrementSelectionVisualUpdateId();
+
+    // Check if we have cached colors - if so, use them directly
+    if (selection.labelColor && selection.vinylColor) {
+      console.log(
+        "[applySelectionVisualsToVinyl] Using cached colors from database",
+      );
+      deps.labelVisuals.background = selection.labelColor;
+      deps.setFocusVinylDerivedColor(
+        deps.deriveVinylColorFromAlbumColor(selection.vinylColor),
+      );
+      deps.updateFocusVinylColorFromDerived();
+      if (updateId === deps.getSelectionVisualUpdateId()) {
+        deps.rebuildLabelTextures();
+      }
+      return;
+    }
+
+    // No cached colors - extract them from the image
+    console.log(
+      "[applySelectionVisualsToVinyl] No cached colors, extracting from image",
+    );
     try {
       const coverUrl = await deps.getSelectionCoverUrl(selection);
       const labelColor = await deps.extractVibrantColor(coverUrl);
@@ -184,6 +205,25 @@ export const createVinylSelectionController = (
         deps.deriveVinylColorFromAlbumColor(vinylColor),
       );
       deps.updateFocusVinylColorFromDerived();
+
+      // Lazy migration: Save extracted colors back to database if this entry has an ID
+      if (selection.entryId) {
+        const viewer = (window as any).vinylLibraryViewer;
+        if (viewer?.updateEntryColors) {
+          console.log(
+            `[applySelectionVisualsToVinyl] Lazy migration: saving extracted colors for entry ${selection.entryId}`,
+          );
+          // Don't await - let this happen in the background
+          viewer
+            .updateEntryColors(selection.entryId, vinylColor, labelColor)
+            .catch((error: Error) => {
+              console.warn(
+                "[applySelectionVisualsToVinyl] Failed to save colors:",
+                error,
+              );
+            });
+        }
+      }
     } catch (error) {
       if (updateId !== deps.getSelectionVisualUpdateId()) {
         return;
