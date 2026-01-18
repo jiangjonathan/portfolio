@@ -1171,11 +1171,33 @@ export function createYouTubePlayer(): YouTubeBridge {
     updateViewport();
   };
 
+  // Track user's desired volume for iOS workaround
+  let userDesiredVolume = 100;
+
   const bridge: YouTubeBridge = {
     el: wrapper,
     load,
     play() {
-      player?.playVideo?.();
+      if (!player) return;
+      // iOS Safari workaround: mute before play, then restore volume
+      // This allows playback to start even without a direct user gesture
+      const currentVolume = userDesiredVolume;
+      try {
+        player.mute?.();
+        player.playVideo?.();
+        // Try to restore volume after a short delay
+        setTimeout(() => {
+          try {
+            player?.unMute?.();
+            player?.setVolume?.(currentVolume);
+          } catch {
+            // iOS blocked unmute - user will need to tap volume control
+          }
+        }, 100);
+      } catch {
+        // Fallback: just try to play
+        player?.playVideo?.();
+      }
     },
     pause() {
       player?.pauseVideo?.();
@@ -1195,10 +1217,13 @@ export function createYouTubePlayer(): YouTubeBridge {
     },
     setVolume(value: number) {
       const clamped = Math.max(0, Math.min(100, value));
+      userDesiredVolume = clamped;
       try {
+        if (clamped > 0) {
+          player?.unMute?.();
+        }
         player?.setVolume?.(clamped);
       } catch {}
-      // no fullscreen volume to sync anymore
     },
     getDuration() {
       return player?.getDuration?.() ?? 0;
