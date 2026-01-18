@@ -115,6 +115,22 @@ export class CameraRig {
     this.updateCameraPosition();
   }
 
+  /**
+   * Directly position the camera at a specific distance from the target.
+   * Used during page transitions to avoid fitDistance/zoom factor coupling issues.
+   */
+  setDirectCameraDistance(distance: number) {
+    if (distance <= 0) {
+      return;
+    }
+    this.desiredPosition
+      .copy(this.frameDirection)
+      .multiplyScalar(distance)
+      .add(this.target);
+    this.camera.position.copy(this.desiredPosition);
+    this.camera.lookAt(this.target);
+  }
+
   refit() {
     if (!this.framedObject) {
       return;

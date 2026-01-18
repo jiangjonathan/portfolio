@@ -673,10 +673,20 @@ let youtubeBridge: YouTubeBridge | null = null;
 // directionFromAngles, lerpAngleDegrees, cloneCameraSettings, applyPageCameraSettings, captureCameraState now imported from pageNavigation.ts
 
 const pageTransitionDuration = 0.9;
-const pageTransitionState = {
+
+const pageTransitionState: {
+  startTime: number;
+  fromSettings: PageCameraSettings;
+  toSettings: PageCameraSettings;
+  fromDistance: number;
+  toDistance: number;
+  active: boolean;
+} = {
   startTime: 0,
   fromSettings: cloneCameraSettings(pageCameraSettings.home),
   toSettings: cloneCameraSettings(pageCameraSettings.home),
+  fromDistance: 0,
+  toDistance: 0,
   active: false,
 };
 
@@ -782,12 +792,16 @@ const setActiveScenePage = (page: ScenePage) => {
       turntablePositionState = "default";
     }
   }
+  // Capture current camera distance before any changes
+  const fromDistance = cameraRig.getCameraDistance();
   const fromSettings = captureCameraState(cameraRig);
   if (previousPage === "home" && page !== "home") {
     rememberedHomeCameraState = cloneCameraSettings(fromSettings);
     pageCameraSettings.home = cloneCameraSettings(rememberedHomeCameraState);
   }
   const toSettings = pageCameraSettings[page];
+  // Compute target camera distance by temporarily applying target settings
+  // This ensures we get the correct distance for the destination page's framing
   let frameObjectTarget: Object3D = heroGroup;
   let frameOffset = page === "home" ? HOME_FRAME_OFFSET : 2.6;
   if (page === "turntable" && turntableSceneRoot) {
@@ -796,18 +810,20 @@ const setActiveScenePage = (page: ScenePage) => {
     frameObjectTarget = pageSceneRoots[page];
   }
   cameraRig.frameObject(frameObjectTarget, frameOffset);
-  if (page === "home") {
-    cameraRig.setLookTarget(defaultCameraTarget, false);
-  }
+  cameraRig.setZoomFactor(toSettings.zoom);
+  const toDistance = cameraRig.getCameraDistance();
+
+  // Restore camera to starting state for smooth transition
   cameraRig.setLookTarget(fromSettings.target, false);
   cameraRig.setViewDirection(
     directionFromAngles(fromSettings.yaw, fromSettings.pitch),
     false,
   );
-  cameraRig.setZoomFactor(fromSettings.zoom);
   pageTransitionState.startTime = performance.now();
   pageTransitionState.fromSettings = cloneCameraSettings(fromSettings);
   pageTransitionState.toSettings = cloneCameraSettings(toSettings);
+  pageTransitionState.fromDistance = fromDistance;
+  pageTransitionState.toDistance = toDistance;
   pageTransitionState.active = true;
   const wasTurntable = previousPage === "turntable";
   if (page === "portfolio") {
@@ -1002,15 +1018,24 @@ const updateScenePageTransition = () => {
   const to = pageTransitionState.toSettings;
   const yaw = lerpAngleDegrees(from.yaw, to.yaw, ease);
   const pitch = lerpAngleDegrees(from.pitch, to.pitch, ease);
-  const zoom = from.zoom + (to.zoom - from.zoom) * ease;
+
+  // Interpolate camera distance directly instead of zoom factor
+  const distance =
+    pageTransitionState.fromDistance +
+    (pageTransitionState.toDistance - pageTransitionState.fromDistance) * ease;
+
   transitionTarget.copy(from.target).lerp(to.target, ease);
   cameraRig.setLookTarget(transitionTarget, false);
   cameraRig.setViewDirection(directionFromAngles(yaw, pitch), false);
-  cameraRig.setZoomFactor(zoom);
+  cameraRig.setDirectCameraDistance(distance);
   if (progress >= 1) {
     pageTransitionState.active = false;
     pageCameraSettings[activePage] = cloneCameraSettings(to);
     // updateCameraDebugPanel();
+
+    // Restore final zoom factor for the destination page's framing
+    cameraRig.setZoomFactor(to.zoom);
+
     if (activePage === "turntable" && pendingTurntableCallbacks.length) {
       const callbacks = pendingTurntableCallbacks.splice(
         0,
