@@ -21,6 +21,7 @@ import {
   cleanupUnusedCovers,
   recreateBlobUrlIfNeeded,
   initializeCache,
+  getOrCacheAlbumCover,
 } from "../utils/albumCoverCache";
 
 import { extractVibrantColor, extractDominantColor } from "../utils/colorUtils";
@@ -695,8 +696,16 @@ export class VinylLibraryManager {
       let labelColor: string | undefined;
 
       try {
+        // Extract colors from a cached blob URL when possible to avoid CORS issues.
+        let coverUrl = enrichedMetadata.imageUrl;
+        if (enrichedMetadata.releaseId && enrichedMetadata.originalImageUrl) {
+          coverUrl = await getOrCacheAlbumCover(
+            enrichedMetadata.releaseId,
+            enrichedMetadata.originalImageUrl,
+          );
+        }
+
         // Extract colors from the cover art
-        const coverUrl = enrichedMetadata.imageUrl;
         [labelColor, vinylColor] = await Promise.all([
           extractVibrantColor(coverUrl),
           extractDominantColor(coverUrl),
