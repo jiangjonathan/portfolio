@@ -13,6 +13,8 @@ export type VinylSelectionDetail = {
   imageUrl?: string;
   originalImageUrl?: string;
   releaseId?: string;
+  labelColor?: string;
+  vinylColor?: string | null;
 };
 
 export type FocusVinylState = {

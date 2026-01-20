@@ -115,6 +115,8 @@ curl -X POST https://vinyl-library-worker.YOUR_SUBDOMAIN.workers.dev/api/library
 }
 ```
 
+Entries now surface optional `labelColor` and `vinylColor` metadata. `labelColor` is the vibrant cover tone that powers the label background, while `vinylColor` is the derived vinyl hue (it can be `null` for grayscale or very dark art). Responses from `GET /api/library` already expose these fields, so frontend clients can skip the heavy color extraction step. When you `POST` or `PUT` an entry, include the computed values so the worker can persist them and keep clients in sync.
+
 ## Frontend Integration
 
 The visitor library module (`src/visitorLibrary.ts`) provides functions for managing a visitor's personal library in localStorage:
@@ -173,3 +175,13 @@ CORS is enabled for all origins (`*`). For production, consider restricting to y
 - Use a strong, randomly generated token
 - Consider implementing rate limiting for the POST endpoint
 - For production, restrict CORS to your specific domain
+
+## Backfilling entry colors
+
+Legacy entries that predate the color metadata can be updated using the helper script at `tools/backfillLibraryColors.ts`. From the repository root, run:
+
+```bash
+API_URL=https://vinyl-library-worker.YOUR_SUBDOMAIN.workers.dev ADMIN_TOKEN=YOUR_ADMIN_TOKEN npm run backfill-library-colors
+```
+
+The script fetches every entry, fetches the same cover art as the frontend (with the same vibrant/dominant heuristics), and updates each KV record so future GET responses include the new `labelColor`/`vinylColor` values without any extra CORS work in the browser.

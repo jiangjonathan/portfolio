@@ -16,6 +16,8 @@ export interface LibraryEntry {
   aspectRatio?: number; // Video aspect ratio (16/9, 4/3, 1, etc.)
   originalImageUrl?: string; // Original image URL stored as fallback for stale blob URLs
   addedAt: string;
+  labelColor?: string;
+  vinylColor?: string | null;
 }
 
 /**
@@ -168,6 +170,8 @@ async function handlePostLibrary(
     releaseId,
     aspectRatio,
     originalImageUrl,
+    labelColor,
+    vinylColor,
   } = body;
 
   if (!rawYoutubeId || typeof rawYoutubeId !== "string") {
@@ -250,6 +254,8 @@ async function handlePostLibrary(
     releaseId: releaseId || undefined,
     aspectRatio: aspectRatio || undefined,
     originalImageUrl: originalImageUrl || imageUrl, // Store the original URL as fallback for blob URLs
+    labelColor: typeof labelColor === "string" ? labelColor : undefined,
+    vinylColor: vinylColor !== undefined ? vinylColor : undefined,
     addedAt: new Date().toISOString(),
   };
 
@@ -392,6 +398,14 @@ async function handlePutLibrary(
       body.aspectRatio !== undefined
         ? body.aspectRatio
         : existingEntry.aspectRatio,
+    labelColor:
+      body.labelColor !== undefined
+        ? body.labelColor
+        : existingEntry.labelColor,
+    vinylColor:
+      body.vinylColor !== undefined
+        ? body.vinylColor
+        : existingEntry.vinylColor,
   };
 
   // Save updated entry

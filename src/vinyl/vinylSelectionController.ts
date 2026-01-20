@@ -170,6 +170,17 @@ export const createVinylSelectionController = (
     );
     deps.rebuildLabelTextures();
 
+    if (
+      typeof selection.labelColor === "string" &&
+      selection.vinylColor !== undefined
+    ) {
+      deps.labelVisuals.background = selection.labelColor;
+      deps.setFocusVinylDerivedColor(selection.vinylColor ?? null);
+      deps.updateFocusVinylColorFromDerived();
+      deps.rebuildLabelTextures();
+      return;
+    }
+
     const updateId = deps.incrementSelectionVisualUpdateId();
     try {
       const coverUrl = await deps.getSelectionCoverUrl(selection);

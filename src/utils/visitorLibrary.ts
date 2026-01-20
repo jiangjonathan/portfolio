@@ -3,6 +3,15 @@
  * Stored locally in browser's localStorage
  */
 
+import {
+  extractVibrantColor,
+  extractDominantColor,
+  deriveVinylColorFromAlbumColor,
+} from "../utils/colorUtils";
+import type { VinylSelectionDetail } from "../vinyl/vinylInteractions";
+import { getSelectionCoverUrl } from "../vinyl/vinylHelpers";
+import { FALLBACK_BACKGROUND_COLOR } from "../utils/config";
+
 export interface VisitorEntry {
   id: string;
   youtubeId: string;
@@ -17,6 +26,8 @@ export interface VisitorEntry {
   releaseYear?: string; // Release year metadata
   originalImageUrl?: string; // Original image URL stored as fallback for stale blob URLs
   duration?: string; // Video duration in seconds (client-side only, not stored in backend)
+  labelColor?: string;
+  vinylColor?: string | null;
 }
 
 const STORAGE_KEY = "visitorLibrary";
@@ -213,6 +224,27 @@ export async function fetchOwnerLibrary(
   }
 }
 
+async function computeSelectionColors(
+  selection: VinylSelectionDetail,
+): Promise<{ labelColor: string; vinylColor: string | null }> {
+  try {
+    const coverUrl = await getSelectionCoverUrl(selection);
+    const labelColor = await extractVibrantColor(coverUrl);
+    const dominantColor = await extractDominantColor(coverUrl);
+    const vinylColor = deriveVinylColorFromAlbumColor(dominantColor);
+    return { labelColor, vinylColor };
+  } catch (error) {
+    console.warn(
+      `[computeSelectionColors] Falling back to default colors for ${selection.artistName} - ${selection.songName}:`,
+      error,
+    );
+    return {
+      labelColor: FALLBACK_BACKGROUND_COLOR,
+      vinylColor: null,
+    };
+  }
+}
+
 /**
  * Add entry to owner's library via API (admin only)
  */
@@ -264,6 +296,19 @@ export async function addToOwnerLibrary(
     if (originalImageUrl) {
       requestBody.originalImageUrl = originalImageUrl;
     }
+
+    const selection: VinylSelectionDetail = {
+      videoId: youtubeId,
+      artistName,
+      songName,
+      aspectRatio,
+      imageUrl,
+      originalImageUrl: originalImageUrl ?? imageUrl,
+      releaseId,
+    };
+    const { labelColor, vinylColor } = await computeSelectionColors(selection);
+    requestBody.labelColor = labelColor;
+    requestBody.vinylColor = vinylColor;
 
     const response = await fetch(`${apiUrl}/api/library`, {
       method: "POST",

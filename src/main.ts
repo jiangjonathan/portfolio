@@ -1236,14 +1236,14 @@ setupSettingsPersistence({
 
 function setPendingPromotionSource(
   value: VinylSource | null,
-  reason: string,
+  _reason: string,
 ): void {
   const prev = pendingPromotionSource ?? "null";
   const next = value ?? "null";
   if (prev === next) {
-    // console.log(`[pendingPromotion] stays ${next} (${reason})`);
+    // console.log(`[pendingPromotion] stays ${next} (${_reason})`);
   } else {
-    // console.log(`[pendingPromotion] ${prev} -> ${next} (${reason})`);
+    // console.log(`[pendingPromotion] ${prev} -> ${next} (${_reason})`);
   }
   pendingPromotionSource = value;
 }
@@ -1300,15 +1300,15 @@ function updateTurntableVinylColorFromDerived(): void {
   applyTurntableVinylColorToModel();
 }
 
-function restoreDroppingVinylAppearance(context?: string): void {
+function restoreDroppingVinylAppearance(_context?: string): void {
   if (!droppingVinylState) {
     // console.log(
-    //   `[droppingVinyl] restore skipped (no state)${context ? ` context=${context}` : ""}`,
+    //   `[droppingVinyl] restore skipped (no state)${_context ? ` context=${_context}` : ""}`,
     // );
     return;
   }
   // console.log(
-  //   `[droppingVinyl] Restoring appearance for ${droppingVinylState.selection.songName}${context ? ` (${context})` : ""}`,
+  //   `[droppingVinyl] Restoring appearance for ${droppingVinylState.selection.songName}${_context ? ` (${_context})` : ""}`,
   // );
   applyLabelTextures(
     droppingVinylState.model,
@@ -1324,23 +1324,23 @@ function restoreDroppingVinylAppearance(context?: string): void {
 
 function setVinylModelVisibility(
   model: Object3D | null | undefined,
-  tag: string,
+  _tag: string,
   visible: boolean,
-  reason: string,
+  _reason: string,
 ): void {
   if (!model) {
-    // console.log(`[vinylVisibility] ${tag} missing model (${reason})`);
+    // console.log(`[vinylVisibility] ${_tag} missing model (${_reason})`);
     return;
   }
   if (model.visible === visible) {
     // console.log(
-    //   `[vinylVisibility] ${tag} already ${visible ? "visible" : "hidden"} (${reason})`,
+    //   `[vinylVisibility] ${_tag} already ${visible ? "visible" : "hidden"} (${_reason})`,
     // );
     return;
   }
   model.visible = visible;
   // console.log(
-  //   `[vinylVisibility] ${tag} -> ${visible ? "visible" : "hidden"} (${reason})`,
+  //   `[vinylVisibility] ${_tag} -> ${visible ? "visible" : "hidden"} (${_reason})`,
   // );
 }
 

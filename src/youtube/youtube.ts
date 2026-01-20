@@ -546,6 +546,10 @@ export function createYouTubePlayer(): YouTubeBridge {
   };
 
   const updateSmallPlayerDimensions = () => {
+    if (typeof document !== "undefined") {
+      focusCardIsCompact =
+        document.body.classList.contains("focus-card-compact");
+    }
     if (isFullscreenMode) return;
     ensureFocusCoverObservers();
     const focusRect = getFocusCoverRect();
@@ -604,6 +608,12 @@ export function createYouTubePlayer(): YouTubeBridge {
     });
   };
 
+  focusCardIsCompact =
+    typeof document !== "undefined"
+      ? document.body.classList.contains("focus-card-compact")
+      : false;
+  cachedFocusCoverRect = null;
+  cachedFocusCoverLayout = null;
   updateSmallPlayerDimensions();
   updateViewportForAspectRatio();
   window.addEventListener("resize", () => {

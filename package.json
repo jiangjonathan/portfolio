@@ -6,9 +6,15 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "backfill-library-colors": "ts-node --project tsconfig.backfill.json tools/backfillLibraryColors.ts"
   },
   "devDependencies": {
+    "@types/node": "^20.11.1",
+    "jpeg-js": "^0.4.4",
+    "node-fetch": "^3.3.2",
+    "pngjs": "^6.0.0",
+    "ts-node": "^10.9.1",
     "typescript": "~5.9.3",
     "vite": "^7.1.7"
   },

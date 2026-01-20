@@ -46,6 +46,7 @@ export class VinylLibraryViewer {
   } = { category: null, direction: "asc" };
 
   private scrollContainer: HTMLElement | null = null;
+  private visibleCoversReadyPromise: Promise<void> | null = null;
 
   private suppressNextLibraryUpdateEvent: boolean = false;
   private customOrder: Map<string, number> = new Map(); // Persisted custom ordering
@@ -127,6 +128,7 @@ export class VinylLibraryViewer {
 
     // Render viewer
     this.render(container);
+    const visibleCoversLoaded = this.waitForVisibleCoverImages();
 
     // Watch for changes in localStorage
     this.watchStorageChanges();
@@ -134,6 +136,8 @@ export class VinylLibraryViewer {
     // Listen for video duration updates from the player
     this.watchVideoDurationUpdates();
     this.watchTurntableStateUpdates();
+
+    await visibleCoversLoaded;
   }
 
   private loadPersistedViewerState(): void {
@@ -1401,6 +1405,87 @@ export class VinylLibraryViewer {
   }
 
   /**
+   * Ensure the images that land inside the currently visible portion of the grid
+   * have fired their load/error events before we signal that the viewer is ready.
+   */
+  private waitForVisibleCoverImages(): Promise<void> {
+    if (this.visibleCoversReadyPromise) {
+      return this.visibleCoversReadyPromise;
+    }
+
+    this.visibleCoversReadyPromise = (async () => {
+      if (!this.scrollContainer) {
+        return;
+      }
+
+      const waitForFrame = () =>
+        new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      await waitForFrame();
+      await waitForFrame();
+
+      const scrollTop = this.scrollContainer.scrollTop;
+      const visibleBottom = scrollTop + this.scrollContainer.clientHeight;
+      const cleanupFns: Array<() => void> = [];
+      const imageElements: HTMLImageElement[] = [];
+
+      this.scrollContainer
+        .querySelectorAll<HTMLDivElement>(".album-card")
+        .forEach((card) => {
+          const cardTop = card.offsetTop;
+          const cardBottom = cardTop + card.offsetHeight;
+          if (cardBottom > scrollTop && cardTop < visibleBottom) {
+            const cover = card.querySelector<HTMLImageElement>(".album-cover");
+            if (cover) {
+              imageElements.push(cover);
+            }
+          }
+        });
+
+      if (imageElements.length === 0) {
+        return;
+      }
+
+      const loadPromises = imageElements.map((img) => {
+        return new Promise<void>((resolve) => {
+          let settled = false;
+
+          const finalize = () => {
+            if (settled) {
+              return;
+            }
+            settled = true;
+            img.removeEventListener("load", finalize);
+            img.removeEventListener("error", finalize);
+            resolve();
+          };
+
+          if (img.complete && img.naturalWidth > 0) {
+            finalize();
+            return;
+          }
+
+          cleanupFns.push(() => {
+            img.removeEventListener("load", finalize);
+            img.removeEventListener("error", finalize);
+          });
+          img.addEventListener("load", finalize);
+          img.addEventListener("error", finalize);
+        });
+      });
+
+      const TIMEOUT_MS = 2000;
+      await Promise.race([
+        Promise.all(loadPromises),
+        new Promise<void>((resolve) => setTimeout(() => resolve(), TIMEOUT_MS)),
+      ]);
+
+      cleanupFns.forEach((cleanup) => cleanup());
+    })();
+
+    return this.visibleCoversReadyPromise;
+  }
+
+  /**
    * Update visible items rendering
    */
   private updateVisibleItems(): void {
@@ -1428,7 +1513,7 @@ export class VinylLibraryViewer {
                     src="${this.getImageWithFallback(entry.imageUrl)}"
                     alt="${this.escapeHtml(songName)}"
                     class="album-cover"
-                    loading="lazy"
+                    loading="eager"
                     decoding="async"
                   >
                   ${plasticOverlay}
@@ -2289,6 +2374,8 @@ export class VinylLibraryViewer {
                 imageUrl: entry.imageUrl,
                 originalImageUrl: entry.originalImageUrl,
                 releaseId: entry.releaseId,
+                labelColor: entry.labelColor,
+                vinylColor: entry.vinylColor,
               },
             }),
           );
