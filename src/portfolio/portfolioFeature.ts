@@ -252,14 +252,14 @@ export function createPortfolioFeature(
       return Promise.resolve();
     }
 
-    console.log(
-      "[Portfolio Cover] Starting flip animation",
-      reverse ? "(reverse)" : "",
-    );
-    console.log(
-      "[Portfolio Cover] Initial rotation:",
-      portfolioCoverMesh.rotation.z,
-    );
+    // console.log(
+    //   "[Portfolio Cover] Starting flip animation",
+    //   reverse ? "(reverse)" : "",
+    // );
+    // console.log(
+    //   "[Portfolio Cover] Initial rotation:",
+    //   portfolioCoverMesh.rotation.z,
+    // );
 
     const startRotation = portfolioCoverMesh.rotation.z;
     const targetRotation = reverse
@@ -285,10 +285,10 @@ export function createPortfolioFeature(
         if (progress < 1) {
           requestAnimationFrame(animate);
         } else {
-          console.log(
-            "[Portfolio Cover] Animation complete. Final rotation:",
-            portfolioCoverMesh!.rotation.z,
-          );
+          // console.log(
+          //   "[Portfolio Cover] Animation complete. Final rotation:",
+          //   portfolioCoverMesh!.rotation.z,
+          // );
           resolve();
         }
       };

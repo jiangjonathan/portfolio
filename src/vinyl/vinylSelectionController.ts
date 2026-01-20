@@ -365,9 +365,9 @@ export const createVinylSelectionController = (
         deps.focusCardController.updateFocusVinylVisibility();
         deps.focusCardController.updateFocusCardPosition();
 
-        console.log(
-          "[load-vinyl-song] Camera animation complete, vinyl now visible",
-        );
+        // console.log(
+        //   "[load-vinyl-song] Camera animation complete, vinyl now visible",
+        // );
       }
     });
 
@@ -396,12 +396,12 @@ export const createVinylSelectionController = (
   };
 
   const handleFocusSelection = async (selection: VinylSelectionDetail) => {
-    console.log(
-      `[handleFocusSelection] Starting for ${selection.artistName} - ${selection.songName}`,
-    );
-    console.log(
-      `[handleFocusSelection] State: isReturningVinyl=${deps.getIsReturningVinyl()}, focusVinylState=${deps.getFocusVinylState() ? "exists" : "null"}, pendingPromotionSource=${deps.getPendingPromotionSource()}, activeVinylSource=${deps.getActiveVinylSource()}`,
-    );
+    // console.log(
+    //   `[handleFocusSelection] Starting for ${selection.artistName} - ${selection.songName}`,
+    // );
+    // console.log(
+    //   `[handleFocusSelection] State: isReturningVinyl=${deps.getIsReturningVinyl()}, focusVinylState=${deps.getFocusVinylState() ? "exists" : "null"}, pendingPromotionSource=${deps.getPendingPromotionSource()}, activeVinylSource=${deps.getActiveVinylSource()}`,
+    // );
     const loadToken = deps.incrementFocusVinylLoadToken();
     deps.setVinylDragPointerId(null);
 
@@ -415,9 +415,9 @@ export const createVinylSelectionController = (
       deps.getActiveVinylSource() === "turntable";
 
     if (focusVinylIsReturning && deps.getFocusVinylState()) {
-      console.log(
-        `[handleFocusSelection] Transferring returning FOCUS vinyl to dropping state: ${deps.getFocusVinylState()!.selection.songName}`,
-      );
+      // console.log(
+      //   `[handleFocusSelection] Transferring returning FOCUS vinyl to dropping state: ${deps.getFocusVinylState()!.selection.songName}`,
+      // );
       deps.disposeDroppingVinyl();
       const droppingTextures = deps.detachFocusTexturesForTurntable();
       deps.setDroppingVinylState({
@@ -436,9 +436,9 @@ export const createVinylSelectionController = (
       deps.setFocusVinylState(null);
       deps.setActiveVinylSource("dropping");
     } else if (turntableVinylIsReturning && deps.getTurntableVinylState()) {
-      console.log(
-        `[handleFocusSelection] Transferring returning TURNTABLE vinyl to dropping state: ${deps.getTurntableVinylState()!.selection.songName}`,
-      );
+      // console.log(
+      //   `[handleFocusSelection] Transferring returning TURNTABLE vinyl to dropping state: ${deps.getTurntableVinylState()!.selection.songName}`,
+      // );
       deps.disposeDroppingVinyl();
       deps.setDroppingVinylState({
         model: deps.getTurntableVinylState()!.model,
@@ -467,18 +467,18 @@ export const createVinylSelectionController = (
     deps.focusCardController.updateFocusVinylVisibility();
 
     if (deps.getTurntableVinylState()?.model) {
-      console.log(
-        `[handleFocusSelection] Turntable vinyl BEFORE visuals: visible=${deps.getTurntableVinylState()!.model.visible}, song=${deps.getTurntableVinylState()!.selection.songName}`,
-      );
+      // console.log(
+      //   `[handleFocusSelection] Turntable vinyl BEFORE visuals: visible=${deps.getTurntableVinylState()!.model.visible}, song=${deps.getTurntableVinylState()!.selection.songName}`,
+      // );
     } else {
-      console.log(
-        `[handleFocusSelection] No turntable vinyl state BEFORE visuals`,
-      );
+      // console.log(
+      //   `[handleFocusSelection] No turntable vinyl state BEFORE visuals`,
+      // );
     }
 
-    console.log(`[handleFocusSelection] Applying selection visuals...`);
+    // console.log(`[handleFocusSelection] Applying selection visuals...`);
     await applySelectionVisualsToVinyl(selection);
-    console.log(`[handleFocusSelection] Selection visuals applied`);
+    // console.log(`[handleFocusSelection] Selection visuals applied`);
     deps.restoreDroppingVinylAppearance("focusSelection");
     if (deps.getTurntableVinylState()) {
       deps.updateTurntableVinylVisuals(
@@ -487,13 +487,13 @@ export const createVinylSelectionController = (
     }
 
     if (deps.getTurntableVinylState()?.model) {
-      console.log(
-        `[handleFocusSelection] Turntable vinyl AFTER visuals: visible=${deps.getTurntableVinylState()!.model.visible}, song=${deps.getTurntableVinylState()!.selection.songName}`,
-      );
+      // console.log(
+      //   `[handleFocusSelection] Turntable vinyl AFTER visuals: visible=${deps.getTurntableVinylState()!.model.visible}, song=${deps.getTurntableVinylState()!.selection.songName}`,
+      // );
     } else {
-      console.log(
-        `[handleFocusSelection] No turntable vinyl state AFTER visuals`,
-      );
+      // console.log(
+      //   `[handleFocusSelection] No turntable vinyl state AFTER visuals`,
+      // );
     }
 
     if (deps.getFocusVinylState()) {
@@ -560,25 +560,25 @@ export const createVinylSelectionController = (
       }
 
       if (deps.getTurntableVinylState()?.model) {
-        console.log(
-          `[handleFocusSelection] Turntable vinyl BEFORE prepare: visible=${deps.getTurntableVinylState()!.model.visible}, song=${deps.getTurntableVinylState()!.selection.songName}`,
-        );
+        // console.log(
+        //   `[handleFocusSelection] Turntable vinyl BEFORE prepare: visible=${deps.getTurntableVinylState()!.model.visible}, song=${deps.getTurntableVinylState()!.selection.songName}`,
+        // );
       } else {
-        console.log(
-          `[handleFocusSelection] No turntable vinyl state BEFORE prepare`,
-        );
+        // console.log(
+        //   `[handleFocusSelection] No turntable vinyl state BEFORE prepare`,
+        // );
       }
 
       prepareFocusVinylPresentation(model, loadToken);
 
       if (deps.getTurntableVinylState()?.model) {
-        console.log(
-          `[handleFocusSelection] Turntable vinyl AFTER prepare: visible=${deps.getTurntableVinylState()!.model.visible}, song=${deps.getTurntableVinylState()!.selection.songName}`,
-        );
+        // console.log(
+        //   `[handleFocusSelection] Turntable vinyl AFTER prepare: visible=${deps.getTurntableVinylState()!.model.visible}, song=${deps.getTurntableVinylState()!.selection.songName}`,
+        // );
       } else {
-        console.log(
-          `[handleFocusSelection] No turntable vinyl state AFTER prepare`,
-        );
+        // console.log(
+        //   `[handleFocusSelection] No turntable vinyl state AFTER prepare`,
+        // );
       }
     } catch (error) {
       console.error("Failed to load focus vinyl", error);
@@ -587,7 +587,7 @@ export const createVinylSelectionController = (
 
   window.addEventListener("load-vinyl-song", (event) => {
     const detail = (event as CustomEvent<VinylSelectionDetail>).detail;
-    console.log(`[load-vinyl-song] Event received:`, detail);
+    // console.log(`[load-vinyl-song] Event received:`, detail);
     if (!detail || !detail.videoId) {
       console.warn(`[load-vinyl-song] Invalid detail or missing videoId`);
       return;

@@ -1241,9 +1241,9 @@ function setPendingPromotionSource(
   const prev = pendingPromotionSource ?? "null";
   const next = value ?? "null";
   if (prev === next) {
-    console.log(`[pendingPromotion] stays ${next} (${reason})`);
+    // console.log(`[pendingPromotion] stays ${next} (${reason})`);
   } else {
-    console.log(`[pendingPromotion] ${prev} -> ${next} (${reason})`);
+    // console.log(`[pendingPromotion] ${prev} -> ${next} (${reason})`);
   }
   pendingPromotionSource = value;
 }
@@ -1302,14 +1302,14 @@ function updateTurntableVinylColorFromDerived(): void {
 
 function restoreDroppingVinylAppearance(context?: string): void {
   if (!droppingVinylState) {
-    console.log(
-      `[droppingVinyl] restore skipped (no state)${context ? ` context=${context}` : ""}`,
-    );
+    // console.log(
+    //   `[droppingVinyl] restore skipped (no state)${context ? ` context=${context}` : ""}`,
+    // );
     return;
   }
-  console.log(
-    `[droppingVinyl] Restoring appearance for ${droppingVinylState.selection.songName}${context ? ` (${context})` : ""}`,
-  );
+  // console.log(
+  //   `[droppingVinyl] Restoring appearance for ${droppingVinylState.selection.songName}${context ? ` (${context})` : ""}`,
+  // );
   applyLabelTextures(
     droppingVinylState.model,
     droppingVinylState.labelTextures,
@@ -1329,19 +1329,19 @@ function setVinylModelVisibility(
   reason: string,
 ): void {
   if (!model) {
-    console.log(`[vinylVisibility] ${tag} missing model (${reason})`);
+    // console.log(`[vinylVisibility] ${tag} missing model (${reason})`);
     return;
   }
   if (model.visible === visible) {
-    console.log(
-      `[vinylVisibility] ${tag} already ${visible ? "visible" : "hidden"} (${reason})`,
-    );
+    // console.log(
+    //   `[vinylVisibility] ${tag} already ${visible ? "visible" : "hidden"} (${reason})`,
+    // );
     return;
   }
   model.visible = visible;
-  console.log(
-    `[vinylVisibility] ${tag} -> ${visible ? "visible" : "hidden"} (${reason})`,
-  );
+  // console.log(
+  //   `[vinylVisibility] ${tag} -> ${visible ? "visible" : "hidden"} (${reason})`,
+  // );
 }
 
 const syncAnimationStateToModel = (model: Object3D) => {

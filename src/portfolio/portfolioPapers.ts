@@ -272,14 +272,14 @@ export class PortfolioPapersManager {
       return;
     }
 
-    console.log(`[PortfolioPapers] Loading paper: ${paper.name}`);
+    // console.log(`[PortfolioPapers] Loading paper: ${paper.name}`);
     this.setCurrentPaper(paperId);
 
     const existingMesh = this.paperMeshes.get(paperId);
     if (existingMesh) {
-      console.log(
-        `[PortfolioPapers] Reusing persisted mesh for: ${paper.name}`,
-      );
+      // console.log(
+      //   `[PortfolioPapers] Reusing persisted mesh for: ${paper.name}`,
+      // );
       this.positionMeshOnWhitepaper(existingMesh, paperId);
       existingMesh.visible = true;
       return;
@@ -1718,11 +1718,11 @@ export class PortfolioPapersManager {
         targetPosition.y += leftStackHeight;
         targetPosition.z = this.whitepaperMesh.position.z;
 
-        console.log(
-          `[PortfolioPapers] Moving ${previousPaperId} to left stack at Y=${targetPosition.y.toFixed(
-            2,
-          )}`,
-        );
+        // console.log(
+        //   `[PortfolioPapers] Moving ${previousPaperId} to left stack at Y=${targetPosition.y.toFixed(
+        //     2,
+        //   )}`,
+        // );
 
         // Add to left stack tracking
         this.leftStackPapers.push(previousPaperId);

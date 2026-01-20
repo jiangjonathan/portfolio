@@ -70,23 +70,23 @@ export function rebuildLabelTextures(
 export async function getSelectionCoverUrl(
   selection: VinylSelectionDetail,
 ): Promise<string> {
-  console.log(`[getSelectionCoverUrl] Starting for video ${selection.videoId}`);
+  // console.log(`[getSelectionCoverUrl] Starting for video ${selection.videoId}`);
 
   // If we have a releaseId and originalImageUrl, try to get cached blob URL
   // This avoids CORS issues when extracting dominant color from Cover Art Archive
   if (selection.releaseId && selection.originalImageUrl) {
     try {
-      console.log(
-        `[getSelectionCoverUrl] Attempting to get/cache cover for release ${selection.releaseId}`,
-      );
+      // console.log(
+      //   `[getSelectionCoverUrl] Attempting to get/cache cover for release ${selection.releaseId}`,
+      // );
       const cachedBlobUrl = await getOrCacheAlbumCover(
         selection.releaseId,
         selection.originalImageUrl,
       );
       if (cachedBlobUrl) {
-        console.log(
-          `[getSelectionCoverUrl] Got cached blob URL: ${cachedBlobUrl}`,
-        );
+        // console.log(
+        //   `[getSelectionCoverUrl] Got cached blob URL: ${cachedBlobUrl}`,
+        // );
         return cachedBlobUrl;
       }
     } catch (error) {
@@ -97,20 +97,20 @@ export async function getSelectionCoverUrl(
   // If imageUrl is a stale blob URL (starts with "blob:"), fall back to YouTube thumbnail
   // Blob URLs are session-specific and become invalid after page reload
   if (selection.imageUrl && selection.imageUrl.startsWith("blob:")) {
-    console.log(
-      `[getSelectionCoverUrl] Stale blob URL detected, using YouTube thumbnail`,
-    );
+    // console.log(
+    //   `[getSelectionCoverUrl] Stale blob URL detected, using YouTube thumbnail`,
+    // );
     return `https://img.youtube.com/vi/${selection.videoId}/maxresdefault.jpg`;
   }
 
   // If imageUrl is valid (not a blob URL), use it
   if (selection.imageUrl) {
-    console.log(`[getSelectionCoverUrl] Using imageUrl: ${selection.imageUrl}`);
+    // console.log(`[getSelectionCoverUrl] Using imageUrl: ${selection.imageUrl}`);
     return selection.imageUrl;
   }
 
   // Final fallback to YouTube thumbnail
-  console.log(`[getSelectionCoverUrl] Using YouTube thumbnail fallback`);
+  // console.log(`[getSelectionCoverUrl] Using YouTube thumbnail fallback`);
   return `https://img.youtube.com/vi/${selection.videoId}/maxresdefault.jpg`;
 }
 
