@@ -85,7 +85,7 @@ export class PortfolioPapersManager {
   private whitepaperMesh: Mesh | null = null;
   private renderer: WebGLRenderer | null = null;
   private isAnimating = false; // Prevent overlapping animations
-  private readonly PAPER_STACK_HEIGHT_OFFSET = 0.02; // Height between stacked papers
+  private readonly PAPER_STACK_HEIGHT_OFFSET = 0.03; // Height between stacked papers
   private readonly BASE_PAPER_HEIGHT = 0.05; // Base height above whitepaper
   private readonly LEFT_STACK_X_OFFSET = -23.5; // X offset for left stack
   private readonly MAX_RANDOM_ROTATION = (2 * Math.PI) / 180; // ±2 degrees in radians
