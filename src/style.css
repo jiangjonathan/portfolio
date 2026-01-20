@@ -68,6 +68,22 @@ body.vinyl-drag-active .vinyl-viewer-widget * {
     -moz-user-select: none;
 }
 
+/* Fullscreen mode overrides - ensure UI elements stay hidden */
+body.fullscreen-mode-active #global-controls {
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
+body.fullscreen-mode-active #vinyl-focus-card-cover-root {
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
+body.fullscreen-mode-active #vinyl-focus-card-info-root {
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
 /* YouTube player cropping shell */
 .yt-player-viewport {
     position: relative;

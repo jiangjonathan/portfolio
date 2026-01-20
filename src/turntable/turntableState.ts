@@ -58,6 +58,14 @@ export class TurntableStateManager {
 
     // Auto-hide library and button in fullscreen player mode
     this.yt.onFullscreenChange((isFullscreen: boolean) => {
+      if (isFullscreen) {
+        this.isFullscreenMode = true;
+        document.body.classList.add("fullscreen-mode-active");
+      } else {
+        this.isFullscreenMode = false;
+        document.body.classList.remove("fullscreen-mode-active");
+      }
+
       // Fade hyperlinks in/out with fullscreen
       const globalControls = document.getElementById("global-controls");
       if (globalControls) {
@@ -68,10 +76,11 @@ export class TurntableStateManager {
       callbacks.runWhenTurntableReady(() => {
         callbacks.setHeroPageVisibility(isFullscreen ? "turntable" : null);
         if (isFullscreen) {
-          this.isFullscreenMode = true;
-
           // Set transition on focus card containers BEFORE setTurntableUIVisible hides them
           this.setFocusCardTransition("opacity 0.2s ease");
+
+          // Immediately fade out focus card containers
+          this.fadeFocusCardContainers(0);
 
           callbacks.hideFocusVinylForFullscreen();
           callbacks.setTurntableUIVisible(false);
@@ -84,7 +93,6 @@ export class TurntableStateManager {
           cameraRig.setLookTarget(cameraTargets["fullscreen"], true);
           cameraRig.setPolarAngle(2, true);
         } else {
-          this.isFullscreenMode = false;
           callbacks.scheduleFocusVinylRestore();
           callbacks.setTurntableUIVisible(true);
           callbacks.setGroundShadowsVisible(true);

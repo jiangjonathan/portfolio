@@ -1150,7 +1150,7 @@ export class PortfolioPapersManager {
     // Create material with PDF texture - use MeshStandardMaterial for better lighting and depth
     const material = new MeshStandardMaterial({
       map: texture,
-      roughness: 0.7, // Paper-like roughness
+      roughness: 1, // Paper-like roughness
       metalness: 0, // Not metallic
       side: 2, // DoubleSide
       polygonOffset: true,
