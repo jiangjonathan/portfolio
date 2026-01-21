@@ -147,6 +147,7 @@ import { setupSettingsPersistence } from "./ui/settingsPersistence";
 import type { PortfolioPapersManager } from "./portfolio/portfolioPapers";
 import { createPortfolioFeature } from "./portfolio/portfolioFeature";
 import { createPortfolioInteractions } from "./portfolio/portfolioInteractions";
+import { PaperOverlayManager } from "./portfolio/paperOverlay";
 
 declare global {
   interface Window {
@@ -193,6 +194,9 @@ const {
   placeholderBInfo,
   portfolioPaperLinksBar,
 } = dom;
+
+const paperOverlayManager = new PaperOverlayManager(root);
+paperOverlayManager.setActive(false);
 
 // Initialize button visibility based on initial page (home)
 homeNavButton.style.display = "none";
@@ -710,6 +714,7 @@ const portfolioFeature = createPortfolioFeature({
   paperLinksBar: portfolioPaperLinksBar,
   prevArrow: portfolioPrevArrow,
   nextArrow: portfolioNextArrow,
+  paperOverlayManager,
 });
 portfolioPapersManager = portfolioFeature.init();
 
@@ -2736,6 +2741,17 @@ const animate = (time: number) => {
 
   // Update auto-orbit and momentum
   inputHandlers?.updateAutoOrbit();
+
+  if (portfolioPapersManager) {
+    paperOverlayManager.setActive(activePage === "portfolio");
+    paperOverlayManager.updateTransforms(
+      camera,
+      renderer,
+      portfolioPapersManager.getPaperMeshes(),
+    );
+  } else {
+    paperOverlayManager.setActive(false);
+  }
 
   renderer.render(scene, camera);
   if (vinylModel && renderVisualOffset !== 0) {

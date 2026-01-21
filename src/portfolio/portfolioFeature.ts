@@ -3,6 +3,7 @@ import type { ScenePage } from "../camera/pageNavigation";
 import { PortfolioNavigationController } from "./portfolioNavigation";
 import { PortfolioPapersManager } from "./portfolioPapers";
 import { prioritizePortfolioCoverRendering } from "../scene/sceneObjects";
+import type { PaperOverlayManager } from "./paperOverlay";
 
 type PortfolioFeatureDeps = {
   renderer: WebGLRenderer;
@@ -10,6 +11,7 @@ type PortfolioFeatureDeps = {
   paperLinksBar: HTMLDivElement;
   prevArrow: HTMLButtonElement;
   nextArrow: HTMLButtonElement;
+  paperOverlayManager?: PaperOverlayManager;
 };
 
 type PortfolioFeature = {
@@ -337,6 +339,7 @@ export function createPortfolioFeature(
     portfolioPapersManager = new PortfolioPapersManager(
       deps.papersContainer,
       deps.renderer,
+      deps.paperOverlayManager,
     );
     attachPaperLinkListener();
     buildPortfolioPaperLinks();

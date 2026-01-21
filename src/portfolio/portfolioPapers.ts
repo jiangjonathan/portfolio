@@ -13,6 +13,8 @@ import {
   MathUtils,
 } from "three";
 import * as pdfjsLib from "pdfjs-dist";
+import type { PaperOverlayRegistration } from "./paperOverlay";
+import { PaperOverlayManager } from "./paperOverlay";
 
 export type PaperType = "pdf" | "html" | "report";
 
@@ -40,6 +42,24 @@ type ScrollablePaperState = PendingScrollState & {
 
 type LinkRegion = {
   url: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+type MarkdownRenderSegment = {
+  text: string;
+  x: number;
+  y: number;
+  font: string;
+  color: string;
+  isLink?: boolean;
+  linkUrl?: string;
+};
+
+type MarkdownRenderImage = {
+  img: HTMLImageElement;
   x: number;
   y: number;
   width: number;
@@ -84,6 +104,7 @@ export class PortfolioPapersManager {
   private paperRotations: Map<string, number> = new Map(); // Random Z rotation per paper (in radians)
   private whitepaperMesh: Mesh | null = null;
   private renderer: WebGLRenderer | null = null;
+  private overlayManager?: PaperOverlayManager;
   private isAnimating = false; // Prevent overlapping animations
   private readonly PAPER_STACK_HEIGHT_OFFSET = 0.03; // Height between stacked papers
   private readonly BASE_PAPER_HEIGHT = 0.05; // Base height above whitepaper
@@ -101,8 +122,13 @@ export class PortfolioPapersManager {
   private pendingStackHideTimeout: number | null = null;
   private stackHiddenUntilReopen = false;
 
-  constructor(_container: HTMLElement, renderer?: WebGLRenderer) {
+  constructor(
+    _container: HTMLElement,
+    renderer?: WebGLRenderer,
+    overlayManager?: PaperOverlayManager,
+  ) {
     this.renderer = renderer || null;
+    this.overlayManager = overlayManager;
 
     // Configure PDF.js worker - use local worker file to avoid CORS issues
     pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
@@ -421,6 +447,7 @@ export class PortfolioPapersManager {
       );
 
       this.createPaperMesh(paper.id, canvas);
+      await this.registerPdfOverlay(paper.id, page, viewport, canvas);
     } catch (error) {
       console.error(`[PortfolioPapers] Failed to load PDF:`, error);
 
@@ -533,28 +560,8 @@ export class PortfolioPapersManager {
     const usableWidth = VIEW_WIDTH - marginX * 2;
     const lines = markdown.split(/\r?\n/);
 
-    type RenderSegment = {
-      text: string;
-      x: number;
-      y: number;
-      font: string;
-      color: string;
-      isBold?: boolean;
-      isItalic?: boolean;
-      isLink?: boolean;
-      linkUrl?: string;
-    };
-
-    type RenderImage = {
-      img: HTMLImageElement;
-      x: number;
-      y: number;
-      width: number;
-      height: number;
-    };
-
-    const segments: RenderSegment[] = [];
-    const images: RenderImage[] = [];
+    const segments: MarkdownRenderSegment[] = [];
+    const images: MarkdownRenderImage[] = [];
     const rules: number[] = [];
     const links: LinkRegion[] = [];
     const fontFamily =
@@ -876,7 +883,7 @@ export class PortfolioPapersManager {
         }
 
         // Create placeholder object
-        const imageEntry: RenderImage = {
+        const imageEntry: MarkdownRenderImage = {
           img,
           x: marginX,
           y: 0, // Will be set during parseMarkdown
@@ -1009,8 +1016,58 @@ export class PortfolioPapersManager {
       });
     };
 
+    const applyDisplayCanvas = () => {
+      displayCtx.clearRect(0, 0, displayCanvas.width, displayCanvas.height);
+      displayCtx.drawImage(
+        fullCanvas,
+        0,
+        0,
+        displayCanvas.width,
+        displayCanvas.height,
+        0,
+        0,
+        displayCanvas.width,
+        displayCanvas.height,
+      );
+    };
+
+    const syncOverlay = () => {
+      if (!this.overlayManager) {
+        return;
+      }
+      const overlayElement = this.buildMarkdownOverlayElement({
+        segments,
+        rules,
+        images,
+        width: fullCanvas.width,
+        height: fullCanvas.height,
+        marginX,
+        usableWidth,
+      });
+      this.overlayManager.registerPaperOverlay({
+        paperId,
+        element: overlayElement,
+        viewportWidth: displayCanvas.width,
+        viewportHeight: displayCanvas.height,
+        contentHeight: fullCanvas.height,
+      } satisfies PaperOverlayRegistration);
+    };
+
     // Render immediately without waiting for images
     renderContent();
+    applyDisplayCanvas();
+
+    const maxScroll = Math.max(0, fullCanvas.height - displayCanvas.height);
+    const scrollState: PendingScrollState = {
+      fullCanvas,
+      displayCanvas,
+      scrollOffset: 0,
+      maxScroll,
+      links,
+    };
+
+    syncOverlay();
+    this.overlayManager?.setScrollOffset(paperId, scrollState.scrollOffset);
 
     // Load images in background and re-render when ready
     if (imageLoadPromises.length > 0) {
@@ -1025,57 +1082,39 @@ export class PortfolioPapersManager {
           fullCanvas.height = Math.max(VIEW_HEIGHT, Math.ceil(newTotalHeight));
 
           renderContent();
-
-          displayCtx.clearRect(0, 0, displayCanvas.width, displayCanvas.height);
-          displayCtx.drawImage(
-            fullCanvas,
-            0,
-            0,
-            displayCanvas.width,
-            displayCanvas.height,
-            0,
-            0,
-            displayCanvas.width,
-            displayCanvas.height,
-          );
+          applyDisplayCanvas();
 
           const scrollableState = this.scrollablePaperStates.get(paperId);
+          const updatedMaxScroll = Math.max(
+            0,
+            fullCanvas.height - displayCanvas.height,
+          );
+          const currentOffset =
+            scrollableState?.scrollOffset ?? scrollState.scrollOffset;
+          const clampedOffset = Math.min(currentOffset, updatedMaxScroll);
+
+          scrollState.maxScroll = updatedMaxScroll;
+          scrollState.scrollOffset = clampedOffset;
+          scrollState.links = links;
+
           if (scrollableState?.texture) {
             scrollableState.texture.needsUpdate = true;
             scrollableState.links = links;
-            scrollableState.maxScroll = Math.max(
-              0,
-              fullCanvas.height - displayCanvas.height,
-            );
+            scrollableState.maxScroll = updatedMaxScroll;
+            scrollableState.scrollOffset = clampedOffset;
+            this.redrawScrollablePaper(paperId);
           }
+
+          syncOverlay();
+          this.overlayManager?.updateContentHeight(paperId, fullCanvas.height);
+          this.overlayManager?.setScrollOffset(paperId, clampedOffset);
         })
         .catch((error) => {
           console.error("[PortfolioPapers] Error loading images:", error);
         });
     }
 
-    displayCtx.clearRect(0, 0, displayCanvas.width, displayCanvas.height);
-    displayCtx.drawImage(
-      fullCanvas,
-      0,
-      0,
-      displayCanvas.width,
-      displayCanvas.height,
-      0,
-      0,
-      displayCanvas.width,
-      displayCanvas.height,
-    );
-
-    const maxScroll = Math.max(0, fullCanvas.height - displayCanvas.height);
-
-    return {
-      fullCanvas,
-      displayCanvas,
-      scrollOffset: 0,
-      maxScroll,
-      links,
-    };
+    return scrollState;
   }
 
   private async loadReport(paper: PaperConfig): Promise<void> {
@@ -1194,6 +1233,152 @@ export class PortfolioPapersManager {
     this.paperMeshes.set(paperId, mesh);
   }
 
+  private buildMarkdownOverlayElement(options: {
+    segments: MarkdownRenderSegment[];
+    rules: number[];
+    images: MarkdownRenderImage[];
+    width: number;
+    height: number;
+    marginX: number;
+    usableWidth: number;
+  }): HTMLElement {
+    const { segments, rules, images, width, height, marginX, usableWidth } =
+      options;
+    const container = document.createElement("div");
+    container.className = "paper-overlay-markdown";
+    Object.assign(container.style, {
+      position: "relative",
+      width: `${width}px`,
+      height: `${height}px`,
+      background: "#ffffff",
+      color: "#1f2328",
+      fontFamily: '"Inter", "Helvetica Neue", "Segoe UI", Arial, sans-serif',
+      boxSizing: "border-box",
+      pointerEvents: "none",
+    } satisfies Partial<CSSStyleDeclaration>);
+
+    const fallbackImageWidth = usableWidth * 0.8;
+    const fallbackImageHeight = fallbackImageWidth * 0.75;
+
+    rules.forEach((ruleY) => {
+      const rule = document.createElement("div");
+      Object.assign(rule.style, {
+        position: "absolute",
+        left: `${marginX}px`,
+        right: `${marginX}px`,
+        top: `${ruleY}px`,
+        height: "2px",
+        background: "#d0d7de",
+      } satisfies Partial<CSSStyleDeclaration>);
+      container.appendChild(rule);
+    });
+
+    images.forEach((image) => {
+      const imageElement = image.img.cloneNode(true) as HTMLImageElement;
+      const widthValue = image.width || fallbackImageWidth;
+      const heightValue = image.height || fallbackImageHeight;
+      imageElement.loading = "lazy";
+      Object.assign(imageElement.style, {
+        position: "absolute",
+        left: `${image.x}px`,
+        top: `${image.y}px`,
+        width: `${widthValue}px`,
+        height: `${heightValue}px`,
+        objectFit: "contain",
+      } satisfies Partial<CSSStyleDeclaration>);
+      container.appendChild(imageElement);
+    });
+
+    segments.forEach((segment) => {
+      const span = document.createElement("span");
+      span.textContent = segment.text;
+      const fontSizeMatch = segment.font.match(/([0-9.]+)px/);
+      const fontSize = fontSizeMatch ? parseFloat(fontSizeMatch[1]) : 16;
+      Object.assign(span.style, {
+        position: "absolute",
+        left: `${segment.x}px`,
+        top: `${segment.y - fontSize * 0.9}px`,
+        font: segment.font,
+        color: segment.isLink ? "#0969da" : segment.color,
+        textDecoration: segment.isLink ? "underline" : "none",
+        textDecorationThickness: segment.isLink ? "1px" : "initial",
+        lineHeight: "1.25",
+        pointerEvents: "none",
+        whiteSpace: "pre",
+      } satisfies Partial<CSSStyleDeclaration>);
+      container.appendChild(span);
+    });
+
+    return container;
+  }
+
+  private async registerPdfOverlay(
+    paperId: string,
+    page: pdfjsLib.PDFPageProxy,
+    viewport: pdfjsLib.PageViewport,
+    canvas: HTMLCanvasElement,
+  ): Promise<void> {
+    if (!this.overlayManager) {
+      return;
+    }
+
+    const pageContainer = document.createElement("div");
+    pageContainer.className = "paper-overlay-pdf";
+    Object.assign(pageContainer.style, {
+      position: "relative",
+      width: `${viewport.width}px`,
+      height: `${viewport.height}px`,
+      background: "#ffffff",
+      overflow: "hidden",
+      pointerEvents: "none",
+    } satisfies Partial<CSSStyleDeclaration>);
+
+    canvas.style.display = "block";
+    canvas.style.width = "100%";
+    canvas.style.height = "100%";
+    pageContainer.appendChild(canvas);
+
+    const textLayer = document.createElement("div");
+    textLayer.className = "paper-overlay-pdf-text-layer";
+    Object.assign(textLayer.style, {
+      position: "absolute",
+      left: "0",
+      top: "0",
+      width: `${viewport.width}px`,
+      height: `${viewport.height}px`,
+      color: "#111",
+      pointerEvents: "none",
+    } satisfies Partial<CSSStyleDeclaration>);
+
+    try {
+      const textContent = await page.getTextContent();
+      const renderTextLayerKey = "render" + "TextLayer";
+      const renderTextLayer = (pdfjsLib as any)[renderTextLayerKey];
+      const task = renderTextLayer?.({
+        textContent,
+        container: textLayer,
+        viewport,
+        textDivs: [],
+      });
+      if (task?.promise) {
+        await task.promise;
+      }
+    } catch (error) {
+      console.warn("[PortfolioPapers] Unable to build PDF text layer", error);
+    }
+
+    pageContainer.appendChild(textLayer);
+
+    this.overlayManager.registerPaperOverlay({
+      paperId,
+      element: pageContainer,
+      viewportWidth: viewport.width,
+      viewportHeight: viewport.height,
+      contentHeight: viewport.height,
+    } satisfies PaperOverlayRegistration);
+    this.overlayManager.setScrollOffset(paperId, 0);
+  }
+
   scrollPaper(paperId: string, deltaY: number): boolean {
     const scrollable = this.scrollablePaperStates.get(paperId);
     if (!scrollable) {
@@ -1216,6 +1401,7 @@ export class PortfolioPapersManager {
     }
 
     scrollable.scrollOffset = nextOffset;
+    this.overlayManager?.setScrollOffset(paperId, scrollable.scrollOffset);
 
     // Batch redraw instead of immediate redraw
     this.pendingRedraws.add(paperId);
@@ -1320,6 +1506,7 @@ export class PortfolioPapersManager {
       this.drawScrollIndicator(displayCtx, scrollable);
     }
 
+    this.overlayManager?.setScrollOffset(paperId, scrollable.scrollOffset);
     texture.needsUpdate = true;
   }
 
@@ -1416,6 +1603,7 @@ export class PortfolioPapersManager {
     }
 
     scrollable.scrollOffset = newOffset;
+    this.overlayManager?.setScrollOffset(this.draggingPaperId, newOffset);
 
     this.pendingRedraws.add(this.draggingPaperId);
     if (this.redrawAnimationFrameId === null) {
