@@ -235,9 +235,164 @@ body.fullscreen-mode-active #vinyl-focus-card-info-root {
 .paper-overlay-pdf {
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: auto;
+    image-rendering: auto;
+    text-shadow: none;
 }
 
 .paper-overlay-pdf-text-layer span {
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: auto;
+    image-rendering: auto;
+    text-shadow: none;
     transform-origin: 0 0;
     white-space: pre;
+}
+
+.paper-overlay {
+    scrollbar-gutter: stable;
+    overscroll-behavior: contain;
+    scrollbar-width: thick;
+    scrollbar-color: rgba(0, 0, 0, 0.45) #ffffff;
+    box-sizing: border-box;
+    overflow-x: hidden !important;
+}
+
+.paper-overlay::-webkit-scrollbar {
+    width: var(--paper-scrollbar-width, 44px);
+    background: #ffffff;
+}
+
+.paper-overlay::-webkit-scrollbar-track {
+    background: #ffffff;
+}
+
+.paper-overlay::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.45);
+    border-radius: 0;
+    border: var(--paper-scrollbar-border, 6px) solid #ffffff;
+}
+
+.paper-overlay.paper-overlay-type-pdf {
+    scrollbar-gutter: auto;
+    scrollbar-width: none;
+    scrollbar-color: transparent transparent;
+}
+
+.paper-overlay.paper-overlay-type-pdf::-webkit-scrollbar {
+    width: 0;
+    background: transparent;
+}
+
+.paper-overlay.paper-overlay-type-pdf::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.paper-overlay.paper-overlay-type-pdf::-webkit-scrollbar-thumb {
+    background: transparent;
+    border: none;
+}
+
+.paper-overlay-scrollbar {
+    display: none;
+}
+
+.paper-overlay-markdown {
+    min-height: 100%;
+    max-width: 100%;
+    user-select: text;
+    cursor: default;
+    font-size: 34px;
+    line-height: 1.28;
+    box-sizing: border-box;
+    overflow-x: hidden;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+}
+
+.paper-overlay-markdown * {
+    cursor: inherit;
+}
+
+.paper-overlay-markdown a {
+    cursor: pointer;
+}
+
+.paper-overlay-markdown:active {
+    cursor: text;
+}
+
+.paper-overlay-markdown-content {
+    color: #1f2328;
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow-x: hidden;
+}
+
+.paper-overlay-markdown h1 {
+    font-size: 55px;
+    font-weight: 700;
+    margin: 0 0 20px;
+}
+
+.paper-overlay-markdown h2 {
+    font-size: 48px;
+    font-weight: 600;
+    margin: 24px 0 17px;
+}
+
+.paper-overlay-markdown h3 {
+    font-size: 42px;
+    font-weight: 600;
+    margin: 20px 0 14px;
+}
+
+.paper-overlay-markdown h4 {
+    font-size: 37px;
+    font-weight: 600;
+    margin: 18px 0 12px;
+}
+
+.paper-overlay-markdown p {
+    margin: 0 0 12px;
+}
+
+.paper-overlay-markdown a {
+    color: #0969da;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.paper-overlay-markdown a:hover {
+    color: #0550ae;
+}
+
+.paper-overlay-markdown hr {
+    border: none;
+    border-top: 2px solid #d0d7de;
+    margin: 28px 0;
+}
+
+.paper-overlay-markdown-list {
+    margin: 0 0 12px;
+    padding-left: 48px;
+}
+
+.paper-overlay-markdown-list li {
+    margin-bottom: 9px;
+}
+
+.paper-overlay-markdown-image {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    height: auto;
+    margin: 28px 0;
+    object-fit: contain;
+    box-sizing: border-box;
+}
+
+.paper-overlay-markdown-spacer {
+    height: 20px;
 }

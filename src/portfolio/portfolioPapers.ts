@@ -66,6 +66,36 @@ type MarkdownRenderImage = {
   height: number;
 };
 
+type MarkdownLayoutConfig = {
+  marginXRatio: number;
+  marginTopRatio: number;
+  marginBottomRatio: number;
+  lineHeight: number;
+  fontSizes: {
+    h1: number;
+    h2: number;
+    h3: number;
+    h4: number;
+    body: number;
+    bullet: number;
+  };
+};
+
+const DEFAULT_MARKDOWN_LAYOUT: MarkdownLayoutConfig = {
+  marginXRatio: 0.05,
+  marginTopRatio: 0.02,
+  marginBottomRatio: 0.2,
+  lineHeight: 1.28,
+  fontSizes: {
+    h1: 55,
+    h2: 48,
+    h3: 42,
+    h4: 37,
+    body: 34,
+    bullet: 34,
+  },
+};
+
 export const PAPERS: PaperConfig[] = [
   {
     id: "resume-pdf",
@@ -114,13 +144,20 @@ export class PortfolioPapersManager {
   private scrollablePaperStates: Map<string, ScrollablePaperState> = new Map();
   private pendingRedraws: Set<string> = new Set(); // Batch scroll redraws
   private redrawAnimationFrameId: number | null = null;
-  private draggingPaperId: string | null = null;
-  private paperDragStartY: number = 0;
-  private paperDragStartOffset: number = 0;
   private rotationAnimationHandles: Map<string, number> = new Map();
   private currentPaperListeners: Array<(paperId: string | null) => void> = [];
   private pendingStackHideTimeout: number | null = null;
   private stackHiddenUntilReopen = false;
+  private markdownLayoutConfig: MarkdownLayoutConfig = {
+    ...DEFAULT_MARKDOWN_LAYOUT,
+    fontSizes: { ...DEFAULT_MARKDOWN_LAYOUT.fontSizes },
+  };
+  private markdownSources: Map<string, { markdown: string; baseUrl: string }> =
+    new Map();
+  private markdownScrollMetrics: Map<
+    string,
+    { scrollTop: number; scrollHeight: number; clientHeight: number }
+  > = new Map();
 
   constructor(
     _container: HTMLElement,
@@ -402,6 +439,31 @@ export class PortfolioPapersManager {
     }
   }
 
+  setMarkdownLayoutConfig(config: Partial<MarkdownLayoutConfig>): void {
+    if (config.marginXRatio !== undefined) {
+      this.markdownLayoutConfig.marginXRatio = config.marginXRatio;
+    }
+    if (config.marginTopRatio !== undefined) {
+      this.markdownLayoutConfig.marginTopRatio = config.marginTopRatio;
+    }
+    if (config.marginBottomRatio !== undefined) {
+      this.markdownLayoutConfig.marginBottomRatio = config.marginBottomRatio;
+    }
+    if (config.lineHeight !== undefined) {
+      this.markdownLayoutConfig.lineHeight = config.lineHeight;
+    }
+    if (config.fontSizes) {
+      this.markdownLayoutConfig.fontSizes = {
+        ...this.markdownLayoutConfig.fontSizes,
+        ...config.fontSizes,
+      };
+    }
+
+    for (const paperId of this.markdownSources.keys()) {
+      void this.rebuildMarkdownPaper(paperId);
+    }
+  }
+
   private async loadPDF(paper: PaperConfig): Promise<void> {
     console.log(`[PortfolioPapers] Loading PDF: ${paper.url}`);
 
@@ -474,6 +536,10 @@ export class PortfolioPapersManager {
 
     if (paper.id === "portfolio") {
       const markdownContent = await this.fetchMarkdownContent(paper);
+      this.markdownSources.set(paper.id, {
+        markdown: markdownContent,
+        baseUrl: paper.url,
+      });
       const scrollState = this.buildScrollableMarkdownPaper(
         markdownContent,
         paper.url,
@@ -538,6 +604,37 @@ export class PortfolioPapersManager {
     }
   }
 
+  private async rebuildMarkdownPaper(paperId: string): Promise<void> {
+    const source = this.markdownSources.get(paperId);
+    if (!source) {
+      return;
+    }
+    const scrollState = this.buildScrollableMarkdownPaper(
+      source.markdown,
+      source.baseUrl,
+      paperId,
+    );
+    if (!scrollState) {
+      return;
+    }
+    const metrics = this.markdownScrollMetrics.get(paperId);
+    if (metrics) {
+      const overlayRange = Math.max(
+        0,
+        metrics.scrollHeight - metrics.clientHeight,
+      );
+      if (overlayRange > 0 && scrollState.maxScroll > 0) {
+        scrollState.scrollOffset =
+          (metrics.scrollTop / overlayRange) * scrollState.maxScroll;
+      }
+    }
+    this.createPaperMesh(paperId, scrollState.displayCanvas, scrollState);
+    this.redrawScrollablePaper(paperId);
+    this.overlayManager?.setScrollOffset(paperId, scrollState.scrollOffset, {
+      force: true,
+    });
+  }
+
   private buildScrollableMarkdownPaper(
     markdown: string,
     baseUrl: string,
@@ -554,9 +651,10 @@ export class PortfolioPapersManager {
     const measuringCtx = displayCanvas.getContext("2d");
     if (!measuringCtx) return null;
 
-    const marginX = Math.floor(VIEW_WIDTH * 0.08);
-    const marginTop = Math.floor(VIEW_HEIGHT * 0.08);
-    const marginBottom = Math.floor(VIEW_HEIGHT * 0.12);
+    const layout = this.markdownLayoutConfig;
+    const marginX = Math.floor(VIEW_WIDTH * layout.marginXRatio);
+    const marginTop = Math.floor(VIEW_HEIGHT * layout.marginTopRatio);
+    const marginBottom = Math.floor(VIEW_HEIGHT * layout.marginBottomRatio);
     const usableWidth = VIEW_WIDTH - marginX * 2;
     const lines = markdown.split(/\r?\n/);
 
@@ -668,7 +766,7 @@ export class PortfolioPapersManager {
       ) => {
         const inlineParts = parseInlineMarkdown(line);
         let currentX = marginX + indent;
-        const lineHeight = Math.round(fontSize * 1.28);
+        const lineHeight = Math.round(fontSize * layout.lineHeight);
 
         // Process all parts and build a flat list of words with their formatting
         const words: Array<{
@@ -816,19 +914,19 @@ export class PortfolioPapersManager {
 
         if (/^#{3}\s+/.test(trimmed)) {
           const text = trimmed.replace(/^#{3}\s+/, "");
-          processLine(text, 42, "600", 0, headingColor, 14);
+          processLine(text, layout.fontSizes.h3, "600", 0, headingColor, 14);
           return;
         }
 
         if (/^#{2}\s+/.test(trimmed)) {
           const text = trimmed.replace(/^#{2}\s+/, "");
-          processLine(text, 48, "600", 0, headingColor, 17);
+          processLine(text, layout.fontSizes.h2, "600", 0, headingColor, 17);
           return;
         }
 
         if (/^#\s+/.test(trimmed)) {
           const text = trimmed.replace(/^#\s+/, "");
-          processLine(text, 55, "700", 0, headingColor, 20);
+          processLine(text, layout.fontSizes.h1, "700", 0, headingColor, 20);
           return;
         }
 
@@ -836,7 +934,7 @@ export class PortfolioPapersManager {
           const text = trimmed.replace(/^[-*]\s+/, "");
           processLine(
             "• " + text,
-            34,
+            layout.fontSizes.bullet,
             "400",
             Math.floor(marginX * 0.25),
             bodyColor,
@@ -847,11 +945,11 @@ export class PortfolioPapersManager {
 
         if (/^####\s+/.test(trimmed)) {
           const text = trimmed.replace(/^####\s+/, "");
-          processLine(text, 37, "600", 0, headingColor, 12);
+          processLine(text, layout.fontSizes.h4, "600", 0, headingColor, 12);
           return;
         }
 
-        processLine(trimmed, 34, "400", 0, bodyColor, 12);
+        processLine(trimmed, layout.fontSizes.body, "400", 0, bodyColor, 12);
       });
 
       return cursorY;
@@ -1036,13 +1134,13 @@ export class PortfolioPapersManager {
         return;
       }
       const overlayElement = this.buildMarkdownOverlayElement({
-        segments,
-        rules,
-        images,
+        markdown,
+        baseUrl,
         width: fullCanvas.width,
         height: fullCanvas.height,
         marginX,
-        usableWidth,
+        marginTop,
+        marginBottom,
       });
       this.overlayManager.registerPaperOverlay({
         paperId,
@@ -1050,6 +1148,12 @@ export class PortfolioPapersManager {
         viewportWidth: displayCanvas.width,
         viewportHeight: displayCanvas.height,
         contentHeight: fullCanvas.height,
+        interactive: true,
+        useNativeScroll: true,
+        onScroll: (metrics) => {
+          this.markdownScrollMetrics.set(paperId, metrics);
+          this.setScrollOffsetFromOverlay(paperId, metrics);
+        },
       } satisfies PaperOverlayRegistration);
     };
 
@@ -1066,8 +1170,22 @@ export class PortfolioPapersManager {
       links,
     };
 
+    const storedMetrics = this.markdownScrollMetrics.get(paperId);
+    if (storedMetrics) {
+      const overlayRange = Math.max(
+        0,
+        storedMetrics.scrollHeight - storedMetrics.clientHeight,
+      );
+      if (overlayRange > 0 && maxScroll > 0) {
+        scrollState.scrollOffset =
+          (storedMetrics.scrollTop / overlayRange) * maxScroll;
+      }
+    }
+
     syncOverlay();
-    this.overlayManager?.setScrollOffset(paperId, scrollState.scrollOffset);
+    this.overlayManager?.setScrollOffset(paperId, scrollState.scrollOffset, {
+      force: true,
+    });
 
     // Load images in background and re-render when ready
     if (imageLoadPromises.length > 0) {
@@ -1107,7 +1225,9 @@ export class PortfolioPapersManager {
 
           syncOverlay();
           this.overlayManager?.updateContentHeight(paperId, fullCanvas.height);
-          this.overlayManager?.setScrollOffset(paperId, clampedOffset);
+          this.overlayManager?.setScrollOffset(paperId, clampedOffset, {
+            force: true,
+          });
         })
         .catch((error) => {
           console.error("[PortfolioPapers] Error loading images:", error);
@@ -1234,81 +1354,230 @@ export class PortfolioPapersManager {
   }
 
   private buildMarkdownOverlayElement(options: {
-    segments: MarkdownRenderSegment[];
-    rules: number[];
-    images: MarkdownRenderImage[];
+    markdown: string;
+    baseUrl: string;
     width: number;
     height: number;
     marginX: number;
-    usableWidth: number;
+    marginTop: number;
+    marginBottom: number;
   }): HTMLElement {
-    const { segments, rules, images, width, height, marginX, usableWidth } =
-      options;
+    const {
+      markdown,
+      baseUrl,
+      width,
+      height,
+      marginX,
+      marginTop,
+      marginBottom,
+    } = options;
+    const layout = this.markdownLayoutConfig;
     const container = document.createElement("div");
     container.className = "paper-overlay-markdown";
     Object.assign(container.style, {
       position: "relative",
       width: `${width}px`,
-      height: `${height}px`,
+      minHeight: `${height}px`,
       background: "#ffffff",
       color: "#1f2328",
       fontFamily: '"Inter", "Helvetica Neue", "Segoe UI", Arial, sans-serif',
       boxSizing: "border-box",
-      pointerEvents: "none",
+      pointerEvents: "auto",
+      userSelect: "text",
     } satisfies Partial<CSSStyleDeclaration>);
 
-    const fallbackImageWidth = usableWidth * 0.8;
-    const fallbackImageHeight = fallbackImageWidth * 0.75;
+    const content = document.createElement("div");
+    content.className = "paper-overlay-markdown-content";
+    Object.assign(content.style, {
+      padding: `${marginTop}px ${marginX}px ${marginBottom}px`,
+      boxSizing: "border-box",
+      fontSize: `${layout.fontSizes.body}px`,
+      lineHeight: `${layout.lineHeight}`,
+    } satisfies Partial<CSSStyleDeclaration>);
+    container.appendChild(content);
 
-    rules.forEach((ruleY) => {
-      const rule = document.createElement("div");
-      Object.assign(rule.style, {
-        position: "absolute",
-        left: `${marginX}px`,
-        right: `${marginX}px`,
-        top: `${ruleY}px`,
-        height: "2px",
-        background: "#d0d7de",
-      } satisfies Partial<CSSStyleDeclaration>);
-      container.appendChild(rule);
+    const resolveUrl = (url: string) => {
+      if (url.startsWith("./")) {
+        const baseDir = baseUrl.substring(0, baseUrl.lastIndexOf("/") + 1);
+        return baseDir + url.substring(2);
+      }
+      return url;
+    };
+
+    const parseFormattingOnly = (
+      text: string,
+    ): Array<{ text: string; bold: boolean; italic: boolean }> => {
+      const parts: Array<{ text: string; bold: boolean; italic: boolean }> = [];
+      const regex = /(\*\*([^*]+)\*\*)|(\*([^*]+)\*)|([^*]+)/g;
+      let match;
+      while ((match = regex.exec(text)) !== null) {
+        if (match[2]) {
+          parts.push({ text: match[2], bold: true, italic: false });
+        } else if (match[4]) {
+          parts.push({ text: match[4], bold: false, italic: true });
+        } else if (match[5]) {
+          parts.push({ text: match[5], bold: false, italic: false });
+        }
+      }
+      return parts.length > 0 ? parts : [{ text, bold: false, italic: false }];
+    };
+
+    const parseInlineMarkdown = (
+      text: string,
+    ): Array<{
+      text: string;
+      bold: boolean;
+      italic: boolean;
+      isLink?: boolean;
+      linkUrl?: string;
+    }> => {
+      const parts: Array<{
+        text: string;
+        bold: boolean;
+        italic: boolean;
+        isLink?: boolean;
+        linkUrl?: string;
+      }> = [];
+      const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+      let lastIndex = 0;
+      let match;
+
+      while ((match = linkRegex.exec(text)) !== null) {
+        const beforeLink = text.substring(lastIndex, match.index);
+        if (beforeLink) {
+          parts.push(...parseFormattingOnly(beforeLink));
+        }
+        const linkText = match[1];
+        const linkUrl = match[2];
+        const linkParts = parseFormattingOnly(linkText);
+        linkParts.forEach((part) => {
+          parts.push({ ...part, isLink: true, linkUrl });
+        });
+        lastIndex = match.index + match[0].length;
+      }
+
+      const remaining = text.substring(lastIndex);
+      if (remaining) {
+        parts.push(...parseFormattingOnly(remaining));
+      }
+
+      return parts.length > 0 ? parts : [{ text, bold: false, italic: false }];
+    };
+
+    const appendInlineNodes = (parent: HTMLElement, text: string) => {
+      const parts = parseInlineMarkdown(text);
+      parts.forEach((part) => {
+        const element = part.isLink
+          ? document.createElement("a")
+          : document.createElement("span");
+        element.textContent = part.text;
+        if (part.isLink && part.linkUrl) {
+          const anchor = element as HTMLAnchorElement;
+          anchor.href = resolveUrl(part.linkUrl);
+          anchor.target = "_blank";
+          anchor.rel = "noopener";
+        }
+        if (part.bold) {
+          element.style.fontWeight = "600";
+        }
+        if (part.italic) {
+          element.style.fontStyle = "italic";
+        }
+        parent.appendChild(element);
+      });
+    };
+
+    const lines = markdown.split(/\r?\n/);
+    let currentList: HTMLUListElement | null = null;
+
+    const finalizeList = () => {
+      if (currentList) {
+        content.appendChild(currentList);
+        currentList = null;
+      }
+    };
+
+    lines.forEach((rawLine) => {
+      const trimmed = rawLine.trimEnd();
+      const line = trimmed.trim();
+
+      if (line === "") {
+        finalizeList();
+        const spacer = document.createElement("div");
+        spacer.className = "paper-overlay-markdown-spacer";
+        content.appendChild(spacer);
+        return;
+      }
+
+      if (/^---+$/.test(line)) {
+        finalizeList();
+        const rule = document.createElement("hr");
+        content.appendChild(rule);
+        return;
+      }
+
+      const imageMatch = line.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
+      if (imageMatch) {
+        finalizeList();
+        const img = document.createElement("img");
+        img.alt = imageMatch[1];
+        img.src = resolveUrl(imageMatch[2]);
+        img.loading = "lazy";
+        img.className = "paper-overlay-markdown-image";
+        content.appendChild(img);
+        return;
+      }
+
+      if (/^#{4}\s+/.test(line)) {
+        finalizeList();
+        const heading = document.createElement("h4");
+        appendInlineNodes(heading, line.replace(/^#{4}\s+/, ""));
+        content.appendChild(heading);
+        return;
+      }
+
+      if (/^#{3}\s+/.test(line)) {
+        finalizeList();
+        const heading = document.createElement("h3");
+        appendInlineNodes(heading, line.replace(/^#{3}\s+/, ""));
+        content.appendChild(heading);
+        return;
+      }
+
+      if (/^#{2}\s+/.test(line)) {
+        finalizeList();
+        const heading = document.createElement("h2");
+        appendInlineNodes(heading, line.replace(/^#{2}\s+/, ""));
+        content.appendChild(heading);
+        return;
+      }
+
+      if (/^#\s+/.test(line)) {
+        finalizeList();
+        const heading = document.createElement("h1");
+        appendInlineNodes(heading, line.replace(/^#\s+/, ""));
+        content.appendChild(heading);
+        return;
+      }
+
+      if (/^[-*]\s+/.test(line)) {
+        if (!currentList) {
+          currentList = document.createElement("ul");
+          currentList.className = "paper-overlay-markdown-list";
+        }
+        const item = document.createElement("li");
+        appendInlineNodes(item, line.replace(/^[-*]\s+/, ""));
+        currentList.appendChild(item);
+        return;
+      }
+
+      finalizeList();
+      const paragraph = document.createElement("p");
+      appendInlineNodes(paragraph, line);
+      content.appendChild(paragraph);
     });
 
-    images.forEach((image) => {
-      const imageElement = image.img.cloneNode(true) as HTMLImageElement;
-      const widthValue = image.width || fallbackImageWidth;
-      const heightValue = image.height || fallbackImageHeight;
-      imageElement.loading = "lazy";
-      Object.assign(imageElement.style, {
-        position: "absolute",
-        left: `${image.x}px`,
-        top: `${image.y}px`,
-        width: `${widthValue}px`,
-        height: `${heightValue}px`,
-        objectFit: "contain",
-      } satisfies Partial<CSSStyleDeclaration>);
-      container.appendChild(imageElement);
-    });
-
-    segments.forEach((segment) => {
-      const span = document.createElement("span");
-      span.textContent = segment.text;
-      const fontSizeMatch = segment.font.match(/([0-9.]+)px/);
-      const fontSize = fontSizeMatch ? parseFloat(fontSizeMatch[1]) : 16;
-      Object.assign(span.style, {
-        position: "absolute",
-        left: `${segment.x}px`,
-        top: `${segment.y - fontSize * 0.9}px`,
-        font: segment.font,
-        color: segment.isLink ? "#0969da" : segment.color,
-        textDecoration: segment.isLink ? "underline" : "none",
-        textDecorationThickness: segment.isLink ? "1px" : "initial",
-        lineHeight: "1.25",
-        pointerEvents: "none",
-        whiteSpace: "pre",
-      } satisfies Partial<CSSStyleDeclaration>);
-      container.appendChild(span);
-    });
-
+    finalizeList();
     return container;
   }
 
@@ -1375,33 +1644,39 @@ export class PortfolioPapersManager {
       viewportWidth: viewport.width,
       viewportHeight: viewport.height,
       contentHeight: viewport.height,
+      overlayClass: "paper-overlay-type-pdf",
     } satisfies PaperOverlayRegistration);
-    this.overlayManager.setScrollOffset(paperId, 0);
+    this.overlayManager.setScrollOffset(paperId, 0, { force: true });
   }
 
-  scrollPaper(paperId: string, deltaY: number): boolean {
+  private setScrollOffsetFromOverlay(
+    paperId: string,
+    metrics: { scrollTop: number; scrollHeight: number; clientHeight: number },
+  ): void {
     const scrollable = this.scrollablePaperStates.get(paperId);
     if (!scrollable) {
-      return false;
+      return;
     }
 
     const scrollRange = this.getScrollRange(scrollable);
-    if (scrollRange <= 0) {
-      return false;
+    const overlayRange = Math.max(
+      0,
+      metrics.scrollHeight - metrics.clientHeight,
+    );
+    if (scrollRange <= 0 || overlayRange <= 0) {
+      return;
     }
 
-    const SCROLL_SPEED = 1.1;
-    const nextOffset = Math.max(
-      0,
-      Math.min(scrollRange, scrollable.scrollOffset + deltaY * SCROLL_SPEED),
+    const scrollRatio = Math.min(
+      Math.max(metrics.scrollTop / overlayRange, 0),
+      1,
     );
-
+    const nextOffset = scrollRatio * scrollRange;
     if (nextOffset === scrollable.scrollOffset) {
-      return false;
+      return;
     }
 
     scrollable.scrollOffset = nextOffset;
-    this.overlayManager?.setScrollOffset(paperId, scrollable.scrollOffset);
 
     // Batch redraw instead of immediate redraw
     this.pendingRedraws.add(paperId);
@@ -1410,7 +1685,6 @@ export class PortfolioPapersManager {
         this.processPendingRedraws();
       });
     }
-    return true;
   }
 
   private processPendingRedraws(): void {
@@ -1421,10 +1695,6 @@ export class PortfolioPapersManager {
     this.redrawAnimationFrameId = null;
   }
 
-  isPaperScrollable(paperId: string): boolean {
-    return this.scrollablePaperStates.has(paperId);
-  }
-
   isPaperInLeftStack(paperId: string): boolean {
     return this.leftStackPapers.includes(paperId);
   }
@@ -1432,32 +1702,6 @@ export class PortfolioPapersManager {
   getDisplayCanvasForPaper(paperId: string): HTMLCanvasElement | null {
     const state = this.scrollablePaperStates.get(paperId);
     return state?.displayCanvas ?? null;
-  }
-
-  getDraggingPaperId(): string | null {
-    return this.draggingPaperId;
-  }
-
-  isDraggingPaper(): boolean {
-    return this.draggingPaperId !== null;
-  }
-
-  clientToCanvasCoords(
-    paperId: string,
-    clientX: number,
-    clientY: number,
-    viewportCanvas: HTMLCanvasElement,
-  ): { x: number; y: number } | null {
-    const scrollable = this.scrollablePaperStates.get(paperId);
-    if (!scrollable) return null;
-    const rect = viewportCanvas.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0) return null;
-    const normalizedX = (clientX - rect.left) / rect.width;
-    const normalizedY = (clientY - rect.top) / rect.height;
-    return {
-      x: normalizedX * scrollable.displayCanvas.width,
-      y: normalizedY * scrollable.displayCanvas.height,
-    };
   }
 
   getTopLeftStackPaperId(): string | null {
@@ -1506,7 +1750,9 @@ export class PortfolioPapersManager {
       this.drawScrollIndicator(displayCtx, scrollable);
     }
 
-    this.overlayManager?.setScrollOffset(paperId, scrollable.scrollOffset);
+    this.overlayManager?.setScrollOffset(paperId, scrollable.scrollOffset, {
+      force: false,
+    });
     texture.needsUpdate = true;
   }
 
@@ -1551,74 +1797,6 @@ export class PortfolioPapersManager {
     ctx.fillStyle = "#7a7a7a";
     ctx.fillRect(trackX, thumbY, width, thumbHeight);
     ctx.restore();
-  }
-
-  uvToCanvasCoords(
-    paperId: string,
-    uv: { x: number; y: number },
-  ): { x: number; y: number } | null {
-    const scrollable = this.scrollablePaperStates.get(paperId);
-    if (!scrollable) return null;
-
-    // UV coordinates are 0-1, convert to canvas pixels
-    const canvasX = uv.x * scrollable.displayCanvas.width;
-    const canvasY = (1 - uv.y) * scrollable.displayCanvas.height; // Flip Y (UV is bottom-up)
-
-    return { x: canvasX, y: canvasY };
-  }
-
-  startPaperDrag(paperId: string, canvasY: number): void {
-    const scrollable = this.scrollablePaperStates.get(paperId);
-    if (!scrollable) return;
-
-    const scrollRange = this.getScrollRange(scrollable);
-    if (scrollRange <= 0) {
-      return;
-    }
-
-    this.draggingPaperId = paperId;
-    this.paperDragStartY = canvasY;
-    this.paperDragStartOffset = scrollable.scrollOffset;
-  }
-
-  updatePaperDrag(canvasY: number): void {
-    if (!this.draggingPaperId) return;
-
-    const scrollable = this.scrollablePaperStates.get(this.draggingPaperId);
-    if (!scrollable) return;
-
-    const scrollRange = this.getScrollRange(scrollable);
-    if (scrollRange <= 0) {
-      return;
-    }
-
-    const deltaY = canvasY - this.paperDragStartY;
-    const newOffset = Math.max(
-      0,
-      Math.min(scrollRange, this.paperDragStartOffset + deltaY),
-    );
-
-    if (newOffset === scrollable.scrollOffset) {
-      return;
-    }
-
-    scrollable.scrollOffset = newOffset;
-    this.overlayManager?.setScrollOffset(this.draggingPaperId, newOffset);
-
-    this.pendingRedraws.add(this.draggingPaperId);
-    if (this.redrawAnimationFrameId === null) {
-      this.redrawAnimationFrameId = requestAnimationFrame(() => {
-        this.processPendingRedraws();
-      });
-    }
-  }
-
-  endPaperDrag(): void {
-    const previous = this.draggingPaperId;
-    this.draggingPaperId = null;
-    if (previous && this.scrollablePaperStates.has(previous)) {
-      this.redrawScrollablePaper(previous);
-    }
   }
 
   hidePaper(paperId: string): void {
