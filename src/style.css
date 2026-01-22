@@ -294,6 +294,26 @@ body.fullscreen-mode-active #vinyl-focus-card-info-root {
     border: none;
 }
 
+.paper-overlay.paper-overlay-type-html {
+    scrollbar-gutter: auto;
+    scrollbar-width: none;
+    scrollbar-color: transparent transparent;
+}
+
+.paper-overlay.paper-overlay-type-html::-webkit-scrollbar {
+    width: 0;
+    background: transparent;
+}
+
+.paper-overlay.paper-overlay-type-html::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.paper-overlay.paper-overlay-type-html::-webkit-scrollbar-thumb {
+    background: transparent;
+    border: none;
+}
+
 .paper-overlay-scrollbar {
     display: none;
 }

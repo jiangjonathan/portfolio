@@ -1,5 +1,6 @@
 import type { ScenePage } from "../camera/pageNavigation";
 import type { PortfolioPapersManager } from "./portfolioPapers";
+import type { PaperOverlayManager } from "./paperOverlay";
 
 export interface PortfolioNavigationDependencies {
   setActiveScenePage: (page: ScenePage) => void;
@@ -9,6 +10,8 @@ export interface PortfolioNavigationDependencies {
   ensurePortfolioPanel: () => void;
   getManager: () => PortfolioPapersManager | null;
   coverWaterfallDelayMs: number;
+  coverFlipDurationMs: number;
+  paperOverlayManager?: PaperOverlayManager;
 }
 
 export interface OpenPortfolioOptions {
@@ -23,9 +26,7 @@ export class PortfolioNavigationController {
     this.deps = deps;
   }
 
-  async openPortfolioPage(
-    options: OpenPortfolioOptions = {},
-  ): Promise<void> {
+  async openPortfolioPage(options: OpenPortfolioOptions = {}): Promise<void> {
     const {
       setActiveScenePage,
       animateCoverFlip,
@@ -34,11 +35,28 @@ export class PortfolioNavigationController {
       ensurePortfolioPanel,
       getManager,
       coverWaterfallDelayMs,
+      coverFlipDurationMs,
+      paperOverlayManager,
     } = this.deps;
     const { startAtPaperIndex, waitForEntryAnimations = false } = options;
 
     setActiveScenePage("portfolio");
+
+    // Start overlays hidden
+    if (paperOverlayManager) {
+      paperOverlayManager.hide();
+    }
+
     const coverFlipPromise = animateCoverFlip();
+
+    // Show overlays instantly at halfway point of cover flip
+    const halfwayDelay = coverFlipDurationMs / 2;
+    setTimeout(() => {
+      if (paperOverlayManager) {
+        paperOverlayManager.show();
+      }
+    }, halfwayDelay);
+
     const coverDelayPromise = waitForEntryAnimations
       ? new Promise<void>((resolve) => {
           window.setTimeout(resolve, coverWaterfallDelayMs);
@@ -67,10 +85,7 @@ export class PortfolioNavigationController {
         }
       }
 
-      if (
-        typeof startAtPaperIndex === "number" &&
-        startAtPaperIndex >= 0
-      ) {
+      if (typeof startAtPaperIndex === "number" && startAtPaperIndex >= 0) {
         const papers = manager.getPapers();
         const targetPaper = papers[startAtPaperIndex];
         if (targetPaper) {

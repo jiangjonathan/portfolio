@@ -15,6 +15,7 @@ export type PaperOverlayRegistration = {
     clientHeight: number;
   }) => void;
   overlayClass?: string;
+  stackIndex?: number;
 };
 
 type PaperOverlayEntry = {
@@ -35,6 +36,7 @@ type PaperOverlayEntry = {
   scrollHandler?: () => void;
   interactive: boolean;
   overlayClass?: string;
+  stackIndex: number;
 };
 
 const TEMP_CORNER = new Vector3();
@@ -70,6 +72,20 @@ export class PaperOverlayManager {
     this.container.style.display = active ? "contents" : "none";
   }
 
+  show() {
+    this.overlays.forEach((entry) => {
+      entry.root.style.opacity = "1";
+      entry.root.style.visibility = "visible";
+    });
+  }
+
+  hide() {
+    this.overlays.forEach((entry) => {
+      entry.root.style.opacity = "0";
+      entry.root.style.visibility = "hidden";
+    });
+  }
+
   registerPaperOverlay({
     paperId,
     element,
@@ -80,6 +96,7 @@ export class PaperOverlayManager {
     useNativeScroll = false,
     onScroll,
     overlayClass,
+    stackIndex = 0,
   }: PaperOverlayRegistration) {
     const existing = this.overlays.get(paperId);
     const root = existing?.root ?? document.createElement("div");
@@ -89,6 +106,14 @@ export class PaperOverlayManager {
       existing?.scrollbarThumb ?? document.createElement("div");
     const clampedContentHeight = Math.max(contentHeight, viewportHeight);
     const scrollMode = useNativeScroll ? "native" : "manual";
+    const normalizedStackIndex =
+      typeof stackIndex === "number" && Number.isFinite(stackIndex)
+        ? stackIndex
+        : 0;
+
+    // Calculate z-index: lower stackIndex = higher in stack = higher z-index
+    // Base z-index is 900, top paper (stackIndex 0) gets 900, next gets 899, etc.
+    const overlayZIndex = 900 - normalizedStackIndex;
 
     root.className = "paper-overlay";
     if (overlayClass) {
@@ -107,6 +132,7 @@ export class PaperOverlayManager {
       pointerEvents: interactive ? "auto" : "none",
       display: this.isActive ? "block" : "none",
       overscrollBehavior: "contain",
+      zIndex: String(overlayZIndex),
     } satisfies Partial<CSSStyleDeclaration>);
 
     inner.className = "paper-overlay-inner";
@@ -154,7 +180,7 @@ export class PaperOverlayManager {
       root.addEventListener("scroll", scrollHandler);
     }
 
-    this.overlays.set(paperId, {
+    const overlayEntry: PaperOverlayEntry = {
       root,
       inner,
       scrollbar,
@@ -168,7 +194,9 @@ export class PaperOverlayManager {
       scrollHandler,
       interactive,
       overlayClass,
-    });
+      stackIndex: normalizedStackIndex,
+    };
+    this.overlays.set(paperId, overlayEntry);
 
     // Apply current scroll offset if one was previously set
     this.applyScrollOffset(paperId, useNativeScroll);
@@ -184,6 +212,14 @@ export class PaperOverlayManager {
         this.updateScrollbar(entry);
       });
     }
+  }
+
+  setOverlayInteractive(paperId: string, interactive: boolean) {
+    const entry = this.overlays.get(paperId);
+    if (!entry) return;
+    entry.interactive = interactive;
+    entry.root.style.pointerEvents = interactive ? "auto" : "none";
+    entry.inner.style.pointerEvents = interactive ? "auto" : "none";
   }
 
   setScrollOffset(

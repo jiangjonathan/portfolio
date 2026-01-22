@@ -37,6 +37,9 @@ export function createPortfolioInteractions(deps: PortfolioInteractionsDeps) {
     const paperMeshes = manager.getPaperMeshes();
     const currentPaperId = manager.getCurrentPaperId();
     const topLeftStackPaperId = manager.getTopLeftStackPaperId();
+    const topRightStackPaperId =
+      manager.getPapers().find((paper) => !manager.isPaperInLeftStack(paper.id))
+        ?.id ?? null;
     const papersById = new Map(
       manager.getPapers().map((paper) => [paper.id, paper]),
     );
@@ -55,19 +58,15 @@ export function createPortfolioInteractions(deps: PortfolioInteractionsDeps) {
       if (!paper) {
         continue;
       }
-      const allowLeftStackInteraction =
-        isMarkdownPaperConfig(paper) || isResumePaperConfig(paper);
       const isLeftStack = manager.isPaperInLeftStack(paperId);
       const isCurrentPaper = paperId === currentPaperId;
       const isTopLeftStackPaper = paperId === topLeftStackPaperId;
+      const isTopRightStackPaper = paperId === topRightStackPaperId;
       if (isLeftStack) {
-        if (!allowLeftStackInteraction) {
-          continue;
-        }
         if (!isTopLeftStackPaper) {
           continue;
         }
-      } else if (!isCurrentPaper) {
+      } else if (!isCurrentPaper && !isTopRightStackPaper) {
         continue;
       }
       if (!bestHit || texturedHit.distance < bestHit.hit.distance) {

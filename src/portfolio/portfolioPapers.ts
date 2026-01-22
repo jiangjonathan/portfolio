@@ -219,6 +219,25 @@ export class PortfolioPapersManager {
         );
       }
     });
+    this.updateOverlayInteractivity();
+  }
+
+  private updateOverlayInteractivity(): void {
+    if (!this.overlayManager) {
+      return;
+    }
+    const topLeftStackPaperId = this.getTopLeftStackPaperId();
+    const topRightStackPaperId =
+      this.getPapers().find((paper) => !this.leftStackPapers.includes(paper.id))
+        ?.id ?? null;
+    this.getPapers().forEach((paper) => {
+      const isLeftStack = this.leftStackPapers.includes(paper.id);
+      const isTopLeftStackPaper = paper.id === topLeftStackPaperId;
+      const isTopRightStackPaper = paper.id === topRightStackPaperId;
+      const shouldBeInteractive =
+        isTopRightStackPaper || (isLeftStack && isTopLeftStackPaper);
+      this.overlayManager.setOverlayInteractive(paper.id, shouldBeInteractive);
+    });
   }
 
   private applyRotationForPaper(paperId: string): void {
@@ -582,6 +601,46 @@ export class PortfolioPapersManager {
     }
 
     this.createPaperMesh(paper.id, canvas);
+
+    if (this.overlayManager) {
+      const overlayElement = document.createElement("div");
+      overlayElement.className = "paper-overlay-html";
+      Object.assign(overlayElement.style, {
+        position: "relative",
+        width: `${canvas.width}px`,
+        height: `${canvas.height}px`,
+        background: "#ffffff",
+        color: "#1f2328",
+        fontFamily: '"Inter", "Helvetica Neue", "Segoe UI", Arial, sans-serif',
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        textAlign: "center",
+        padding: "80px",
+        boxSizing: "border-box",
+        pointerEvents: "auto",
+        userSelect: "text",
+      } satisfies Partial<CSSStyleDeclaration>);
+
+      const label = document.createElement("div");
+      label.textContent =
+        paper.description?.trim() || paper.name || "Placeholder";
+      label.style.fontSize = "36px";
+      label.style.fontWeight = "600";
+      overlayElement.appendChild(label);
+
+      this.overlayManager.registerPaperOverlay({
+        paperId: paper.id,
+        element: overlayElement,
+        viewportWidth: canvas.width,
+        viewportHeight: canvas.height,
+        contentHeight: canvas.height,
+        interactive: true,
+        overlayClass: "paper-overlay-type-html",
+        stackIndex: this.getPaperStackIndex(paper.id),
+      } satisfies PaperOverlayRegistration);
+      this.updateOverlayInteractivity();
+    }
   }
 
   private async fetchMarkdownContent(paper: PaperConfig): Promise<string> {
@@ -1154,7 +1213,9 @@ export class PortfolioPapersManager {
           this.markdownScrollMetrics.set(paperId, metrics);
           this.setScrollOffsetFromOverlay(paperId, metrics);
         },
+        stackIndex: this.getPaperStackIndex(paperId),
       } satisfies PaperOverlayRegistration);
+      this.updateOverlayInteractivity();
     };
 
     // Render immediately without waiting for images
@@ -1599,8 +1660,15 @@ export class PortfolioPapersManager {
       height: `${viewport.height}px`,
       background: "#ffffff",
       overflow: "hidden",
-      pointerEvents: "none",
+      cursor: "pointer",
     } satisfies Partial<CSSStyleDeclaration>);
+    pageContainer.addEventListener("click", () => {
+      const target = this.papers.get(paperId);
+      if (!target?.url) {
+        return;
+      }
+      window.open(target.url, "_blank", "noopener");
+    });
 
     canvas.style.display = "block";
     canvas.style.width = "100%";
@@ -1644,7 +1712,9 @@ export class PortfolioPapersManager {
       viewportWidth: viewport.width,
       viewportHeight: viewport.height,
       contentHeight: viewport.height,
+      interactive: true,
       overlayClass: "paper-overlay-type-pdf",
+      stackIndex: this.getPaperStackIndex(paperId),
     } satisfies PaperOverlayRegistration);
     this.overlayManager.setScrollOffset(paperId, 0, { force: true });
   }
@@ -2092,6 +2162,7 @@ export class PortfolioPapersManager {
 
         // Add to left stack tracking
         this.leftStackPapers.push(previousPaperId);
+        this.updateOverlayInteractivity();
 
         // Determine new resting rotation for left stack and persist it
         const newRotation = this.generateRandomRotation();
@@ -2216,6 +2287,7 @@ export class PortfolioPapersManager {
 
     // Clear the left stack tracking
     this.leftStackPapers = [];
+    this.updateOverlayInteractivity();
 
     // Reset to first paper
     const papersList = this.getPapers();
@@ -2380,6 +2452,7 @@ export class PortfolioPapersManager {
         if (leftStackIndex !== -1) {
           this.leftStackPapers.splice(leftStackIndex, 1);
         }
+        this.updateOverlayInteractivity();
 
         // Use two-stage animation: move X first, then Y
         performedAnimation = true;

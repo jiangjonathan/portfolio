@@ -368,6 +368,8 @@ export function createPortfolioFeature(
       ensurePortfolioPanel: ensurePortfolioPanelReady,
       getManager: () => portfolioPapersManager,
       coverWaterfallDelayMs: PORTFOLIO_COVER_WATERFALL_DELAY_MS,
+      coverFlipDurationMs: PORTFOLIO_COVER_FLIP_DURATION_MS,
+      paperOverlayManager: deps.paperOverlayManager,
     });
 
   return {

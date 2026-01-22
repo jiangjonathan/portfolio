@@ -482,7 +482,14 @@ export function setupDOM(): DOMElements {
       pointer-events: auto;
     }
 
+    #global-controls {
+      z-index: 9999 !important;
+      position: relative;
+    }
+
     #global-controls button {
+      position: relative;
+      z-index: 9999;
       padding: 0;
       background: transparent;
       color: var(--vinyl-link-color);
@@ -511,6 +518,16 @@ export function setupDOM(): DOMElements {
       opacity: 0.5;
       cursor: not-allowed;
     }
+
+    #portfolio-paper-links {
+      z-index: 9999 !important;
+      position: relative;
+    }
+
+    #portfolio-paper-links button {
+      position: relative;
+      z-index: 9999;
+    }
   `;
   document.head.appendChild(style);
   root.appendChild(vinylViewerContainer);
@@ -527,7 +544,7 @@ export function setupDOM(): DOMElements {
     flexDirection: GLOBAL_CONTROLS_DEFAULT.flexDirection,
     gap: GLOBAL_CONTROLS_DEFAULT.gap,
     alignItems: "flex-start",
-    zIndex: HIDE_BUTTON_Z_INDEX,
+    zIndex: "1100",
   });
   root.appendChild(globalControls);
 
@@ -716,7 +733,7 @@ export function setupDOM(): DOMElements {
     fontFamily: "inherit",
     fontSize: "var(--vinyl-link-font-size)",
     color: "var(--vinyl-link-color)",
-    zIndex: `${UI_Z_INDEX}`,
+    zIndex: "1100",
     pointerEvents: "auto",
     alignItems: "center",
     justifyContent: "flex-start",
@@ -742,7 +759,7 @@ export function setupDOM(): DOMElements {
     textShadow: "-0.5px 0 #ff0000, 0.5px 0 #0000ff",
     opacity: "0",
     pointerEvents: "none",
-    zIndex: "1050",
+    zIndex: "9999",
     transition: "opacity 0.3s ease, transform 0.15s ease",
     lineHeight: "1",
   };
