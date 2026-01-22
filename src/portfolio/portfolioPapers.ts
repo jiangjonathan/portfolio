@@ -1213,6 +1213,7 @@ export class PortfolioPapersManager {
           this.markdownScrollMetrics.set(paperId, metrics);
           this.setScrollOffsetFromOverlay(paperId, metrics);
         },
+        overlayClass: "paper-overlay-type-markdown",
         stackIndex: this.getPaperStackIndex(paperId),
       } satisfies PaperOverlayRegistration);
       this.updateOverlayInteractivity();

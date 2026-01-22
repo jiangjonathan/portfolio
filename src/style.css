@@ -294,6 +294,37 @@ body.fullscreen-mode-active #vinyl-focus-card-info-root {
     border: none;
 }
 
+.paper-overlay.paper-overlay-type-markdown {
+    scrollbar-gutter: stable;
+    scrollbar-width: auto;
+    scrollbar-color: transparent #ffffff;
+}
+
+.paper-overlay.paper-overlay-type-markdown::-webkit-scrollbar {
+    width: var(--paper-scrollbar-width, 44px);
+    background: #ffffff;
+}
+
+.paper-overlay.paper-overlay-type-markdown::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 0;
+    border: var(--paper-scrollbar-border, 6px) solid #ffffff;
+}
+
+.paper-overlay.paper-overlay-type-markdown:hover {
+    scrollbar-color: rgba(0, 0, 0, 0.45) #ffffff;
+}
+
+.paper-overlay.paper-overlay-type-markdown::-webkit-scrollbar-track {
+    background: #ffffff;
+}
+
+.paper-overlay.paper-overlay-type-markdown:hover::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.45);
+    border-radius: 0;
+    border: var(--paper-scrollbar-border, 6px) solid #ffffff;
+}
+
 .paper-overlay.paper-overlay-type-html {
     scrollbar-gutter: auto;
     scrollbar-width: none;
@@ -380,12 +411,13 @@ body.fullscreen-mode-active #vinyl-focus-card-info-root {
 
 .paper-overlay-markdown a {
     color: #0969da;
-    text-decoration: underline;
+    text-decoration: none;
     text-underline-offset: 2px;
 }
 
 .paper-overlay-markdown a:hover {
     color: #0550ae;
+    text-decoration: underline;
 }
 
 .paper-overlay-markdown hr {

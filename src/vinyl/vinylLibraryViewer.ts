@@ -56,6 +56,7 @@ export class VinylLibraryViewer {
   private focusCardCleanup: (() => void) | null = null;
   private isVinylOnTurntable: boolean = false;
   private turntableVideoId: string | null = null;
+  private plasticlessEntryIds: Set<string> = new Set();
 
   constructor(config: ViewerConfig) {
     this.config = config;
@@ -118,6 +119,7 @@ export class VinylLibraryViewer {
     await this.recreateBlobUrls();
 
     this.loadPersistedViewerState();
+    this.loadSessionPlasticState();
 
     // Merge and mark libraries
     this.mergeLibraries();
@@ -183,6 +185,73 @@ export class VinylLibraryViewer {
       }
     } catch (error) {
       console.warn("[vinylLibraryViewer] Failed to load viewer state:", error);
+    }
+  }
+
+  private loadSessionPlasticState(): void {
+    if (typeof window === "undefined") {
+      return;
+    }
+    try {
+      const stored = window.sessionStorage.getItem("vinylPlasticlessEntries");
+      if (!stored) {
+        return;
+      }
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed)) {
+        this.plasticlessEntryIds = new Set(
+          parsed.filter((entryId) => typeof entryId === "string"),
+        );
+      }
+    } catch (error) {
+      console.warn(
+        "[vinylLibraryViewer] Failed to load plasticless session state:",
+        error,
+      );
+    }
+  }
+
+  private saveSessionPlasticState(): void {
+    if (typeof window === "undefined") {
+      return;
+    }
+    try {
+      window.sessionStorage.setItem(
+        "vinylPlasticlessEntries",
+        JSON.stringify(Array.from(this.plasticlessEntryIds)),
+      );
+    } catch (error) {
+      console.warn(
+        "[vinylLibraryViewer] Failed to save plasticless session state:",
+        error,
+      );
+    }
+  }
+
+  private isEntryPlasticless(entryId: string): boolean {
+    return this.plasticlessEntryIds.has(entryId);
+  }
+
+  private markEntryPlasticless(entryId: string): void {
+    if (!entryId || this.plasticlessEntryIds.has(entryId)) {
+      return;
+    }
+    this.plasticlessEntryIds.add(entryId);
+    this.saveSessionPlasticState();
+
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    const cardSelector = `.vinyl-viewer-widget .album-card[data-entry-id="${entryId}"]`;
+    document.querySelectorAll(cardSelector).forEach((card) => {
+      card.classList.add("plasticless");
+    });
+
+    const focusSelector = `.focus-card-cover[data-entry-id="${entryId}"]`;
+    const focusCard = document.querySelector(focusSelector);
+    if (focusCard) {
+      focusCard.classList.add("plasticless");
     }
   }
 
@@ -609,6 +678,10 @@ export class VinylLibraryViewer {
             transition: transform 0.3s ease, opacity 0.3s ease;
           }
 
+          .focus-card-cover.plasticless .plastic-overlay {
+            opacity: 0 !important;
+          }
+
           .focus-card-info-container .album-info {
             padding: 0;
             display: flex;
@@ -931,6 +1004,11 @@ export class VinylLibraryViewer {
             pointer-events: none;
             mix-blend-mode: ${PLASTIC_OVERLAY_BLEND_MODE};
             border-radius: 2px;
+            transition: opacity 0.35s ease;
+          }
+
+          .vinyl-viewer-widget .album-card.plasticless .plastic-overlay {
+            opacity: 0 !important;
           }
 
           .vinyl-viewer-widget .album-info {
@@ -1499,6 +1577,7 @@ export class VinylLibraryViewer {
       const canDelete = !isOwner || this.config.isAdmin;
       const artistName = entry.artistName || "Unknown Artist";
       const songName = entry.songName || entry.note || "Unknown Song";
+      const isPlasticless = this.isEntryPlasticless(entry.id);
       const plasticOverlay = generatePlasticOverlay(entry.id);
 
       const genre = entry.genre || "";
@@ -1506,7 +1585,7 @@ export class VinylLibraryViewer {
       const note = entry.note || "";
 
       itemsHtml += `
-            <div class="album-card" data-entry-id="${entry.id}" data-index="${index}">
+            <div class="album-card${isPlasticless ? " plasticless" : ""}" data-entry-id="${entry.id}" data-index="${index}">
               <div class="album-main">
                 <div class="album-cover-wrapper">
                   <img
@@ -1696,6 +1775,7 @@ export class VinylLibraryViewer {
     const canEdit = canDelete; // Same permission as delete
     const artistName = entry.artistName || "Unknown Artist";
     const songName = entry.songName || entry.note || "Unknown Song";
+    const isPlasticless = this.isEntryPlasticless(entry.id);
     const plasticOverlay = generatePlasticOverlay(entry.id);
 
     const genre = entry.genre || "";
@@ -1712,7 +1792,7 @@ export class VinylLibraryViewer {
     });
 
     const coverHtml = `
-      <div class="focus-card-cover" data-entry-id="${entry.id}">
+      <div class="focus-card-cover${isPlasticless ? " plasticless" : ""}" data-entry-id="${entry.id}">
         <div class="album-cover-container">
           <div class="album-cover-wrapper">
             <img
@@ -1831,7 +1911,7 @@ export class VinylLibraryViewer {
     let isCoverClickActive = false;
     let coverClickTimeoutId: number | null = null;
     let plasticOverlayFadeTimeout: number | null = null;
-    let isPlasticLocked = false;
+    let isPlasticLocked = isPlasticless;
     const updatePlasticOverlayState = () => {
       const shift = isPlasticLocked ? -250 : isCoverHoverActive ? -50 : 0;
       setPlasticOverlayShift(shift);
@@ -1932,6 +2012,7 @@ export class VinylLibraryViewer {
         }
         if (active) {
           isPlasticLocked = true;
+          this.markEntryPlasticless(entry.id);
         }
         isCoverClickActive = active;
         focusInfoContainer.classList.toggle("cover-clicked", active);
