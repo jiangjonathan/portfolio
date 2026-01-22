@@ -31,6 +31,7 @@ type PendingScrollState = {
   displayCanvas: HTMLCanvasElement;
   scrollOffset: number;
   maxScroll: number;
+  showScrollbar?: boolean;
   links?: LinkRegion[];
 };
 
@@ -236,7 +237,7 @@ export class PortfolioPapersManager {
       const isTopRightStackPaper = paper.id === topRightStackPaperId;
       const shouldBeInteractive =
         isTopRightStackPaper || (isLeftStack && isTopLeftStackPaper);
-      this.overlayManager.setOverlayInteractive(paper.id, shouldBeInteractive);
+      this.overlayManager?.setOverlayInteractive(paper.id, shouldBeInteractive);
     });
   }
 
@@ -1229,6 +1230,7 @@ export class PortfolioPapersManager {
       displayCanvas,
       scrollOffset: 0,
       maxScroll,
+      showScrollbar: false,
       links,
     };
 
@@ -1817,7 +1819,8 @@ export class PortfolioPapersManager {
     );
 
     const scrollRange = this.getScrollRange(scrollable);
-    if (scrollRange > 0) {
+    const shouldShowScrollbar = scrollable.showScrollbar ?? true;
+    if (scrollRange > 0 && shouldShowScrollbar) {
       this.drawScrollIndicator(displayCtx, scrollable);
     }
 

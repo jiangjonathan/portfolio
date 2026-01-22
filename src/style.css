@@ -448,3 +448,12 @@ body.fullscreen-mode-active #vinyl-focus-card-info-root {
 .paper-overlay-markdown-spacer {
     height: 20px;
 }
+
+/* Portfolio UI fade transitions */
+#portfolio-paper-links {
+    transition: opacity 0.3s ease;
+}
+
+#portfolio-papers-ui {
+    transition: opacity 0.3s ease;
+}

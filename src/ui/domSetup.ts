@@ -718,6 +718,8 @@ export function setupDOM(): DOMElements {
     flexDirection: "column",
     gap: "0.5rem",
     minWidth: "180px",
+    opacity: "0",
+    transition: "opacity 0.3s ease",
   });
   // root.appendChild(portfolioPapersContainer); // Debug UI - disabled
 
@@ -743,6 +745,8 @@ export function setupDOM(): DOMElements {
     flexWrap: "wrap",
     maxWidth: "40vw",
     textAlign: "left",
+    opacity: "0",
+    transition: "opacity 0.3s ease",
   } as CSSStyleDeclaration);
   root.appendChild(portfolioPaperLinksBar);
 

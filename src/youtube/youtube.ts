@@ -1,6 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { clampValue } from "../utils/utils";
 import { extractYouTubeVideoId } from "../utils/metadata";
+import {
+  FOCUS_CARD_BASE_WIDTH,
+  FOCUS_CARD_MIN_SCALE,
+} from "../vinyl/vinylHelpers";
 
 type YTPlayer = any;
 
@@ -104,9 +108,16 @@ export function createYouTubePlayer(): YouTubeBridge {
   const SMALL_PLAYER_MARGIN_PX = 20;
   const SMALL_PLAYER_MARGIN = `${SMALL_PLAYER_MARGIN_PX}px`;
   const SMALL_PLAYER_HEIGHT_RATIO = 2;
-  const FOCUS_COVER_GAP_PX = 20;
   const MIN_SMALL_PLAYER_WIDTH_PX = 250;
   const FOCUS_COVER_VERTICAL_GAP_PX = 16;
+  const PLAYER_MIN_WIDTH_PX = 250;
+  const PLAYER_MARGIN_PX = 20;
+  const PLAYER_GAP_PX = 20;
+  const FOCUS_CARD_COVER_WIDTH = 250;
+  const FOCUS_CARD_COVER_HEIGHT = 250;
+  const FOCUS_CARD_TOTAL_WIDTH = 700;
+  const FOCUS_CARD_CENTER_RATIO = 0.525;
+  const FOCUS_CARD_TOP_OFFSET = 20;
   const SMALL_PLAYER_RESIZE_TRANSITION =
     "width 0.5s ease-out, height 0.5s ease-out";
 
@@ -337,19 +348,6 @@ export function createYouTubePlayer(): YouTubeBridge {
   let hasLoadedVideo = false;
   let controlsAreVisible = false;
   let smallPlayerWidth = DEFAULT_SMALL_PLAYER_WIDTH;
-  let focusCoverElement: HTMLElement | null = null;
-  let observedFocusCover: HTMLElement | null = null;
-  let focusCoverResizeObserver: ResizeObserver | null = null;
-  let focusCoverMutationObserver: MutationObserver | null = null;
-  let focusCardIsCompact = false;
-  let cachedFocusCoverRect: {
-    left: number;
-    right: number;
-    width: number;
-    bottom: number;
-  } | null = null;
-  let cachedFocusCoverLayout: "compact" | "center" | null = null;
-
   const roundDownPx = (value: number) => {
     if (!Number.isFinite(value)) return 0;
     const floored = Math.floor(value);
@@ -390,76 +388,6 @@ export function createYouTubePlayer(): YouTubeBridge {
   resizeObserver.observe(playerSize);
   resizeObserver.observe(viewport);
 
-  const getFocusCoverElement = () => {
-    if (focusCoverElement && document.body.contains(focusCoverElement)) {
-      return focusCoverElement;
-    }
-    focusCoverElement = document.querySelector(
-      ".focus-card-cover-container",
-    ) as HTMLElement | null;
-    return focusCoverElement;
-  };
-
-  const getFocusCoverRect = () => {
-    const element = getFocusCoverElement();
-    if (!element) {
-      if (
-        cachedFocusCoverLayout &&
-        ((cachedFocusCoverLayout === "compact" && focusCardIsCompact) ||
-          (cachedFocusCoverLayout === "center" && !focusCardIsCompact))
-      ) {
-        return cachedFocusCoverRect;
-      }
-      return null;
-    }
-    const rect = element.getBoundingClientRect();
-    cachedFocusCoverRect = {
-      left: rect.left,
-      right: rect.right,
-      width: rect.width,
-      bottom: rect.bottom,
-    };
-    cachedFocusCoverLayout = focusCardIsCompact ? "compact" : "center";
-    return cachedFocusCoverRect;
-  };
-
-  const ensureFocusCoverObservers = () => {
-    const element = getFocusCoverElement();
-    if (!element || observedFocusCover === element) {
-      return;
-    }
-
-    observedFocusCover = element;
-
-    const handleFocusCoverChange = () => {
-      updateSmallPlayerDimensions();
-      updateViewportForAspectRatio();
-    };
-
-    if (!focusCoverResizeObserver) {
-      focusCoverResizeObserver = new ResizeObserver(() => {
-        handleFocusCoverChange();
-      });
-    } else {
-      focusCoverResizeObserver.disconnect();
-    }
-    focusCoverResizeObserver.observe(element);
-
-    if (!focusCoverMutationObserver) {
-      focusCoverMutationObserver = new MutationObserver(() => {
-        handleFocusCoverChange();
-      });
-    } else {
-      focusCoverMutationObserver.disconnect();
-    }
-    focusCoverMutationObserver.observe(element, {
-      attributes: true,
-      attributeFilter: ["style", "class"],
-      childList: true,
-      subtree: true,
-    });
-  };
-
   const getSmallPlayerTargetHeight = () => {
     const safeAspect = DYNAMIC_VIDEO_ASPECT || 1;
     const rawHeight =
@@ -482,105 +410,97 @@ export function createYouTubePlayer(): YouTubeBridge {
     }
   };
 
-  const getFocusCoverLeftEdge = () => {
-    const rect = getFocusCoverRect();
-    return rect ? rect.left : null;
-  };
-
-  const getViewerLeftEdge = () => {
-    const viewer = document.getElementById("vinyl-library-viewer");
-    if (!viewer) {
-      return window.innerWidth;
-    }
-    const rect = viewer.getBoundingClientRect();
-    return rect.left || window.innerWidth;
-  };
-
-  const getInlineAvailableWidth = () => {
-    const leftMarginPx = SMALL_PLAYER_MARGIN_PX;
-    if (focusCardIsCompact) {
-      // When the focus card is left/stacked, don't clamp to the cover; use the viewer edge instead.
-      const viewerLeft = getViewerLeftEdge();
-      return Math.max(0, viewerLeft - leftMarginPx - FOCUS_COVER_GAP_PX);
-    }
-    const focusLeft = getFocusCoverLeftEdge();
-    if (focusLeft !== null && Number.isFinite(focusLeft)) {
-      return Math.max(0, focusLeft - leftMarginPx - FOCUS_COVER_GAP_PX);
-    }
-    const viewerLeft = getViewerLeftEdge();
-    return Math.max(0, viewerLeft - leftMarginPx - FOCUS_COVER_GAP_PX);
-  };
-
   const notifyFocusCardLayoutChanged = () => {
     window.dispatchEvent(new CustomEvent("focus-card-layout-changed"));
   };
 
-  const applySmallPlayerPlacement = () => {
+  type PredictedFocusCardLayout = {
+    viewportWidth: number;
+    scale: number;
+    isCompact: boolean;
+    inlineWidth: number;
+    scaledCoverWidth: number;
+    scaledCoverHeight: number;
+    coverBottom: number;
+  };
+
+  const getViewportWidth = () =>
+    window.innerWidth ||
+    document.documentElement?.clientWidth ||
+    DEFAULT_SMALL_PLAYER_WIDTH;
+
+  const predictFocusCardLayout = (): PredictedFocusCardLayout => {
+    const viewportWidth = getViewportWidth();
+    const scale = Math.max(
+      FOCUS_CARD_MIN_SCALE,
+      Math.min(1, viewportWidth / FOCUS_CARD_BASE_WIDTH),
+    );
+    const coverLeftCentered =
+      viewportWidth * FOCUS_CARD_CENTER_RATIO -
+      (FOCUS_CARD_TOTAL_WIDTH / 2) * scale;
+    const inlineWidthIfCentered =
+      coverLeftCentered - PLAYER_MARGIN_PX - PLAYER_GAP_PX;
+    const isCompact =
+      inlineWidthIfCentered <
+      PLAYER_MIN_WIDTH_PX + PLAYER_MARGIN_PX + PLAYER_GAP_PX;
+    const inlineWidthForCompact = Math.max(
+      viewportWidth - SMALL_PLAYER_MARGIN_PX * 2,
+      0,
+    );
+    const inlineWidth = Math.max(
+      isCompact ? inlineWidthForCompact : inlineWidthIfCentered,
+      0,
+    );
+    const scaledCoverWidth = FOCUS_CARD_COVER_WIDTH * scale;
+    const scaledCoverHeight = FOCUS_CARD_COVER_HEIGHT * scale;
+    const coverBottom = FOCUS_CARD_TOP_OFFSET + scaledCoverHeight;
+
+    return {
+      viewportWidth,
+      scale,
+      isCompact,
+      inlineWidth,
+      scaledCoverWidth,
+      scaledCoverHeight,
+      coverBottom,
+    };
+  };
+
+  const applySmallPlayerPlacement = (layout: PredictedFocusCardLayout) => {
     if (isFullscreenMode) {
       notifyFocusCardLayoutChanged();
       return;
     }
-    const forceBelow = focusCardIsCompact;
-    const shouldCenterBelow = forceBelow;
-    const focusRect = getFocusCoverRect();
-
-    if (shouldCenterBelow) {
-      const focusBottom = focusRect
-        ? focusRect.bottom
-        : SMALL_PLAYER_MARGIN_PX + 250;
+    if (layout.isCompact) {
+      const focusBottom =
+        layout.coverBottom || SMALL_PLAYER_MARGIN_PX + FOCUS_CARD_COVER_HEIGHT;
       const verticalGap = Math.max(
         FOCUS_COVER_VERTICAL_GAP_PX,
         SMALL_PLAYER_MARGIN_PX,
       );
       const topPx = roundDownPx(focusBottom + verticalGap);
-      // Left-align under the card in compact mode
       wrapper.style.top = `${topPx}px`;
       wrapper.style.left = `${SMALL_PLAYER_MARGIN_PX}px`;
-      notifyFocusCardLayoutChanged();
-      return;
+    } else {
+      wrapper.style.top = SMALL_PLAYER_MARGIN;
+      wrapper.style.left = SMALL_PLAYER_MARGIN;
     }
-
-    wrapper.style.top = SMALL_PLAYER_MARGIN;
-    wrapper.style.left = SMALL_PLAYER_MARGIN;
     notifyFocusCardLayoutChanged();
   };
 
   const updateSmallPlayerDimensions = () => {
-    if (typeof document !== "undefined") {
-      focusCardIsCompact =
-        document.body.classList.contains("focus-card-compact");
-    }
     if (isFullscreenMode) return;
-    ensureFocusCoverObservers();
-    const focusRect = getFocusCoverRect();
-    const inlineWidth = focusCardIsCompact
-      ? Math.max(
-          (window.innerWidth ||
-            document.documentElement?.clientWidth ||
-            DEFAULT_SMALL_PLAYER_WIDTH) -
-            SMALL_PLAYER_MARGIN_PX * 2,
-          0,
-        )
-      : (() => {
-          const inline = getInlineAvailableWidth();
-          return inline > 0 ? inline : DEFAULT_SMALL_PLAYER_WIDTH;
-        })();
-    const fallbackViewportWidth =
-      window.innerWidth ||
-      document.documentElement?.clientWidth ||
-      DEFAULT_SMALL_PLAYER_WIDTH;
-    const coverWidth = focusRect?.width ?? DEFAULT_SMALL_PLAYER_WIDTH;
-    // Fall back to viewport width when inline width isn't measurable (e.g., instant snap/tiling)
-    let width =
-      inlineWidth > 0
-        ? inlineWidth
-        : Math.max(fallbackViewportWidth - SMALL_PLAYER_MARGIN_PX * 2, 0);
+    const layout = predictFocusCardLayout();
+    const fallbackWidth = Math.max(
+      layout.viewportWidth - SMALL_PLAYER_MARGIN_PX * 2,
+      0,
+    );
+    let width = layout.inlineWidth > 0 ? layout.inlineWidth : fallbackWidth;
     if (!Number.isFinite(width) || width <= 0) {
       width = DEFAULT_SMALL_PLAYER_WIDTH;
     }
-    // Cap width when compact to avoid runaway sizing
-    if (focusCardIsCompact) {
-      width = Math.min(width, coverWidth);
+    if (layout.isCompact) {
+      width = Math.min(width, layout.scaledCoverWidth);
     }
     width = Math.max(width, MIN_SMALL_PLAYER_WIDTH_PX);
     const sanitizedWidth = roundDownPx(width);
@@ -593,7 +513,7 @@ export function createYouTubePlayer(): YouTubeBridge {
     playerSize.style.width = `${smallPlayerWidth}px`;
     playerSize.style.height = `${playerHeight}px`;
     updateViewport();
-    applySmallPlayerPlacement();
+    applySmallPlayerPlacement(layout);
   };
 
   let pendingPlayerResizeFrame: number | null = null;
@@ -608,22 +528,12 @@ export function createYouTubePlayer(): YouTubeBridge {
     });
   };
 
-  focusCardIsCompact =
-    typeof document !== "undefined"
-      ? document.body.classList.contains("focus-card-compact")
-      : false;
-  cachedFocusCoverRect = null;
-  cachedFocusCoverLayout = null;
   updateSmallPlayerDimensions();
   updateViewportForAspectRatio();
   window.addEventListener("resize", () => {
     requestPlayerResize();
   });
-  window.addEventListener("focus-card-layout-updated", (event: any) => {
-    const compact = Boolean(event?.detail?.compact);
-    focusCardIsCompact = compact;
-    cachedFocusCoverRect = null;
-    cachedFocusCoverLayout = null;
+  window.addEventListener("focus-card-layout-updated", () => {
     // Apply immediately to avoid stale sizing when toggling layouts
     updateSmallPlayerDimensions();
     updateViewportForAspectRatio();
@@ -637,8 +547,6 @@ export function createYouTubePlayer(): YouTubeBridge {
     if (animating) {
       return;
     }
-    cachedFocusCoverRect = null;
-    cachedFocusCoverLayout = null;
     updateSmallPlayerDimensions();
     updateViewportForAspectRatio();
     requestPlayerResize();
@@ -1105,7 +1013,7 @@ export function createYouTubePlayer(): YouTubeBridge {
           height: "auto",
           zIndex: SMALL_PLAYER_Z_INDEX,
         });
-        applySmallPlayerPlacement();
+        applySmallPlayerPlacement(predictFocusCardLayout());
 
         const appDiv = document.getElementById("app");
         if (appDiv) {
@@ -1424,7 +1332,6 @@ export function createYouTubeExperience(host: HTMLElement): YouTubeExperience {
   host.appendChild(bridge.el);
   const controls = createVideoControls((value) => bridge.setVolume(value));
   bridge.el.appendChild(controls.container);
-  controls.setVolume(100);
   (bridge as any)._controlsContainer = controls.container;
   return { bridge, controls };
 }
@@ -1460,6 +1367,43 @@ export function createProgressUpdater(
     const progress = duration > 0 ? currentTime / duration : 0;
     (bridge as any).onPlaybackProgressCallback?.(progress);
   };
+}
+
+const PLAYER_VOLUME_STORAGE_KEY = "vinylPlayerVolume";
+const DEFAULT_VOLUME = 100;
+
+function loadPersistedVolume(): number | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  try {
+    const stored = window.localStorage.getItem(PLAYER_VOLUME_STORAGE_KEY);
+    if (!stored) {
+      return null;
+    }
+    const parsed = parseInt(stored, 10);
+    if (!Number.isFinite(parsed)) {
+      return null;
+    }
+    return clampValue(parsed, 0, 100);
+  } catch (error) {
+    console.warn("[YouTube] Failed to read persisted volume:", error);
+    return null;
+  }
+}
+
+function savePersistedVolume(value: number) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    window.localStorage.setItem(
+      PLAYER_VOLUME_STORAGE_KEY,
+      String(clampValue(value, 0, 100)),
+    );
+  } catch (error) {
+    console.warn("[YouTube] Failed to save persisted volume:", error);
+  }
 }
 
 function normalizeVideoMetadata(
@@ -1597,6 +1541,15 @@ export function createVideoControls(
   volumeSlider.style.width = "92px";
   volumeSlider.style.height = "4px";
   volumeSlider.tabIndex = -1;
+  const releaseVolumeFocus = () => {
+    if (document.activeElement === volumeSlider) {
+      volumeSlider.blur();
+    }
+  };
+  volumeSlider.addEventListener("pointerup", releaseVolumeFocus);
+  volumeSlider.addEventListener("pointercancel", releaseVolumeFocus);
+  const persistedVolume = loadPersistedVolume();
+  const initialVolume = persistedVolume ?? DEFAULT_VOLUME;
 
   let clickSetVolume = false;
 
@@ -1731,6 +1684,7 @@ export function createVideoControls(
     }
     updateVolumeIcon(safe);
     onVolumeChange(safe);
+    savePersistedVolume(safe);
   };
 
   volumeSlider.addEventListener("input", () => {
@@ -1776,7 +1730,7 @@ export function createVideoControls(
   volumeAlignmentObserver.observe(container);
   requestAnimationFrame(() => alignVolumeSlider());
 
-  handleVolumeChange(100);
+  handleVolumeChange(initialVolume);
 
   return {
     container,

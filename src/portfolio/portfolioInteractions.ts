@@ -22,13 +22,6 @@ type PortfolioPaperHit = {
   hit: Intersection<Object3D>;
 };
 
-const isMarkdownPaperConfig = (paper: { url: string }): boolean => {
-  return paper.url?.toLowerCase().endsWith(".md");
-};
-
-const isResumePaperConfig = (paper: { id: string }): boolean =>
-  paper.id === "resume-pdf";
-
 export function createPortfolioInteractions(deps: PortfolioInteractionsDeps) {
   const pickPortfolioPaperUnderPointer = (
     raycaster: Raycaster,

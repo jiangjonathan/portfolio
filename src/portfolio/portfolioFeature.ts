@@ -212,6 +212,12 @@ export function createPortfolioFeature(
   const showPortfolioUI = () => {
     deps.papersContainer.style.display = "flex";
     deps.paperLinksBar.style.display = "flex";
+
+    // Use requestAnimationFrame to ensure transition animates
+    requestAnimationFrame(() => {
+      deps.papersContainer.style.opacity = "1";
+      deps.paperLinksBar.style.opacity = "1";
+    });
   };
 
   const ensurePortfolioLinksReady = () => {
@@ -303,8 +309,14 @@ export function createPortfolioFeature(
     if (previousPage !== "portfolio" || nextPage === "portfolio") {
       return;
     }
-    deps.papersContainer.style.display = "none";
-    deps.paperLinksBar.style.display = "none";
+    deps.papersContainer.style.opacity = "0";
+    deps.paperLinksBar.style.opacity = "0";
+
+    // Wait for fade-out to complete before hiding
+    setTimeout(() => {
+      deps.papersContainer.style.display = "none";
+      deps.paperLinksBar.style.display = "none";
+    }, 300);
 
     (async () => {
       try {
