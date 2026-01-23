@@ -817,13 +817,6 @@ async function showAlbumArtPicker(
     const overlayBackground = isDarkMode
       ? "rgba(7, 7, 7, 0.85)"
       : "rgba(255, 255, 255, 0.95)";
-    const panelBorderColor = isDarkMode
-      ? "rgba(255, 255, 255, 0.1)"
-      : "rgba(0, 0, 0, 0.08)";
-    const cardBorderColor = isDarkMode
-      ? "rgba(255, 255, 255, 0.15)"
-      : "rgba(0, 0, 0, 0.1)";
-    const cardBackground = isDarkMode ? "rgba(255, 255, 255, 0.02)" : "#fff";
     const mutedTextColor = isDarkMode
       ? "rgba(255, 255, 255, 0.65)"
       : "rgba(0, 0, 0, 0.65)";
@@ -1253,9 +1246,6 @@ export async function promptUserForMetadata(
     const placeholderColor = isDarkMode
       ? "rgba(255, 255, 255, 0.55)"
       : "rgba(0, 0, 0, 0.55)";
-    const panelBorderColor = isDarkMode
-      ? "rgba(255, 255, 255, 0.1)"
-      : "rgba(0, 0, 0, 0.08)";
     modal.style.cssText = `
       position: fixed;
       top: 0;
