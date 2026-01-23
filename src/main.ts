@@ -17,7 +17,11 @@ import {
   Vector3,
 } from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { loadVinylModel, applyVinylColor } from "./vinyl/vinyl";
+import {
+  loadVinylModel,
+  applyVinylColor,
+  applyVinylEmissive,
+} from "./vinyl/vinyl";
 import {
   applyLabelTextures,
   createLabelTextures,
@@ -759,6 +763,66 @@ const portfolioFeature = createPortfolioFeature({
   paperOverlayManager,
 });
 portfolioPapersManager = portfolioFeature.init();
+
+type PaperDirection = "prev" | "next";
+type PendingNav = { direction: PaperDirection; durationMs?: number };
+let pendingPaperNav: PendingNav | null = null;
+
+const runQueuedNavigation = () => {
+  if (!pendingPaperNav) return;
+  const { direction, durationMs } = pendingPaperNav;
+  pendingPaperNav = null;
+  triggerPaperNavigation(direction, { durationMs });
+};
+
+const triggerPaperNavigation = async (
+  direction: PaperDirection,
+  options?: { durationMs?: number },
+) => {
+  if (!portfolioPapersManager) return;
+  try {
+    if (direction === "prev") {
+      await portfolioPapersManager.previousPaper({
+        durationMs: options?.durationMs,
+      });
+    } else {
+      await portfolioPapersManager.nextPaper({
+        durationMs: options?.durationMs,
+      });
+    }
+  } catch (error) {
+    console.error("[Portfolio] Keyboard navigation error:", error);
+  } finally {
+    runQueuedNavigation();
+  }
+};
+
+const handlePortfolioArrowNav = (event: KeyboardEvent) => {
+  if (activePage !== "portfolio") return;
+  const target = event.target as HTMLElement | null;
+  if (
+    target &&
+    (target.isContentEditable ||
+      ["input", "textarea", "select"].includes(target.tagName.toLowerCase()))
+  ) {
+    return;
+  }
+  const direction: PaperDirection | null =
+    event.key === "ArrowLeft"
+      ? "prev"
+      : event.key === "ArrowRight"
+        ? "next"
+        : null;
+  if (!direction) return;
+  event.preventDefault();
+  if (!portfolioPapersManager) return;
+  if (portfolioPapersManager.isNavigationLocked()) {
+    pendingPaperNav = { direction, durationMs: 400 };
+    return;
+  }
+  triggerPaperNavigation(direction, { durationMs: 400 });
+};
+document.addEventListener("keydown", handlePortfolioArrowNav);
 
 // setMeshRenderPriority and applyPolygonOffsetToMaterials now in sceneObjects.ts
 
@@ -1577,6 +1641,9 @@ let vinylDragExceededThreshold = false;
 // ON_TURNTABLE state now managed by TurntableStateManager
 // VINYL_DRAG_THRESHOLD now imported from vinylInteractions.ts
 let isReturningToFocusCard = false; // Separate state for returning to focus card
+const FOCUS_VINYL_EMISSIVE_INTENSITY = 0.12;
+const FOCUS_VINYL_EMISSIVE_LERP = 0.12;
+let focusVinylEmissiveCurrent = 0;
 
 const BUSINESS_CARD_ROTATION_SENSITIVITY = 0.006;
 const BUSINESS_CARD_MAX_PITCH = Math.PI / 2 - 0.05;
@@ -2646,6 +2713,28 @@ const animate = (time: number) => {
     if (vinylCameraTrackingEnabled) {
       focusVinylState.model.quaternion.copy(camera.quaternion);
     }
+  }
+
+  const focusModel = focusVinylState?.model ?? null;
+  if (focusModel) {
+    const focusVisible =
+      focusModel.visible && !focusCardController.getFocusVinylManuallyHidden();
+    const shouldGlow =
+      focusVisible &&
+      shouldTrackFocusCard &&
+      currentVinylAnchorType === "focus" &&
+      vinylDragPointerId === null &&
+      !isReturningToFocusCard;
+    const targetEmissive = shouldGlow ? FOCUS_VINYL_EMISSIVE_INTENSITY : 0;
+    const emissiveDelta = targetEmissive - focusVinylEmissiveCurrent;
+    if (Math.abs(emissiveDelta) < 0.001) {
+      focusVinylEmissiveCurrent = targetEmissive;
+    } else {
+      focusVinylEmissiveCurrent += emissiveDelta * FOCUS_VINYL_EMISSIVE_LERP;
+    }
+    applyVinylEmissive(focusModel, focusVinylEmissiveCurrent);
+  } else if (focusVinylEmissiveCurrent !== 0) {
+    focusVinylEmissiveCurrent = 0;
   }
 
   // Controller updates tonearm + platter/pulley

@@ -22,15 +22,15 @@ type LightingState = {
 };
 
 const NORMAL_LIGHTING: LightingState = {
-  ambientIntensity: 0.5,
-  keyIntensity: 1.5,
-  fillIntensity: 0.7,
+  ambientIntensity: 0.6,
+  keyIntensity: 1.8,
+  fillIntensity: 0.8,
 };
 
 const DARK_MODE_LIGHTING: LightingState = {
-  ambientIntensity: 0.25,
-  keyIntensity: 0.9,
-  fillIntensity: 0.35,
+  ambientIntensity: 0.15,
+  keyIntensity: 0.6,
+  fillIntensity: 0.2,
 };
 
 const FULLSCREEN_LIGHTING: LightingState = {

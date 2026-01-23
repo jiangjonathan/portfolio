@@ -1299,7 +1299,7 @@ export class VinylLibraryViewer {
             top: 100%;
             left: 0;
             background: var(--sort-dropdown-bg, #f7f7f2);
-            border: 1px solid var(--sort-dropdown-border, #ddd);
+            border: 1px solid var(--sort-dropdown-border);
             margin-top: calc(0.25rem * var(--font-scale, 1));
             min-width: calc(120px * var(--font-scale, 1));
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
@@ -1445,11 +1445,8 @@ export class VinylLibraryViewer {
           }
 
           body.dark-mode .vinyl-viewer-widget .sort-dropdown {
-            background: var(--sort-dropdown-bg, rgba(8, 8, 8, 0.95));
-            border-color: var(
-              --sort-dropdown-border,
-              rgba(255, 255, 255, 0.25),
-            );
+            background: var(--sort-dropdown-bg);
+            border-color: var(--sort-dropdown-border);
           }
 
           body.dark-mode .focus-card-info-container .album-artist,

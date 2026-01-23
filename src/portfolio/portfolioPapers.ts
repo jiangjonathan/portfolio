@@ -155,6 +155,10 @@ export class PortfolioPapersManager {
   };
   private markdownSources: Map<string, { markdown: string; baseUrl: string }> =
     new Map();
+
+  public isNavigationLocked(): boolean {
+    return this.isAnimating;
+  }
   private markdownScrollMetrics: Map<
     string,
     { scrollTop: number; scrollHeight: number; clientHeight: number }
@@ -610,8 +614,6 @@ export class PortfolioPapersManager {
         position: "relative",
         width: `${canvas.width}px`,
         height: `${canvas.height}px`,
-        background: "var(--paper-overlay-bg, #ffffff)",
-        color: "var(--paper-overlay-text, #1f2328)",
         fontFamily: '"Inter", "Helvetica Neue", "Segoe UI", Arial, sans-serif',
         display: "flex",
         alignItems: "center",
@@ -1442,8 +1444,6 @@ export class PortfolioPapersManager {
       position: "relative",
       width: `${width}px`,
       minHeight: `${height}px`,
-      background: "var(--paper-overlay-bg, #ffffff)",
-      color: "var(--paper-overlay-text, #1f2328)",
       fontFamily: '"Inter", "Helvetica Neue", "Segoe UI", Arial, sans-serif',
       boxSizing: "border-box",
       pointerEvents: "auto",
@@ -1661,7 +1661,6 @@ export class PortfolioPapersManager {
       position: "relative",
       width: `${viewport.width}px`,
       height: `${viewport.height}px`,
-      background: "var(--paper-overlay-bg, #ffffff)",
       overflow: "hidden",
       cursor: "pointer",
     } satisfies Partial<CSSStyleDeclaration>);

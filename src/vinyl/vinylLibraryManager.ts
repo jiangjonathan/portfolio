@@ -437,6 +437,48 @@ export class VinylLibraryManager {
             border: none;
           }
 
+          body.dark-mode .vinyl-widget-enhanced-full .section h3,
+          body.dark-mode .vinyl-widget-enhanced-full label,
+          body.dark-mode .vinyl-widget-enhanced-full .status-message,
+          body.dark-mode .vinyl-widget-enhanced-full .library-item-artist,
+          body.dark-mode .vinyl-widget-enhanced-full .library-item-song,
+          body.dark-mode .vinyl-widget-enhanced-full .library-item-note,
+          body.dark-mode .vinyl-widget-enhanced-full .empty-state {
+            color: var(--dark-mode-text);
+          }
+
+          body.dark-mode .vinyl-widget-enhanced-full input,
+          body.dark-mode .vinyl-widget-enhanced-full textarea {
+            border-bottom-color: rgba(255, 255, 255, 0.45);
+            color: var(--dark-mode-text);
+          }
+
+          body.dark-mode .vinyl-widget-enhanced-full input::placeholder,
+          body.dark-mode .vinyl-widget-enhanced-full textarea::placeholder {
+            color: rgba(255, 255, 255, 0.55);
+          }
+
+          body.dark-mode .vinyl-widget-enhanced-full input:focus,
+          body.dark-mode .vinyl-widget-enhanced-full textarea:focus {
+            border-bottom-color: rgba(255, 255, 255, 0.9);
+          }
+
+          body.dark-mode .vinyl-widget-enhanced-full .library-item-cover {
+            background: var(--dark-mode-panel);
+          }
+
+          body.dark-mode .vinyl-widget-enhanced-full .library-item-note {
+            color: rgba(255, 255, 255, 0.65);
+          }
+
+          body.dark-mode .vinyl-widget-enhanced-full .library-item-delete {
+            background: rgba(239, 68, 68, 0.95);
+          }
+
+          body.dark-mode .vinyl-widget-enhanced-full .library-item-delete:hover {
+            background: rgba(185, 28, 28, 0.9);
+          }
+
           /* Removed CSS loading dots animation - now handled in JavaScript */
 
           .vinyl-widget-enhanced-full .library-list {

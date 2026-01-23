@@ -645,9 +645,9 @@ export function setupDOM(): DOMElements {
     top: "0",
     left: "100%",
     right: "auto",
-    background: "var(--settings-panel-bg, #f7f7f2)",
+    background: "var(--settings-panel-bg)",
     color: "var(--settings-panel-text, #000000)",
-    border: "1px solid var(--settings-panel-border, #dddddd)",
+    border: "1px solid var(--settings-panel-border)",
     padding: "0.5rem 0.75rem",
     display: "flex",
     flexDirection: "column",
@@ -657,7 +657,7 @@ export function setupDOM(): DOMElements {
     fontSize: "0.85rem",
     letterSpacing: "0",
     lineHeight: "1.4",
-    boxShadow: "0 14px 32px rgba(0, 0, 0, 0.35)",
+    boxShadow: "0 2px 8px rgba(0, 0, 0, 0.1)",
     zIndex: String(HIDE_BUTTON_Z_INDEX + 5),
     userSelect: "none",
     opacity: "0",
@@ -696,6 +696,7 @@ export function setupDOM(): DOMElements {
   lightOption.style.fontSize = "0.85rem";
   lightOption.style.letterSpacing = "0";
   lightOption.style.color = "inherit";
+  lightOption.style.transition = "text-decoration 0.2s ease";
 
   const darkOption = document.createElement("button");
   darkOption.type = "button";
@@ -708,13 +709,49 @@ export function setupDOM(): DOMElements {
   darkOption.style.fontSize = "0.85rem";
   darkOption.style.letterSpacing = "0";
   darkOption.style.color = "inherit";
+  darkOption.style.transition = "text-decoration 0.2s ease";
 
-  themeToggle.appendChild(lightOption);
+  // Add hover effects for underline
+  lightOption.addEventListener("mouseenter", () => {
+    lightOption.style.textDecoration = "underline";
+  });
+  lightOption.addEventListener("mouseleave", () => {
+    lightOption.style.textDecoration = darkModeEnabled ? "none" : "underline";
+  });
+
+  darkOption.addEventListener("mouseenter", () => {
+    darkOption.style.textDecoration = "underline";
+  });
+  darkOption.addEventListener("mouseleave", () => {
+    darkOption.style.textDecoration = darkModeEnabled ? "underline" : "none";
+  });
+
   const separator = document.createElement("span");
   separator.textContent = "/";
   separator.style.fontFamily = "inherit";
   separator.style.fontSize = "0.85rem";
   separator.style.lineHeight = "1.4";
+  separator.style.cursor = "pointer";
+  separator.style.transition = "text-decoration 0.2s ease";
+
+  // Easter egg: secret theme name mode
+  let easterEggActive = false;
+  separator.addEventListener("click", (e) => {
+    e.stopPropagation();
+    easterEggActive = !easterEggActive;
+    lightOption.textContent = easterEggActive ? "satoru" : "light";
+    darkOption.textContent = easterEggActive ? "suguru" : "dark";
+  });
+
+  // Add hover underline for separator
+  separator.addEventListener("mouseenter", () => {
+    separator.style.textDecoration = "underline";
+  });
+  separator.addEventListener("mouseleave", () => {
+    separator.style.textDecoration = "none";
+  });
+
+  themeToggle.appendChild(lightOption);
   themeToggle.appendChild(separator);
   themeToggle.appendChild(darkOption);
   settingsPanel.appendChild(themeToggle);
@@ -764,6 +801,14 @@ export function setupDOM(): DOMElements {
       root.style.setProperty(
         "--sort-option-hover-bg",
         enabled ? "rgba(255, 255, 255, 0.1)" : "#f5f5f5",
+      );
+      root.style.setProperty(
+        "--paper-overlay-bg",
+        enabled ? "#202020" : "#ffffff",
+      );
+      root.style.setProperty(
+        "--paper-overlay-text",
+        enabled ? "var(--dark-mode-text)" : "#1f2328",
       );
     }
     nameText.style.color = enabled ? "#fff" : "#000";

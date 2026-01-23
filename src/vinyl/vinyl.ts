@@ -95,7 +95,33 @@ function applyVinylColorToMaterial(
   color: Color,
 ): void {
   material.color?.copy(color);
+  if (material.emissiveIntensity > 0) {
+    material.emissive.copy(color);
+  }
   material.needsUpdate = true;
+}
+
+export function applyVinylEmissive(
+  model: Object3D | null,
+  intensity: number,
+): void {
+  if (!model) {
+    return;
+  }
+  const materials = modelVinylMaterials.get(model);
+  if (!materials || materials.size === 0) {
+    return;
+  }
+  materials.forEach((mat) => {
+    if (intensity > 0) {
+      mat.emissive.copy(mat.color);
+      mat.emissiveIntensity = intensity;
+    } else {
+      mat.emissive.setHex(0x000000);
+      mat.emissiveIntensity = 0;
+    }
+    mat.needsUpdate = true;
+  });
 }
 
 export function applyVinylColor(

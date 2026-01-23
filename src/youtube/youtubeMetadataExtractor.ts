@@ -813,6 +813,23 @@ async function showAlbumArtPicker(
   artistName: string,
 ): Promise<string | null | "not_found"> {
   return new Promise((resolve) => {
+    const isDarkMode = document.body.classList.contains("dark-mode");
+    const overlayBackground = isDarkMode
+      ? "rgba(7, 7, 7, 0.85)"
+      : "rgba(255, 255, 255, 0.95)";
+    const panelBorderColor = isDarkMode
+      ? "rgba(255, 255, 255, 0.1)"
+      : "rgba(0, 0, 0, 0.08)";
+    const cardBorderColor = isDarkMode
+      ? "rgba(255, 255, 255, 0.15)"
+      : "rgba(0, 0, 0, 0.1)";
+    const cardBackground = isDarkMode ? "rgba(255, 255, 255, 0.02)" : "#fff";
+    const mutedTextColor = isDarkMode
+      ? "rgba(255, 255, 255, 0.65)"
+      : "rgba(0, 0, 0, 0.65)";
+    const tertiaryTextColor = isDarkMode
+      ? "rgba(255, 255, 255, 0.45)"
+      : "rgba(0, 0, 0, 0.45)";
     const modal = document.createElement("div");
     modal.style.cssText = `
       position: fixed;
@@ -820,50 +837,93 @@ async function showAlbumArtPicker(
       left: 0;
       right: 0;
       bottom: 0;
-      background: rgba(255, 255, 255, 0.95);
+      background: ${overlayBackground};
       display: flex;
       align-items: center;
       justify-content: center;
-      z-index: 10001;
+      z-index: 30000;
       font-family: system-ui, -apple-system, sans-serif;
       padding: 20px;
       overflow-y: auto;
     `;
+    const albumArtStyle = document.createElement("style");
+    albumArtStyle.textContent = `
+      @keyframes albumArtPanelFade {
+        from {
+          opacity: 0;
+          transform: translateY(12px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      @keyframes albumArtCardInfoFade {
+        from {
+          opacity: 0;
+          transform: translateY(6px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .album-art-picker-panel {
+        animation: albumArtPanelFade 220ms ease-out forwards;
+      }
+
+      .album-art-picker-card-info {
+        opacity: 0;
+        animation: albumArtCardInfoFade 220ms ease-out 120ms forwards;
+      }
+    `;
+    modal.appendChild(albumArtStyle);
 
     const container = document.createElement("div");
     container.style.cssText = `
       max-width: 700px;
       width: 100%;
-      color: #000;
+      color: var(--paper-overlay-text, #1f2328);
+      background: transparent;
+      border-radius: 0;
+      border: none;
+      padding: 2rem 0 0 0;
     `;
+    container.classList.add("album-art-picker-panel");
 
     const title = document.createElement("h2");
-    title.textContent = `Select Album Art`;
+    title.textContent = `select album art`;
     title.style.cssText =
-      "margin: 0 0 0.5rem 0; font-size: 1.1rem; font-weight: 500;";
+      "margin: 0 0 0.5rem 0; font-size: 1.1rem; font-weight: 500; color: var(--paper-overlay-text, #1f2328);";
     container.appendChild(title);
 
     const subtitle = document.createElement("p");
     subtitle.textContent = `${songName} — ${artistName}`;
-    subtitle.style.cssText =
-      "margin: 0 0 2rem 0; color: #666; font-size: 0.9rem;";
+    subtitle.style.cssText = `
+      margin: 0 0 2rem 0;
+      color: ${mutedTextColor};
+      font-size: 0.9rem;
+    `;
     container.appendChild(subtitle);
 
     if (candidates.length === 0) {
       const noResults = document.createElement("p");
       noResults.textContent = "No album art found.";
-      noResults.style.cssText = "color: #666; margin-bottom: 1.5rem;";
+      noResults.style.cssText = `color: ${mutedTextColor}; margin-bottom: 1.5rem;`;
       container.appendChild(noResults);
 
       const closeBtn = document.createElement("button");
       closeBtn.textContent = "OK";
       closeBtn.style.cssText = `
         padding: 0.5rem 1rem;
-        background: #000;
-        color: #fff;
+        background: var(--paper-overlay-text, #1f2328);
+        color: var(--paper-overlay-bg, #ffffff);
         border: none;
         cursor: pointer;
         font-size: 0.85rem;
+        border-radius: 4px;
       `;
       closeBtn.addEventListener("click", () => {
         modal.remove();
@@ -874,7 +934,7 @@ async function showAlbumArtPicker(
       const grid = document.createElement("div");
       grid.style.cssText = `
         display: grid;
-        grid-template-columns: repeat(3, 1fr);
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
         gap: 1.5rem;
         margin-bottom: 2rem;
       `;
@@ -883,15 +943,17 @@ async function showAlbumArtPicker(
         const card = document.createElement("div");
         card.style.cssText = `
           cursor: pointer;
-          transition: opacity 0.15s;
+          transition: opacity 0.15s, transform 0.15s;
         `;
 
         card.addEventListener("mouseenter", () => {
           card.style.opacity = "0.7";
+          card.style.transform = "translateY(-2px)";
         });
 
         card.addEventListener("mouseleave", () => {
           card.style.opacity = "1";
+          card.style.transform = "none";
         });
 
         card.addEventListener("click", () => {
@@ -907,15 +969,15 @@ async function showAlbumArtPicker(
             aspect-ratio: 1;
             object-fit: cover;
             margin-bottom: 0.5rem;
-            border: 1px solid #ddd;
-            background: #f0f0f0;
           `;
 
           // Handle image load errors (404, CORS, expired blob URLs, etc.)
           img.addEventListener("error", () => {
             console.warn(`Failed to load cover art: ${candidate.coverArtUrl}`);
             // Replace with placeholder showing it failed to load
-            img.style.background = "#f0f0f0";
+            img.style.background = isDarkMode
+              ? "var(--dark-mode-panel)"
+              : "#f0f0f0";
             img.style.display = "flex";
             img.style.alignItems = "center";
             img.style.justifyContent = "center";
@@ -934,26 +996,40 @@ async function showAlbumArtPicker(
         }
 
         const info = document.createElement("div");
-        info.style.cssText = "font-size: 0.75rem; line-height: 1.3;";
+        info.style.cssText = `
+          font-size: 0.75rem;
+          line-height: 1.3;
+          color: var(--paper-overlay-text, #1f2328);
+        `;
+        info.classList.add("album-art-picker-card-info");
 
         const albumTitle = document.createElement("div");
         albumTitle.textContent = candidate.title;
-        albumTitle.style.cssText =
-          "margin-bottom: 0.15rem; color: #000; font-weight: 500;";
+        albumTitle.style.cssText = `
+          margin-bottom: 0.15rem;
+          color: var(--paper-overlay-text, #1f2328);
+          font-weight: 500;
+        `;
         info.appendChild(albumTitle);
 
         const artist = document.createElement("div");
         artist.textContent = candidate.artist;
-        artist.style.cssText =
-          "color: #666; font-size: 0.7rem; margin-bottom: 0.15rem;";
+        artist.style.cssText = `
+          color: ${mutedTextColor};
+          font-size: 0.7rem;
+          margin-bottom: 0.15rem;
+        `;
         info.appendChild(artist);
 
         // Show packaging/format info if available
         if (candidate.packaging) {
           const packaging = document.createElement("div");
           packaging.textContent = candidate.packaging;
-          packaging.style.cssText =
-            "color: #999; font-size: 0.65rem; font-weight: 500;";
+          packaging.style.cssText = `
+            color: ${tertiaryTextColor};
+            font-size: 0.65rem;
+            font-weight: 500;
+          `;
           info.appendChild(packaging);
         }
 
@@ -1164,57 +1240,168 @@ export async function promptUserForMetadata(
   return new Promise((resolve) => {
     // Create modal
     const modal = document.createElement("div");
+    const isDarkMode = document.body.classList.contains("dark-mode");
+    const overlayBackground = isDarkMode
+      ? "rgba(7, 7, 7, 0.85)"
+      : "rgba(255, 255, 255, 0.95)";
+    const inputBorderColor = isDarkMode
+      ? "rgba(255, 255, 255, 0.45)"
+      : "rgba(0, 0, 0, 0.45)";
+    const inputFocusBorderColor = isDarkMode
+      ? "rgba(255, 255, 255, 0.9)"
+      : "rgba(0, 0, 0, 0.9)";
+    const placeholderColor = isDarkMode
+      ? "rgba(255, 255, 255, 0.55)"
+      : "rgba(0, 0, 0, 0.55)";
+    const panelBorderColor = isDarkMode
+      ? "rgba(255, 255, 255, 0.1)"
+      : "rgba(0, 0, 0, 0.08)";
     modal.style.cssText = `
       position: fixed;
       top: 0;
       left: 0;
       right: 0;
       bottom: 0;
-      background: rgba(255, 255, 255, 0.95);
+      background: ${overlayBackground};
       display: flex;
       align-items: center;
       justify-content: center;
-      z-index: 10000;
+      z-index: 30000;
       font-family: system-ui, -apple-system, sans-serif;
     `;
 
     modal.innerHTML = `
-      <div style="
-        background: transparent;
-        border: none;
-        padding: 2rem;
-        max-width: 500px;
-        width: 90%;
-        color: #000;
-      ">
-        <h2 style="margin-top: 0; margin-bottom: 1.5rem; font-size: 1.1rem; font-weight: normal; letter-spacing: 0.5px;">
+      <style>
+        .vinyl-metadata-modal-panel {
+          background: transparent;
+          color: var(--paper-overlay-text, #1f2328);
+          border: none;
+          border-radius: 0;
+          padding: 2rem;
+          max-width: 500px;
+          width: 90%;
+          box-shadow: none;
+          animation: vinylModalFadeIn 240ms ease-out forwards;
+        }
+
+        .vinyl-metadata-modal-title {
+          margin-top: 0;
+          margin-bottom: 1.5rem;
+          font-size: 1.1rem;
+          font-weight: normal;
+          letter-spacing: 0.5px;
+          text-transform: lowercase;
+        }
+
+        .vinyl-metadata-modal-thumbnail {
+          margin-bottom: 1.5rem;
+        }
+
+        .vinyl-metadata-modal-thumbnail img {
+          width: 100%;
+          border: none;
+          border-radius: 4px;
+          aspect-ratio: 16 / 9;
+          object-fit: cover;
+          opacity: 0;
+          animation: vinylModalFieldFade 220ms ease-out 80ms forwards;
+        }
+
+        .vinyl-metadata-modal-field {
+          margin-bottom: 1rem;
+          opacity: 0;
+          animation: vinylModalFieldFade 240ms ease-out 120ms forwards;
+        }
+
+        .vinyl-metadata-modal-label {
+          display: block;
+          margin-bottom: 0.5rem;
+          color: var(--paper-overlay-text, #1f2328);
+          font-size: 0.8rem;
+          text-transform: lowercase;
+          letter-spacing: 0.5px;
+          font-weight: normal;
+        }
+
+        .vinyl-metadata-modal-input {
+          width: 100%;
+          padding: 0.5rem 0;
+          background: transparent;
+          border: none;
+          border-bottom: 1px solid ${inputBorderColor};
+          color: var(--paper-overlay-text, #1f2328);
+          font-size: 0.9rem;
+          box-sizing: border-box;
+          font-family: inherit;
+          outline: none;
+        }
+
+        .vinyl-metadata-modal-input:focus {
+          border-bottom-color: ${inputFocusBorderColor};
+        }
+
+        .vinyl-metadata-modal-input::placeholder {
+          color: ${placeholderColor};
+        }
+
+        .vinyl-metadata-modal-buttons {
+          display: flex;
+          gap: 2rem;
+          align-items: center;
+        }
+
+        .vinyl-metadata-modal-link {
+          color: var(--vinyl-link-color);
+          text-decoration: underline;
+          cursor: pointer;
+          font-size: var(--vinyl-link-font-size);
+          font-family: inherit;
+          -webkit-font-smoothing: none;
+          -moz-osx-font-smoothing: grayscale;
+          text-shadow: var(--vinyl-link-text-shadow);
+        }
+
+        .vinyl-metadata-modal-link:hover {
+          color: var(--vinyl-link-hover-color);
+        }
+
+        @keyframes vinylModalFadeIn {
+          from {
+            opacity: 0;
+            transform: translateY(12px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        @keyframes vinylModalFieldFade {
+          from {
+            opacity: 0;
+            transform: translateY(6px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+      </style>
+
+      <div class="vinyl-metadata-modal-panel">
+        <h2 class="vinyl-metadata-modal-title">
         confirm song details
         </h2>
 
-        <div style="margin-bottom: 1.5rem;">
+        <div class="vinyl-metadata-modal-thumbnail">
           <img
             src="${youtubeThumbUrl}"
             alt="thumbnail"
-            style="
-              width: 100%;
-              border: none;
-              margin-bottom: 0;
-              aspect-ratio: 16/9;
-              object-fit: cover;
-            "
           >
         </div>
 
-        <div style="margin-bottom: 1rem;">
-          <label style="
-            display: block;
-            margin-bottom: 0.5rem;
-            color: #000;
-            font-size: 0.8rem;
-            text-transform: lowercase;
-            letter-spacing: 0.5px;
-            font-weight: normal;
-          ">
+        <div class="vinyl-metadata-modal-field">
+          <label class="vinyl-metadata-modal-label">
             artist name *
           </label>
           <input
@@ -1222,31 +1409,12 @@ export async function promptUserForMetadata(
             type="text"
             placeholder="e.g., Radiohead"
             value="${parsed.artistName || ""}"
-            style="
-              width: 100%;
-              padding: 0.5rem 0;
-              background: transparent;
-              border: none;
-              border-bottom: 1px solid #000;
-              color: #000;
-              font-size: 0.9rem;
-              box-sizing: border-box;
-              font-family: inherit;
-              outline: none;
-            "
+            class="vinyl-metadata-modal-input"
           >
         </div>
 
-        <div style="margin-bottom: 1rem;">
-          <label style="
-            display: block;
-            margin-bottom: 0.5rem;
-            color: #000;
-            font-size: 0.8rem;
-            text-transform: lowercase;
-            letter-spacing: 0.5px;
-            font-weight: normal;
-          ">
+        <div class="vinyl-metadata-modal-field">
+          <label class="vinyl-metadata-modal-label">
             song name *
           </label>
           <input
@@ -1254,31 +1422,12 @@ export async function promptUserForMetadata(
             type="text"
             placeholder="e.g., Weird Fishes/Arpeggi"
             value="${parsed.songName}"
-            style="
-              width: 100%;
-              padding: 0.5rem 0;
-              background: transparent;
-              border: none;
-              border-bottom: 1px solid #000;
-              color: #000;
-              font-size: 0.9rem;
-              box-sizing: border-box;
-              font-family: inherit;
-              outline: none;
-            "
+            class="vinyl-metadata-modal-input"
           >
         </div>
 
-        <div style="margin-bottom: 1rem;">
-          <label style="
-            display: block;
-            margin-bottom: 0.5rem;
-            color: #000;
-            font-size: 0.8rem;
-            text-transform: lowercase;
-            letter-spacing: 0.5px;
-            font-weight: normal;
-          ">
+        <div class="vinyl-metadata-modal-field">
+          <label class="vinyl-metadata-modal-label">
             album / release group
           </label>
           <input
@@ -1286,50 +1435,18 @@ export async function promptUserForMetadata(
             type="text"
             placeholder="e.g., In Rainbows (optional)"
             value=""
-            style="
-              width: 100%;
-              padding: 0.5rem 0;
-              background: transparent;
-              border: none;
-              border-bottom: 1px solid #000;
-              color: #000;
-              font-size: 0.9rem;
-              box-sizing: border-box;
-              font-family: inherit;
-              outline: none;
-            "
+            class="vinyl-metadata-modal-input"
           >
         </div>
 
-        <div style="margin-bottom: 1.5rem;">
-          <label
-            style="
-              display: block;
-              margin-bottom: 0.5rem;
-              color: #000;
-              font-size: 0.8rem;
-              text-transform: lowercase;
-              letter-spacing: 0.5px;
-              font-weight: normal;
-            "
-          >
+        <div class="vinyl-metadata-modal-field">
+          <label class="vinyl-metadata-modal-label">
             aspect ratio
           </label>
           <input
             id="vinyl-aspect-ratio-input"
             placeholder="e.g. 16:9, 4/3, 1.33"
-            style="
-              width: 100%;
-              padding: 0.5rem 0;
-              background: transparent;
-              border: none;
-              border-bottom: 1px solid #000;
-              color: #000;
-              font-size: 0.9rem;
-              box-sizing: border-box;
-              font-family: inherit;
-              outline: none;
-            "
+            class="vinyl-metadata-modal-input"
           />
         </div>
 
@@ -1370,48 +1487,21 @@ export async function promptUserForMetadata(
           }
         </script>
 
-        <div style="display: flex; gap: 2rem; align-items: center;">
+        <div class="vinyl-metadata-modal-buttons">
           ${
             showSkip
               ? `
-          <a id="vinyl-skip-btn" style="
-            color: var(--vinyl-link-color);
-            text-decoration: underline;
-            cursor: pointer;
-            font-size: var(--vinyl-link-font-size);
-            font-family: inherit;
-            -webkit-font-smoothing: none;
-            -moz-osx-font-smoothing: grayscale;
-            text-shadow: var(--vinyl-link-text-shadow);
-          ">
+          <a id="vinyl-skip-btn" class="vinyl-metadata-modal-link">
             skip
           </a>
           `
               : `
-          <a id="vinyl-cancel-btn" style="
-            color: var(--vinyl-link-color);
-            text-decoration: underline;
-            cursor: pointer;
-            font-size: var(--vinyl-link-font-size);
-            font-family: inherit;
-            -webkit-font-smoothing: none;
-            -moz-osx-font-smoothing: grayscale;
-            text-shadow: var(--vinyl-link-text-shadow);
-          ">
+          <a id="vinyl-cancel-btn" class="vinyl-metadata-modal-link">
             cancel
           </a>
           `
           }
-          <a id="vinyl-confirm-btn" style="
-            color: var(--vinyl-link-color);
-            text-decoration: underline;
-            cursor: pointer;
-            font-size: var(--vinyl-link-font-size);
-            font-family: inherit;
-            -webkit-font-smoothing: none;
-            -moz-osx-font-smoothing: grayscale;
-            text-shadow: var(--vinyl-link-text-shadow);
-          ">
+          <a id="vinyl-confirm-btn" class="vinyl-metadata-modal-link">
             ${showSkip ? "retry" : "confirm"}
           </a>
         </div>
@@ -1431,7 +1521,7 @@ export async function promptUserForMetadata(
     ) as HTMLInputElement;
     const aspectRatioInput = modal.querySelector(
       "#vinyl-aspect-ratio-input",
-    ) as HTMLSelectElement;
+    ) as HTMLInputElement;
     const confirmBtn = modal.querySelector(
       "#vinyl-confirm-btn",
     ) as HTMLAnchorElement;
