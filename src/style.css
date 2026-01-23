@@ -7,6 +7,30 @@
     image-rendering: pixelated;
     background-color: #f7f7f2;
     text-rendering: optimizeSpeed;
+    --dark-mode-bg: #111;
+    --dark-mode-panel: #1b1b1f;
+    --dark-mode-text: #f5f5f0;
+    --paper-overlay-bg: #ffffff;
+    --paper-overlay-text: #1f2328;
+    --body-text-shadow:
+        0.2px 0 0 rgba(255, 0, 0, 0.5), -0.2px 0 0 rgba(0, 100, 200, 0.5);
+    --settings-panel-bg: #f7f7f2;
+    --settings-panel-text: #000000;
+    --settings-panel-border: #dddddd;
+    --sort-dropdown-bg: #f7f7f2;
+    --sort-dropdown-border: #ddd;
+    --sort-option-hover-bg: #f5f5f5;
+    --player-overlay-bg: #f7f7f2;
+    --focus-card-artist-color: #000;
+    --focus-card-song-color: #000;
+    --focus-card-year-color: #888;
+    --focus-card-aspect-color: #666;
+    --video-timeline-track: rgba(0, 0, 0, 0.08);
+    --video-timeline-thumb: #000;
+    --video-volume-active: #000;
+    --video-volume-track: rgba(0, 0, 0, 0.08);
+    --video-volume-icon: #000;
+    --theme-transition-duration: 0.35s;
 }
 
 * {
@@ -21,15 +45,47 @@ body {
     background-color: #f7f7f2;
     overflow: hidden;
     overscroll-behavior: none;
-    text-shadow:
-        0.2px 0 0 rgba(255, 0, 0, 0.5),
-        -0.2px 0 0 rgba(0, 100, 200, 0.5);
+    text-shadow: var(--body-text-shadow, none);
+    transition:
+        background-color var(--theme-transition-duration) ease,
+        color var(--theme-transition-duration) ease,
+        text-shadow var(--theme-transition-duration) ease;
 }
 
 #app {
     margin: 0;
     width: 100%;
     height: 100vh;
+}
+
+#dark-mode-toggle {
+    width: 100%;
+    border: 1px solid rgba(0, 0, 0, 0.35);
+    border-radius: 999px;
+    background: transparent;
+    color: #000;
+    padding: 0.35rem 0.9rem;
+    font-size: 0.75rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition:
+        background 0.15s ease,
+        border-color 0.15s ease,
+        color 0.15s ease;
+}
+
+#dark-mode-toggle:hover {
+    background: rgba(0, 0, 0, 0.08);
+}
+
+body.dark-mode #dark-mode-toggle {
+    border-color: rgba(255, 255, 255, 0.45);
+    color: #fff;
+}
+
+body.dark-mode #dark-mode-toggle:hover {
+    background: rgba(255, 255, 255, 0.15);
 }
 
 canvas#vinyl-viewer {
@@ -97,10 +153,94 @@ body.fullscreen-mode-active #vinyl-focus-card-info-root {
     position: relative;
     width: 512px;
     height: 1024px;
-    background: #fff;
+    background: var(--player-overlay-bg, #f7f7f2);
     transform: translateY(0);
     will-change: transform;
     pointer-events: none;
+    transition: background var(--theme-transition-duration) ease;
+}
+
+html.dark-mode,
+body.dark-mode {
+    background-color: var(--dark-mode-bg);
+    color: var(--dark-mode-text);
+    text-shadow: none;
+    --paper-overlay-bg: var(--dark-mode-panel);
+    --paper-overlay-text: var(--dark-mode-text);
+    --settings-panel-bg: var(--dark-mode-panel);
+    --settings-panel-text: var(--dark-mode-text);
+    --settings-panel-border: rgba(255, 255, 255, 0.25);
+    --sort-dropdown-bg: rgba(8, 8, 8, 0.95);
+    --sort-dropdown-border: rgba(255, 255, 255, 0.2);
+    --sort-option-hover-bg: rgba(255, 255, 255, 0.1);
+    --player-overlay-bg: var(--dark-mode-panel);
+    --focus-card-artist-color: rgba(255, 255, 255, 0.95);
+    --focus-card-song-color: rgba(255, 255, 255, 0.95);
+    --focus-card-year-color: rgba(255, 255, 255, 0.65);
+    --focus-card-aspect-color: rgba(255, 255, 255, 0.65);
+    --video-timeline-track: rgba(255, 255, 255, 0.25);
+    --video-timeline-thumb: #fff;
+    --video-volume-active: #fff;
+    --video-volume-track: rgba(255, 255, 255, 0.25);
+    --video-volume-icon: #fff;
+}
+
+body.dark-mode #app {
+    background-color: var(--dark-mode-bg);
+    transition: background-color var(--theme-transition-duration) ease;
+}
+
+body.dark-mode #global-controls button,
+body.dark-mode .vinyl-hyperlink {
+    color: var(--dark-mode-text);
+}
+
+/* Theme transition for interactive elements */
+#global-controls button,
+.vinyl-hyperlink {
+    transition: color var(--theme-transition-duration) ease;
+}
+
+#turntable-settings-panel {
+    transition:
+        background var(--theme-transition-duration) ease,
+        color var(--theme-transition-duration) ease,
+        border-color var(--theme-transition-duration) ease;
+}
+
+body.dark-mode #turntable-settings-panel {
+    background: var(--dark-mode-panel);
+    color: var(--dark-mode-text);
+    border-color: rgba(255, 255, 255, 0.25);
+}
+
+body.dark-mode .paper-overlay,
+body.dark-mode .paper-overlay-markdown,
+body.dark-mode .paper-overlay-pdf,
+body.dark-mode .paper-overlay-type-markdown,
+body.dark-mode .paper-overlay-type-pdf {
+    background-color: var(--dark-mode-panel);
+    color: var(--dark-mode-text);
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+body.dark-mode .paper-overlay-markdown-content,
+body.dark-mode .paper-overlay-markdown h1,
+body.dark-mode .paper-overlay-markdown h2,
+body.dark-mode .paper-overlay-markdown h3,
+body.dark-mode .paper-overlay-markdown h4,
+body.dark-mode .paper-overlay-markdown p,
+body.dark-mode .paper-overlay-markdown li {
+    color: var(--dark-mode-text);
+}
+
+body.dark-mode .paper-overlay-pdf-text-layer span {
+    color: var(--dark-mode-text);
+}
+
+body.dark-mode #global-controls button:hover,
+body.dark-mode .vinyl-hyperlink:hover {
+    color: var(--vinyl-link-hover-color);
 }
 
 #player {
@@ -229,6 +369,12 @@ body.fullscreen-mode-active #vinyl-focus-card-info-root {
 
 .paper-overlay {
     filter: drop-shadow(0px 8px 24px rgba(0, 0, 0, 0.15));
+    background-color: var(--paper-overlay-bg, #ffffff);
+    color: var(--paper-overlay-text, #1f2328);
+    transition:
+        background-color var(--theme-transition-duration) ease,
+        color var(--theme-transition-duration) ease,
+        border-color var(--theme-transition-duration) ease;
 }
 
 .paper-overlay-markdown,
@@ -254,24 +400,25 @@ body.fullscreen-mode-active #vinyl-focus-card-info-root {
     scrollbar-gutter: stable;
     overscroll-behavior: contain;
     scrollbar-width: thick;
-    scrollbar-color: rgba(0, 0, 0, 0.45) #ffffff;
+    scrollbar-color: rgba(0, 0, 0, 0.45) var(--paper-overlay-bg, #ffffff);
     box-sizing: border-box;
     overflow-x: hidden !important;
 }
 
 .paper-overlay::-webkit-scrollbar {
     width: var(--paper-scrollbar-width, 44px);
-    background: #ffffff;
+    background: var(--paper-overlay-bg, #ffffff);
 }
 
 .paper-overlay::-webkit-scrollbar-track {
-    background: #ffffff;
+    background: var(--paper-overlay-bg, #ffffff);
 }
 
 .paper-overlay::-webkit-scrollbar-thumb {
     background: rgba(0, 0, 0, 0.45);
     border-radius: 0;
-    border: var(--paper-scrollbar-border, 6px) solid #ffffff;
+    border: var(--paper-scrollbar-border, 6px) solid
+        var(--paper-overlay-bg, #ffffff);
 }
 
 .paper-overlay.paper-overlay-type-pdf {
@@ -297,32 +444,34 @@ body.fullscreen-mode-active #vinyl-focus-card-info-root {
 .paper-overlay.paper-overlay-type-markdown {
     scrollbar-gutter: stable;
     scrollbar-width: auto;
-    scrollbar-color: transparent #ffffff;
+    scrollbar-color: transparent var(--paper-overlay-bg, #ffffff);
 }
 
 .paper-overlay.paper-overlay-type-markdown::-webkit-scrollbar {
     width: var(--paper-scrollbar-width, 44px);
-    background: #ffffff;
+    background: var(--paper-overlay-bg, #ffffff);
 }
 
 .paper-overlay.paper-overlay-type-markdown::-webkit-scrollbar-thumb {
     background: transparent;
     border-radius: 0;
-    border: var(--paper-scrollbar-border, 6px) solid #ffffff;
+    border: var(--paper-scrollbar-border, 6px) solid
+        var(--paper-overlay-bg, #ffffff);
 }
 
 .paper-overlay.paper-overlay-type-markdown:hover {
-    scrollbar-color: rgba(0, 0, 0, 0.45) #ffffff;
+    scrollbar-color: rgba(0, 0, 0, 0.45) var(--paper-overlay-bg, #ffffff);
 }
 
 .paper-overlay.paper-overlay-type-markdown::-webkit-scrollbar-track {
-    background: #ffffff;
+    background: var(--paper-overlay-bg, #ffffff);
 }
 
 .paper-overlay.paper-overlay-type-markdown:hover::-webkit-scrollbar-thumb {
     background: rgba(0, 0, 0, 0.45);
     border-radius: 0;
-    border: var(--paper-scrollbar-border, 6px) solid #ffffff;
+    border: var(--paper-scrollbar-border, 6px) solid
+        var(--paper-overlay-bg, #ffffff);
 }
 
 .paper-overlay.paper-overlay-type-html {
@@ -347,6 +496,57 @@ body.fullscreen-mode-active #vinyl-focus-card-info-root {
 
 .paper-overlay-scrollbar {
     display: none;
+}
+
+body.dark-mode .paper-overlay-scrollbar,
+body.dark-mode .paper-overlay-scrollbar-thumb {
+    background: var(--dark-mode-panel);
+}
+
+body.dark-mode .paper-overlay-scrollbar-thumb {
+    border: var(--paper-scrollbar-border, 6px) solid var(--dark-mode-panel);
+}
+
+body.dark-mode .paper-overlay,
+body.dark-mode .paper-overlay.paper-overlay-type-markdown,
+body.dark-mode .paper-overlay.paper-overlay-type-pdf,
+body.dark-mode .paper-overlay.paper-overlay-type-html {
+    scrollbar-color: rgba(255, 255, 255, 0.45) var(--dark-mode-panel);
+}
+
+body.dark-mode .paper-overlay::-webkit-scrollbar,
+body.dark-mode .paper-overlay.paper-overlay-type-markdown::-webkit-scrollbar,
+body.dark-mode .paper-overlay.paper-overlay-type-pdf::-webkit-scrollbar,
+body.dark-mode .paper-overlay.paper-overlay-type-html::-webkit-scrollbar {
+    background: var(--dark-mode-panel);
+}
+
+body.dark-mode .paper-overlay::-webkit-scrollbar-track,
+body.dark-mode
+    .paper-overlay.paper-overlay-type-markdown::-webkit-scrollbar-track,
+body.dark-mode .paper-overlay.paper-overlay-type-pdf::-webkit-scrollbar-track,
+body.dark-mode .paper-overlay.paper-overlay-type-html::-webkit-scrollbar-track {
+    background: var(--dark-mode-panel);
+}
+
+body.dark-mode .paper-overlay::-webkit-scrollbar-thumb,
+body.dark-mode
+    .paper-overlay.paper-overlay-type-markdown::-webkit-scrollbar-thumb,
+body.dark-mode .paper-overlay.paper-overlay-type-pdf::-webkit-scrollbar-thumb,
+body.dark-mode .paper-overlay.paper-overlay-type-html::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.45);
+    border-radius: 0;
+    border: var(--paper-scrollbar-border, 6px) solid var(--dark-mode-panel);
+}
+
+body.dark-mode
+    .paper-overlay.paper-overlay-type-markdown:hover::-webkit-scrollbar-thumb,
+body.dark-mode
+    .paper-overlay.paper-overlay-type-pdf:hover::-webkit-scrollbar-thumb,
+body.dark-mode
+    .paper-overlay.paper-overlay-type-html:hover::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.55);
+    border-color: var(--dark-mode-panel);
 }
 
 .paper-overlay-markdown {
@@ -379,6 +579,7 @@ body.fullscreen-mode-active #vinyl-focus-card-info-root {
     max-width: 100%;
     box-sizing: border-box;
     overflow-x: hidden;
+    transition: color var(--theme-transition-duration) ease;
 }
 
 .paper-overlay-markdown h1 {

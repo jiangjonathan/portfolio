@@ -61,6 +61,46 @@ export interface DOMElements {
   portfolioPaperLinksBar: HTMLDivElement;
 }
 
+const DARK_MODE_STORAGE_KEY = "vinylDarkModeEnabled";
+
+const loadDarkModePreference = (): boolean | null => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  try {
+    const stored = window.localStorage.getItem(DARK_MODE_STORAGE_KEY);
+    if (stored === "1") return true;
+    if (stored === "0") return false;
+    return null;
+  } catch (error) {
+    console.warn("[domSetup] Failed to load dark mode preference:", error);
+    return null;
+  }
+};
+
+const saveDarkModePreference = (enabled: boolean): void => {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    window.localStorage.setItem(DARK_MODE_STORAGE_KEY, enabled ? "1" : "0");
+  } catch (error) {
+    console.warn("[domSetup] Failed to save dark mode preference:", error);
+  }
+};
+
+const dispatchDarkModeChangeEvent = (enabled: boolean): void => {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.dispatchEvent(
+    new CustomEvent("dark-mode-change", { detail: { enabled } }),
+  );
+};
+
+const COLOR_SHIFT_TEXT_SHADOW =
+  "0.3px 0 0 rgba(255, 0, 0, 0.65), -0.3px 0 0 rgba(0, 100, 200, 0.65)";
+
 export function setupDOM(): DOMElements {
   const root = document.getElementById("app");
   if (!root) {
@@ -84,7 +124,7 @@ export function setupDOM(): DOMElements {
     z-index: 100;
     font-family: inherit;
     opacity: 1;
-    transition: opacity 0.3s ease;
+    transition: opacity 0.3s ease, color 0.35s ease;
     pointer-events: none;
   `;
   root.appendChild(nameText);
@@ -429,17 +469,19 @@ export function setupDOM(): DOMElements {
   // Add global styles
   const style = document.createElement("style");
   style.textContent = `
-    #vinyl-library-viewer::-webkit-scrollbar {
-      display: none;
-    }
+      #vinyl-library-viewer::-webkit-scrollbar {
+        display: none;
+      }
 
-    :root {
-      --vinyl-link-color: ${LINK_COLOR};
-      --vinyl-link-hover-color: ${LINK_HOVER_COLOR};
-      --vinyl-link-font-size: 0.85rem;
-      --vinyl-link-text-shadow: 0.2px 0 0 rgba(255, 0, 0, 0.5), -0.2px 0 0 rgba(0, 100, 200, 0.5);
-      --vinyl-focus-info-max-width: 420px;
-    }
+      :root {
+        --vinyl-link-color: ${LINK_COLOR};
+        --vinyl-link-hover-color: ${LINK_HOVER_COLOR};
+        --vinyl-link-font-size: 0.85rem;
+        --vinyl-link-text-shadow: ${COLOR_SHIFT_TEXT_SHADOW};
+        --body-text-shadow: ${COLOR_SHIFT_TEXT_SHADOW};
+        --portfolio-arrow-color: ${LINK_COLOR};
+        --vinyl-focus-info-max-width: 420px;
+      }
 
     body.focus-card-compact #jonathan-jiang-name {
       opacity: 0 !important;
@@ -528,6 +570,11 @@ export function setupDOM(): DOMElements {
       position: relative;
       z-index: 9999;
     }
+
+    #portfolio-prev-arrow,
+    #portfolio-next-arrow {
+      text-shadow: var(--vinyl-link-text-shadow);
+    }
   `;
   document.head.appendChild(style);
   root.appendChild(vinylViewerContainer);
@@ -594,17 +641,23 @@ export function setupDOM(): DOMElements {
   settingsPanel.id = "turntable-settings-panel";
   Object.assign(settingsPanel.style, {
     position: "absolute",
-    bottom: "calc(100% + 8px)",
-    left: "0",
-    background: "#f7f7f2",
-    color: "#000000",
-    border: "1px solid #dddddd",
+    bottom: "auto",
+    top: "0",
+    left: "100%",
+    right: "auto",
+    background: "var(--settings-panel-bg, #f7f7f2)",
+    color: "var(--settings-panel-text, #000000)",
+    border: "1px solid var(--settings-panel-border, #dddddd)",
     padding: "0.5rem 0.75rem",
     display: "flex",
     flexDirection: "column",
     gap: "0.4rem",
     minWidth: "160px",
-    boxShadow: "0 2px 8px rgba(0, 0, 0, 0.08)",
+    fontFamily: "inherit",
+    fontSize: "0.85rem",
+    letterSpacing: "0",
+    lineHeight: "1.4",
+    boxShadow: "0 14px 32px rgba(0, 0, 0, 0.35)",
     zIndex: String(HIDE_BUTTON_Z_INDEX + 5),
     userSelect: "none",
     opacity: "0",
@@ -613,6 +666,126 @@ export function setupDOM(): DOMElements {
     transition: "opacity 0.15s ease, transform 0.15s ease",
   });
   settingsWrapper.appendChild(settingsPanel);
+
+  const themeToggle = document.createElement("div");
+  themeToggle.id = "theme-toggle";
+  themeToggle.style.display = "flex";
+  themeToggle.style.alignItems = "center";
+  themeToggle.style.gap = "0.4rem";
+  themeToggle.style.fontSize = "0.85rem";
+  themeToggle.style.letterSpacing = "0";
+  themeToggle.style.lineHeight = "1.4";
+  themeToggle.style.fontFamily = "inherit";
+
+  const themeLabel = document.createElement("span");
+  themeLabel.textContent = "theme:";
+  themeLabel.style.textTransform = "none";
+  themeLabel.style.fontFamily = "inherit";
+  themeLabel.style.fontSize = "0.85rem";
+  themeLabel.style.lineHeight = "1.4";
+  themeToggle.appendChild(themeLabel);
+
+  const lightOption = document.createElement("button");
+  lightOption.type = "button";
+  lightOption.textContent = "light";
+  lightOption.style.background = "transparent";
+  lightOption.style.border = "none";
+  lightOption.style.cursor = "pointer";
+  lightOption.style.padding = "0";
+  lightOption.style.fontFamily = "inherit";
+  lightOption.style.fontSize = "0.85rem";
+  lightOption.style.letterSpacing = "0";
+  lightOption.style.color = "inherit";
+
+  const darkOption = document.createElement("button");
+  darkOption.type = "button";
+  darkOption.textContent = "dark";
+  darkOption.style.background = "transparent";
+  darkOption.style.border = "none";
+  darkOption.style.cursor = "pointer";
+  darkOption.style.padding = "0";
+  darkOption.style.fontFamily = "inherit";
+  darkOption.style.fontSize = "0.85rem";
+  darkOption.style.letterSpacing = "0";
+  darkOption.style.color = "inherit";
+
+  themeToggle.appendChild(lightOption);
+  const separator = document.createElement("span");
+  separator.textContent = "/";
+  separator.style.fontFamily = "inherit";
+  separator.style.fontSize = "0.85rem";
+  separator.style.lineHeight = "1.4";
+  themeToggle.appendChild(separator);
+  themeToggle.appendChild(darkOption);
+  settingsPanel.appendChild(themeToggle);
+
+  const applyDarkModeClasses = (enabled: boolean) => {
+    if (typeof document !== "undefined") {
+      document.body.classList.toggle("dark-mode", enabled);
+      document.documentElement.classList.toggle("dark-mode", enabled);
+      const root = document.documentElement;
+      root.style.setProperty(
+        "--vinyl-link-color",
+        enabled ? "#ffffff" : LINK_COLOR,
+      );
+      root.style.setProperty("--vinyl-link-hover-color", LINK_HOVER_COLOR);
+      root.style.setProperty(
+        "--portfolio-arrow-color",
+        enabled ? "#ffffff" : LINK_COLOR,
+      );
+      root.style.setProperty(
+        "--vinyl-link-text-shadow",
+        enabled ? "none" : COLOR_SHIFT_TEXT_SHADOW,
+      );
+      root.style.setProperty(
+        "--body-text-shadow",
+        enabled ? "none" : COLOR_SHIFT_TEXT_SHADOW,
+      );
+      root.style.setProperty(
+        "--settings-panel-bg",
+        enabled ? "var(--dark-mode-panel)" : "#f7f7f2",
+      );
+      root.style.setProperty(
+        "--settings-panel-text",
+        enabled ? "var(--dark-mode-text)" : "#000000",
+      );
+      root.style.setProperty(
+        "--settings-panel-border",
+        enabled ? "rgba(255, 255, 255, 0.25)" : "#dddddd",
+      );
+      root.style.setProperty(
+        "--sort-dropdown-bg",
+        enabled ? "rgba(8, 8, 8, 0.95)" : "#f7f7f2",
+      );
+      root.style.setProperty(
+        "--sort-dropdown-border",
+        enabled ? "rgba(255, 255, 255, 0.2)" : "#ddd",
+      );
+      root.style.setProperty(
+        "--sort-option-hover-bg",
+        enabled ? "rgba(255, 255, 255, 0.1)" : "#f5f5f5",
+      );
+    }
+    nameText.style.color = enabled ? "#fff" : "#000";
+    lightOption.style.textDecoration = enabled ? "none" : "underline";
+    darkOption.style.textDecoration = enabled ? "underline" : "none";
+    lightOption.setAttribute("aria-pressed", enabled ? "false" : "true");
+    darkOption.setAttribute("aria-pressed", enabled ? "true" : "false");
+  };
+
+  let darkModeEnabled = loadDarkModePreference() ?? false;
+  applyDarkModeClasses(darkModeEnabled);
+  const handleThemeSelection = (enabled: boolean) => {
+    if (enabled === darkModeEnabled) {
+      return;
+    }
+    darkModeEnabled = enabled;
+    applyDarkModeClasses(darkModeEnabled);
+    saveDarkModePreference(darkModeEnabled);
+    dispatchDarkModeChangeEvent(darkModeEnabled);
+  };
+  lightOption.addEventListener("click", () => handleThemeSelection(false));
+  darkOption.addEventListener("click", () => handleThemeSelection(true));
 
   const createSettingsOption = (
     id: string,
@@ -757,10 +930,10 @@ export function setupDOM(): DOMElements {
     fontSize: "3rem",
     background: "transparent",
     border: "none",
-    color: "#000",
+    color: "var(--portfolio-arrow-color)",
     cursor: "pointer",
     padding: "0.25rem",
-    textShadow: "-0.5px 0 #ff0000, 0.5px 0 #0000ff",
+    textShadow: "var(--vinyl-link-text-shadow)",
     opacity: "0",
     pointerEvents: "none",
     zIndex: "9999",
@@ -769,6 +942,7 @@ export function setupDOM(): DOMElements {
   };
 
   const portfolioPrevArrow = document.createElement("button");
+  portfolioPrevArrow.id = "portfolio-prev-arrow";
   portfolioPrevArrow.textContent = "‹";
   Object.assign(portfolioPrevArrow.style, arrowBaseStyles, { left: "50px" });
   portfolioPrevArrow.addEventListener("mouseover", () => {
@@ -780,6 +954,7 @@ export function setupDOM(): DOMElements {
   root.appendChild(portfolioPrevArrow);
 
   const portfolioNextArrow = document.createElement("button");
+  portfolioNextArrow.id = "portfolio-next-arrow";
   portfolioNextArrow.textContent = "›";
   Object.assign(portfolioNextArrow.style, arrowBaseStyles, { right: "50px" });
   portfolioNextArrow.addEventListener("mouseover", () => {

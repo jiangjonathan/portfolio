@@ -157,6 +157,12 @@ export const createFocusCardController = (
     focusVinylHoverOffsetTarget = 0;
     setFocusCoverClickBodyClass(false);
     updateFocusVinylVisibility();
+    // Notify player that focus card is hidden (for repositioning)
+    window.dispatchEvent(
+      new CustomEvent("focus-visibility-change", {
+        detail: { visible: false },
+      }),
+    );
   };
 
   const waitForFocusVinylOffset = (

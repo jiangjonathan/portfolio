@@ -48,7 +48,7 @@ export function createPortfolioFeature(
       const isActive = id === currentId;
       link.style.opacity = isActive ? "1" : "0.65";
       link.style.textDecoration = isActive ? "underline" : "none";
-      link.style.color = "#000";
+      link.style.color = "var(--vinyl-link-color)";
     });
   };
 
@@ -124,13 +124,22 @@ export function createPortfolioFeature(
       gap: 0.5rem;
       margin-bottom: 0.5rem;
     `;
+    const NAV_BUTTON_BG = "rgba(100, 100, 255, 0.3)";
+    const NAV_BUTTON_HOVER_BG = "rgba(100, 100, 255, 0.5)";
+    const applyNavButtonHoverState = (
+      button: HTMLButtonElement,
+      hovered: boolean,
+    ) => {
+      button.style.background = hovered ? NAV_BUTTON_HOVER_BG : NAV_BUTTON_BG;
+      button.style.color = hovered ? "var(--vinyl-link-hover-color)" : "#fff";
+    };
 
     const prevButton = document.createElement("button");
     prevButton.textContent = "← Previous";
     prevButton.style.cssText = `
       flex: 1;
       padding: 8px 12px;
-      background: rgba(100, 100, 255, 0.3);
+      background: ${NAV_BUTTON_BG};
       color: #fff;
       border: 1px solid #66f;
       border-radius: 4px;
@@ -140,10 +149,10 @@ export function createPortfolioFeature(
       transition: background 0.15s;
     `;
     prevButton.onmouseover = () => {
-      prevButton.style.background = "rgba(100, 100, 255, 0.5)";
+      applyNavButtonHoverState(prevButton, true);
     };
     prevButton.onmouseout = () => {
-      prevButton.style.background = "rgba(100, 100, 255, 0.3)";
+      applyNavButtonHoverState(prevButton, false);
     };
     prevButton.onclick = () => {
       portfolioPapersManager?.previousPaper();
@@ -154,7 +163,7 @@ export function createPortfolioFeature(
     nextButton.style.cssText = `
       flex: 1;
       padding: 8px 12px;
-      background: rgba(100, 100, 255, 0.3);
+      background: ${NAV_BUTTON_BG};
       color: #fff;
       border: 1px solid #66f;
       border-radius: 4px;
@@ -164,10 +173,10 @@ export function createPortfolioFeature(
       transition: background 0.15s;
     `;
     nextButton.onmouseover = () => {
-      nextButton.style.background = "rgba(100, 100, 255, 0.5)";
+      applyNavButtonHoverState(nextButton, true);
     };
     nextButton.onmouseout = () => {
-      nextButton.style.background = "rgba(100, 100, 255, 0.3)";
+      applyNavButtonHoverState(nextButton, false);
     };
     nextButton.onclick = () => {
       portfolioPapersManager?.nextPaper();
@@ -177,6 +186,18 @@ export function createPortfolioFeature(
     navContainer.appendChild(nextButton);
     deps.papersContainer.appendChild(navContainer);
 
+    const PAPER_BUTTON_BG = "rgba(255, 255, 255, 0.1)";
+    const PAPER_BUTTON_HOVER_BG = "rgba(255, 255, 255, 0.2)";
+    const applyPaperButtonHoverState = (
+      button: HTMLButtonElement,
+      hovered: boolean,
+    ) => {
+      button.style.background = hovered
+        ? PAPER_BUTTON_HOVER_BG
+        : PAPER_BUTTON_BG;
+      button.style.color = hovered ? "var(--vinyl-link-hover-color)" : "#fff";
+    };
+
     const papers = portfolioPapersManager?.getPapers() ?? [];
     papers.forEach((paper) => {
       const button = document.createElement("button");
@@ -184,7 +205,7 @@ export function createPortfolioFeature(
       button.style.cssText = `
         width: 100%;
         padding: 8px 12px;
-        background: rgba(255, 255, 255, 0.1);
+        background: ${PAPER_BUTTON_BG};
         color: #fff;
         border: 1px solid #666;
         border-radius: 4px;
@@ -195,10 +216,10 @@ export function createPortfolioFeature(
         text-align: left;
       `;
       button.onmouseover = () => {
-        button.style.background = "rgba(255, 255, 255, 0.2)";
+        applyPaperButtonHoverState(button, true);
       };
       button.onmouseout = () => {
-        button.style.background = "rgba(255, 255, 255, 0.1)";
+        applyPaperButtonHoverState(button, false);
       };
       button.onclick = () => {
         console.log(`[Portfolio] Loading paper: ${paper.name}`);

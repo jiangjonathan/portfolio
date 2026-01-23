@@ -27,6 +27,12 @@ const NORMAL_LIGHTING: LightingState = {
   fillIntensity: 0.7,
 };
 
+const DARK_MODE_LIGHTING: LightingState = {
+  ambientIntensity: 0.25,
+  keyIntensity: 0.9,
+  fillIntensity: 0.35,
+};
+
 const FULLSCREEN_LIGHTING: LightingState = {
   ambientIntensity: 0,
   keyIntensity: 0.3,
@@ -86,6 +92,7 @@ class LightingAnimator {
 export {
   LightingAnimator,
   NORMAL_LIGHTING,
+  DARK_MODE_LIGHTING,
   FULLSCREEN_LIGHTING,
   FULLSCREEN_HOVER_LIGHTING,
 };

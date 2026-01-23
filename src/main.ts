@@ -36,6 +36,7 @@ import {
   loadTextures,
   LightingAnimator,
   NORMAL_LIGHTING,
+  DARK_MODE_LIGHTING,
   FULLSCREEN_LIGHTING,
   FULLSCREEN_HOVER_LIGHTING,
 } from "./scene/scene";
@@ -195,6 +196,8 @@ const {
   portfolioPaperLinksBar,
 } = dom;
 
+let activePage: ScenePage = "home";
+
 const paperOverlayManager = new PaperOverlayManager(root);
 paperOverlayManager.setActive(false);
 
@@ -206,10 +209,25 @@ portfolioResumeButton.style.display = "block";
 contactButton.style.display = "block";
 resetTutorialButton.style.display = "none";
 freeLookButton.style.display = "none";
-settingsButton.style.display = "none";
+settingsButton.style.display = "block";
 settingsPanel.style.display = "flex";
 
+const SETTINGS_PANEL_GAP = "8px";
 let isSettingsPanelVisible = false;
+const setSettingsPanelLayout = (horizontal: boolean) => {
+  if (horizontal) {
+    settingsPanel.style.left = "0";
+    settingsPanel.style.right = "auto";
+    settingsPanel.style.top = "auto";
+    settingsPanel.style.bottom = `calc(100% + ${SETTINGS_PANEL_GAP})`;
+  } else {
+    settingsPanel.style.left = `calc(100% + ${SETTINGS_PANEL_GAP})`;
+    settingsPanel.style.right = "auto";
+    settingsPanel.style.top = "0";
+    settingsPanel.style.bottom = "auto";
+  }
+};
+setSettingsPanelLayout(false);
 const setSettingsPanelVisible = (visible: boolean) => {
   isSettingsPanelVisible = visible;
   settingsPanel.style.opacity = visible ? "1" : "0";
@@ -331,6 +349,31 @@ const lightingAnimator = new LightingAnimator(
   keyLight,
   fillLight,
 );
+
+let darkModeLightingEnabled = false;
+let fullscreenLightingEnabled = false;
+
+const refreshLightingTarget = () => {
+  if (fullscreenLightingEnabled) {
+    lightingAnimator.setTargetState(FULLSCREEN_LIGHTING);
+    return;
+  }
+
+  lightingAnimator.setTargetState(
+    darkModeLightingEnabled ? DARK_MODE_LIGHTING : NORMAL_LIGHTING,
+  );
+};
+
+darkModeLightingEnabled =
+  typeof document !== "undefined" &&
+  document.documentElement.classList.contains("dark-mode");
+refreshLightingTarget();
+
+window.addEventListener("dark-mode-change", (event) => {
+  const customEvent = event as CustomEvent<{ enabled: boolean }>;
+  darkModeLightingEnabled = Boolean(customEvent.detail?.enabled);
+  refreshLightingTarget();
+});
 
 // Create light control panel (press 'L' to toggle)
 // const lightControlPanel = createLightControlPanel({
@@ -672,7 +715,6 @@ const setHeroPageVisibility = (page: ScenePage | null) => {
     model.visible = page === null || pageId === page;
   });
 };
-let activePage: ScenePage = "home";
 let youtubeBridge: YouTubeBridge | null = null;
 // directionFromAngles, lerpAngleDegrees, cloneCameraSettings, applyPageCameraSettings, captureCameraState now imported from pageNavigation.ts
 
@@ -901,10 +943,13 @@ const setActiveScenePage = (page: ScenePage) => {
     contactButton.style.display = page === "business_card" ? "none" : "block";
     resetTutorialButton.style.display = page === "turntable" ? "block" : "none";
     freeLookButton.style.display = page === "turntable" ? "block" : "none";
-    settingsButton.style.display = page === "turntable" ? "block" : "none";
-    if (page !== "turntable") {
+    const shouldShowSettingsButton =
+      page === "turntable" || page === "home" || page === "portfolio";
+    settingsButton.style.display = shouldShowSettingsButton ? "block" : "none";
+    if (!shouldShowSettingsButton) {
       setSettingsPanelVisible(false);
     }
+    setSettingsPanelLayout(page === "turntable");
   };
 
   if (isPositionChanging) {
@@ -1899,11 +1944,8 @@ turntableStateManager.initialize(cameraRig, CAMERA_TARGETS, {
     groundPlane.visible = visible;
   },
   setFullscreenLighting: (enabled: boolean) => {
-    if (enabled) {
-      lightingAnimator.setTargetState(FULLSCREEN_LIGHTING, false);
-    } else {
-      lightingAnimator.setTargetState(NORMAL_LIGHTING, false);
-    }
+    fullscreenLightingEnabled = enabled;
+    refreshLightingTarget();
   },
   onEnterFullscreen: () => {
     // Start cursor hide timer when entering fullscreen

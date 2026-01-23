@@ -709,32 +709,36 @@ export class VinylLibraryViewer {
 
           .focus-card-info-container .album-artist {
             font-size: 0.7rem;
-            color: #000;
+            color: var(--focus-card-artist-color, #000);
             margin-bottom: 0.15rem;
             line-height: 1.1;
             font-weight: normal;
+            transition: color 0.35s ease;
           }
 
           .focus-card-info-container .album-song {
             font-weight: 500;
             font-size: 0.8rem;
-            color: #000;
+            color: var(--focus-card-song-color, #000);
             line-height: 1.1;
+            transition: color 0.35s ease;
           }
 
           .focus-card-info-container .album-year {
             font-size: 0.65rem;
-            color: #888;
+            color: var(--focus-card-year-color, #888);
             margin-top: 0.15rem;
             line-height: 1.1;
+            transition: color 0.35s ease;
           }
 
           .focus-card-info-container .album-aspect-ratio {
             font-size: 0.65rem;
-            color: #666;
+            color: var(--focus-card-aspect-color, #666);
             margin-top: 0.35rem;
             line-height: 1.1;
             display: none;
+            transition: color 0.35s ease;
           }
 
           .focus-card-info-container .album-aspect-ratio.editing-enabled {
@@ -1038,6 +1042,7 @@ export class VinylLibraryViewer {
             margin-bottom: calc(-0.25rem * var(--font-scale, 1));
             line-height: 1.4;
             font-weight: normal;
+            transition: color 0.35s ease;
           }
 
           .vinyl-viewer-widget .album-song {
@@ -1045,6 +1050,7 @@ export class VinylLibraryViewer {
             font-size: calc(0.8rem * var(--font-scale, 1));
             color: #000;
             line-height: 1.4;
+            transition: color 0.35s ease;
           }
 
           .vinyl-viewer-widget .album-year {
@@ -1052,6 +1058,7 @@ export class VinylLibraryViewer {
             color: #888;
             margin-top: 0rem;
             line-height: 1.1;
+            transition: color 0.35s ease;
           }
 
           /* Scrolling text animation on hover - only for overflowing text */
@@ -1214,8 +1221,22 @@ export class VinylLibraryViewer {
             width: var(--card-width, 430px);
             max-width: var(--card-width, 430px);
             font-size: calc(0.85rem * var(--font-scale, 1));
+            opacity: 1;
+            visibility: visible;
+            pointer-events: auto;
             transition: width 0.35s ease, max-width 0.35s ease,
-              flex-direction 0.35s ease, gap 0.35s ease;
+              flex-direction 0.35s ease, gap 0.35s ease, opacity 0.2s ease;
+          }
+
+          .vinyl-viewer-widget .filter-controls.filter-controls--visible {
+            opacity: 1;
+            visibility: visible;
+            pointer-events: auto;
+          }
+
+          .vinyl-viewer-widget .filter-controls.filter-controls--backdrop {
+            background: rgba(255, 255, 255, 0.16);
+            backdrop-filter: blur(10px);
           }
 
           /* Hide album text when focus card is compact (left) */
@@ -1277,8 +1298,8 @@ export class VinylLibraryViewer {
             position: absolute;
             top: 100%;
             left: 0;
-            background: #f7f7f2;
-            border: 1px solid #ddd;
+            background: var(--sort-dropdown-bg, #f7f7f2);
+            border: 1px solid var(--sort-dropdown-border, #ddd);
             margin-top: calc(0.25rem * var(--font-scale, 1));
             min-width: calc(120px * var(--font-scale, 1));
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
@@ -1286,7 +1307,8 @@ export class VinylLibraryViewer {
             opacity: 0;
             transform: translateY(4px);
             pointer-events: none;
-            transition: opacity 0.15s ease, transform 0.15s ease;
+            transition: opacity 0.15s ease, transform 0.15s ease,
+              background 0.35s ease, border-color 0.35s ease;
           }
 
           .vinyl-viewer-widget .sort-dropdown.is-open {
@@ -1299,11 +1321,11 @@ export class VinylLibraryViewer {
             padding: calc(0.5rem * var(--font-scale, 1)) calc(1rem * var(--font-scale, 1));
             cursor: pointer;
             font-size: calc(0.85rem * var(--font-scale, 1));
-            transition: background 0.2s;
+            transition: background 0.2s, color 0.35s ease;
           }
 
           .vinyl-viewer-widget .sort-option:hover {
-            background: #f5f5f5;
+            background: var(--sort-option-hover-bg, #f5f5f5);
           }
 
           .vinyl-viewer-widget .search-container {
@@ -1323,6 +1345,7 @@ export class VinylLibraryViewer {
             -webkit-font-smoothing: none;
             -moz-osx-font-smoothing: grayscale;
             flex-shrink: 0;
+            transition: color 0.35s ease;
           }
 
           .vinyl-viewer-widget .search-input {
@@ -1339,6 +1362,7 @@ export class VinylLibraryViewer {
             vertical-align: baseline;
             text-decoration: underline;
             text-underline-offset: 1px;
+            transition: color 0.35s ease;
           }
 
           .vinyl-viewer-widget .filter-buttons {
@@ -1396,6 +1420,60 @@ export class VinylLibraryViewer {
 
           .vinyl-viewer-widget .album-card:hover .owner-badge {
             opacity: 1;
+          }
+
+          body.dark-mode .vinyl-viewer-widget .filter-controls {
+            background: transparent;
+          }
+
+          body.dark-mode .vinyl-viewer-widget .filter-controls.filter-controls--backdrop {
+            background: rgba(0, 0, 0, 0.45);
+          }
+
+          body.dark-mode .vinyl-viewer-widget .album-artist,
+          body.dark-mode .vinyl-viewer-widget .album-song {
+            color: rgba(255, 255, 255, 0.95);
+          }
+
+          body.dark-mode .vinyl-viewer-widget .search-input {
+            color: #fff;
+          }
+
+          body.dark-mode .vinyl-viewer-widget .album-year,
+          body.dark-mode .vinyl-viewer-widget .album-aspect-ratio {
+            color: rgba(255, 255, 255, 0.65);
+          }
+
+          body.dark-mode .vinyl-viewer-widget .sort-dropdown {
+            background: var(--sort-dropdown-bg, rgba(8, 8, 8, 0.95));
+            border-color: var(
+              --sort-dropdown-border,
+              rgba(255, 255, 255, 0.25),
+            );
+          }
+
+          body.dark-mode .focus-card-info-container .album-artist,
+          body.dark-mode .focus-card-info-container .album-song,
+          body.dark-mode .focus-card-info-container .album-year,
+          body.dark-mode .focus-card-info-container .album-aspect-ratio,
+          body.dark-mode .focus-card-info-container .album-metadata,
+          body.dark-mode .focus-card-info-container .album-metadata div,
+          body.dark-mode .focus-card-info-container .album-info-container .album-info,
+          body.dark-mode .focus-card-info {
+            color: var(--dark-mode-text);
+          }
+
+          body.dark-mode .vinyl-viewer-widget .sort-option {
+            color: #fff;
+          }
+
+          body.dark-mode .vinyl-viewer-widget .search-label,
+          body.dark-mode .vinyl-viewer-widget .clear-search-btn {
+            color: rgba(255, 255, 255, 0.85);
+          }
+
+          body.dark-mode .vinyl-viewer-widget .clear-search-btn:hover {
+            color: rgba(255, 255, 255, 1);
           }
         </style>
 
@@ -1684,16 +1762,9 @@ export class VinylLibraryViewer {
     const entry = this.library.find((e) => e.id === this.focusedEntryId);
     if (entry) {
       const fadeDelayMs = 150;
-      const fadeDurationMs = 400;
       this.renderFocusCard(entry);
       this.showFocusCardUI(fadeDelayMs);
-      window.setTimeout(() => {
-        window.dispatchEvent(
-          new CustomEvent("focus-visibility-change", {
-            detail: { visible: true },
-          }),
-        );
-      }, fadeDelayMs + fadeDurationMs);
+      // Note: showFocusCardUI now dispatches focus-visibility-change event
     }
   }
 
@@ -1721,6 +1792,13 @@ export class VinylLibraryViewer {
           container.style.transition = "opacity 0.4s ease-out";
           container.style.opacity = "1";
         });
+        // Notify player that focus card UI is now visible (for repositioning only)
+        // Note: This is separate from focus-visibility-change which controls vinyl model visibility
+        window.dispatchEvent(
+          new CustomEvent("focus-card-ui-shown", {
+            detail: { visible: true },
+          }),
+        );
       });
     }, delayMs);
   }
@@ -1742,6 +1820,13 @@ export class VinylLibraryViewer {
       container.style.transition = "none";
       container.style.opacity = "1";
     });
+    // Notify player that focus card UI is now visible (for repositioning only)
+    // Note: This is separate from focus-visibility-change which controls vinyl model visibility
+    window.dispatchEvent(
+      new CustomEvent("focus-card-ui-shown", {
+        detail: { visible: true },
+      }),
+    );
   }
 
   /**
@@ -2608,6 +2693,23 @@ export class VinylLibraryViewer {
       document.addEventListener("click", () => {
         sortDropdown.classList.remove("is-open");
       });
+    }
+
+    const filterControls = document.querySelector(".filter-controls");
+    const libraryGrid = document.getElementById("vinyl-viewer-grid");
+    const updateFilterControlsBackdrop = () => {
+      if (!filterControls || !libraryGrid) {
+        return;
+      }
+      const hasBackdrop = libraryGrid.scrollTop > 0;
+      filterControls.classList.toggle("filter-controls--backdrop", hasBackdrop);
+      filterControls.classList.toggle("filter-controls--visible", hasBackdrop);
+    };
+    if (libraryGrid) {
+      libraryGrid.addEventListener("scroll", updateFilterControlsBackdrop, {
+        passive: true,
+      });
+      updateFilterControlsBackdrop();
     }
 
     this.updateSortButtonText();

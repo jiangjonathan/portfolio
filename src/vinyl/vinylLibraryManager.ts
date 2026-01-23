@@ -141,7 +141,7 @@ export class VinylLibraryManager {
             font-size: 1.5rem;
             background: transparent;
             border: none;
-            color: #000;
+            color: var(--vinyl-link-color, #000);
             cursor: pointer;
             padding: 0;
             width: 30px;
@@ -155,11 +155,39 @@ export class VinylLibraryManager {
             bottom: 16px;
             left: 20px;
             z-index: 1000;
-            text-shadow: -0.3px 0 #ff0000, -0.3px 0 #0000ff;
+            text-shadow: var(--vinyl-link-text-shadow);
           }
 
           .vinyl-widget-enhanced-compact .vinyl-toggle-btn:hover {
             transform: scale(1.1);
+          }
+
+          body.dark-mode .vinyl-widget-enhanced-compact .vinyl-toggle-btn {
+            color: #fff;
+          }
+
+          body.dark-mode .vinyl-widget-enhanced-compact .vinyl-widget-content {
+            color: #fff;
+          }
+
+          body.dark-mode .vinyl-widget-enhanced-compact .vinyl-widget-content h3,
+          body.dark-mode .vinyl-widget-enhanced-compact .vinyl-widget-content label {
+            color: #fff;
+          }
+
+          body.dark-mode .vinyl-widget-enhanced-compact input,
+          body.dark-mode .vinyl-widget-enhanced-compact textarea {
+            border-bottom-color: rgba(255, 255, 255, 0.45);
+            color: #fff;
+          }
+
+          body.dark-mode .vinyl-widget-enhanced-compact input::placeholder,
+          body.dark-mode .vinyl-widget-enhanced-compact textarea::placeholder {
+            color: rgba(255, 255, 255, 0.55);
+          }
+
+          body.dark-mode .vinyl-widget-enhanced-compact .status-message {
+            color: #fff;
           }
 
           .vinyl-widget-enhanced-compact .vinyl-widget-content {

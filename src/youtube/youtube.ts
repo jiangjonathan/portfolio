@@ -466,12 +466,29 @@ export function createYouTubePlayer(): YouTubeBridge {
     };
   };
 
+  // Track whether the focus card is currently visible (has content and opacity > 0)
+  let isFocusCardVisible = false;
+
+  const checkFocusCardVisibility = (): boolean => {
+    const focusCoverContainer = document.getElementById(
+      "vinyl-focus-card-cover-root",
+    );
+    if (!focusCoverContainer) return false;
+    // Focus card is visible if it has content and opacity is not 0
+    const hasContent = focusCoverContainer.innerHTML.trim().length > 0;
+    const opacity = parseFloat(
+      window.getComputedStyle(focusCoverContainer).opacity || "0",
+    );
+    return hasContent && opacity > 0;
+  };
+
   const applySmallPlayerPlacement = (layout: PredictedFocusCardLayout) => {
     if (isFullscreenMode) {
       notifyFocusCardLayoutChanged();
       return;
     }
-    if (layout.isCompact) {
+    // In compact mode, only position below focus card if it's actually visible
+    if (layout.isCompact && isFocusCardVisible) {
       const focusBottom =
         layout.coverBottom || SMALL_PLAYER_MARGIN_PX + FOCUS_CARD_COVER_HEIGHT;
       const verticalGap = Math.max(
@@ -482,6 +499,7 @@ export function createYouTubePlayer(): YouTubeBridge {
       wrapper.style.top = `${topPx}px`;
       wrapper.style.left = `${SMALL_PLAYER_MARGIN_PX}px`;
     } else {
+      // Default position: top-left corner
       wrapper.style.top = SMALL_PLAYER_MARGIN;
       wrapper.style.left = SMALL_PLAYER_MARGIN;
     }
@@ -534,6 +552,8 @@ export function createYouTubePlayer(): YouTubeBridge {
     requestPlayerResize();
   });
   window.addEventListener("focus-card-layout-updated", () => {
+    // Check current focus card visibility
+    isFocusCardVisible = checkFocusCardVisibility();
     // Apply immediately to avoid stale sizing when toggling layouts
     updateSmallPlayerDimensions();
     updateViewportForAspectRatio();
@@ -547,6 +567,28 @@ export function createYouTubePlayer(): YouTubeBridge {
     if (animating) {
       return;
     }
+    // Update focus card visibility state when motion ends
+    isFocusCardVisible = checkFocusCardVisibility();
+    updateSmallPlayerDimensions();
+    updateViewportForAspectRatio();
+    requestPlayerResize();
+  });
+
+  // React to focus card visibility changes (e.g., user clicking "hide focus" or "show focus")
+  window.addEventListener("focus-visibility-change", (event: any) => {
+    const visible = event?.detail?.visible ?? true;
+    isFocusCardVisible = visible;
+    // Reposition player based on new visibility state
+    updateSmallPlayerDimensions();
+    updateViewportForAspectRatio();
+    requestPlayerResize();
+  });
+
+  // React to focus card UI being shown (separate from vinyl model visibility)
+  window.addEventListener("focus-card-ui-shown", (event: any) => {
+    const visible = event?.detail?.visible ?? true;
+    isFocusCardVisible = visible;
+    // Reposition player based on new visibility state
     updateSmallPlayerDimensions();
     updateViewportForAspectRatio();
     requestPlayerResize();
@@ -1484,7 +1526,7 @@ export function createVideoControls(
     width: "100%",
     marginTop: "0.6rem",
     padding: "0 0.25rem 0.3rem",
-    color: "#000",
+    color: "var(--vinyl-link-color, #000)",
     fontSize: "0.75rem",
     fontFamily: '"Space Grotesk", "Inter", sans-serif',
     display: "flex",
@@ -1618,13 +1660,71 @@ export function createVideoControls(
   volumeWavesPath.setAttribute("fill", "#000");
   volumeIcon.append(volumeSpeakerPath, volumeWavesPath);
 
-  const setFillVisual = (value: number) => {
-    const ratio = clampValue(value / 100, 0, 1) * 100;
-    volumeSlider.style.background = `linear-gradient(90deg, #000 0%, #000 ${ratio}%, rgba(0,0,0,0.08) ${ratio}%, rgba(0,0,0,0.08) 100%)`;
+  type ThemeColors = {
+    timelineTrack: string;
+    timelineThumb: string;
+    volumeTrack: string;
+    volumeActive: string;
+    volumeIcon: string;
   };
 
+  const readThemeColors = (): ThemeColors => {
+    if (typeof window === "undefined") {
+      return {
+        timelineTrack: "rgba(0,0,0,0.08)",
+        timelineThumb: "#000",
+        volumeTrack: "rgba(0,0,0,0.08)",
+        volumeActive: "#000",
+        volumeIcon: "#000",
+      };
+    }
+    const computed = window.getComputedStyle(document.documentElement);
+    const getVar = (name: string, fallback: string) => {
+      const value = computed.getPropertyValue(name);
+      return value ? value.trim() : fallback;
+    };
+    return {
+      timelineTrack: getVar("--video-timeline-track", "rgba(0,0,0,0.08)"),
+      timelineThumb: getVar("--video-timeline-thumb", "#000"),
+      volumeTrack: getVar("--video-volume-track", "rgba(0,0,0,0.08)"),
+      volumeActive: getVar("--video-volume-active", "#000"),
+      volumeIcon: getVar("--video-volume-icon", "#000"),
+    };
+  };
+
+  let currentThemeColors = readThemeColors();
   let currentFillValue = 100;
   let fillAnimationFrame: number | null = null;
+
+  const updateVolumeIcon = (value: number) => {
+    const muted = value <= 0;
+    volumeWavesPath.style.display = muted ? "none" : "block";
+    const iconFill = currentThemeColors.volumeIcon || "#000";
+    volumeSpeakerPath.setAttribute("fill", iconFill);
+    volumeWavesPath.setAttribute("fill", iconFill);
+  };
+
+  const setFillVisual = (value: number) => {
+    const ratio = clampValue(value / 100, 0, 1) * 100;
+    const { volumeActive, volumeTrack } = currentThemeColors;
+    volumeSlider.style.background = `linear-gradient(90deg, ${volumeActive} 0%, ${volumeActive} ${ratio}%, ${volumeTrack} ${ratio}%, ${volumeTrack} 100%)`;
+  };
+
+  const applyThemeVisuals = () => {
+    currentThemeColors = readThemeColors();
+    bar.style.background = currentThemeColors.timelineTrack;
+    fill.style.background = currentThemeColors.timelineThumb;
+    setFillVisual(currentFillValue);
+    updateVolumeIcon(parseInt(volumeSlider.value, 10) || 0);
+  };
+
+  const handleDarkModeChange = () => {
+    applyThemeVisuals();
+  };
+
+  if (typeof window !== "undefined") {
+    window.addEventListener("dark-mode-change", handleDarkModeChange);
+  }
 
   const applyVolumeVisual = (value: number) => {
     currentFillValue = value;
@@ -1661,11 +1761,6 @@ export function createVideoControls(
   };
 
   let lastVolumeBeforeMute = 100;
-
-  const updateVolumeIcon = (value: number) => {
-    const muted = value <= 0;
-    volumeWavesPath.style.display = muted ? "none" : "block";
-  };
 
   const handleVolumeChange = (value: number, animate = false) => {
     const safe = clampValue(value, 0, 100);
@@ -1730,6 +1825,7 @@ export function createVideoControls(
   volumeAlignmentObserver.observe(container);
   requestAnimationFrame(() => alignVolumeSlider());
 
+  applyThemeVisuals();
   handleVolumeChange(initialVolume);
 
   return {
