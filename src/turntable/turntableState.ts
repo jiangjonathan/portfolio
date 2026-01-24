@@ -1,12 +1,18 @@
 import type { YouTubeBridge } from "../youtube/youtube";
 import type { TurntableVinylState } from "../vinyl/vinylInteractions";
+import {
+  directionFromAngles,
+  TURNTABLE_CAMERA_YAW,
+} from "../camera/pageNavigation";
 import type { ScenePage } from "../camera/pageNavigation";
 import { Vector3 } from "three";
 
 // CameraRig interface for type safety
 interface CameraRig {
   setLookTarget(target: Vector3, smooth: boolean): void;
+  setViewDirection(direction: Vector3, animate: boolean): void;
   setPolarAngle(angle: number, smooth: boolean): void;
+  clearRotationState(): void;
   onAnimationComplete(callback: () => void): void;
 }
 
@@ -90,8 +96,12 @@ export class TurntableStateManager {
 
           // Switch to fullscreen camera position
           callbacks.setTurntablePositionState("fullscreen");
+          cameraRig.clearRotationState();
           cameraRig.setLookTarget(cameraTargets["fullscreen"], true);
-          cameraRig.setPolarAngle(2, true);
+          cameraRig.setViewDirection(
+            directionFromAngles(TURNTABLE_CAMERA_YAW, 2),
+            true,
+          );
         } else {
           callbacks.scheduleFocusVinylRestore();
           callbacks.setTurntableUIVisible(true);

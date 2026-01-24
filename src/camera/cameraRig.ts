@@ -60,6 +60,7 @@ export class CameraRig {
 
   setViewDirection(direction: Vector3, animate = false) {
     if (animate) {
+      this.stopViewDirectionAnimation();
       this.animateViewDirection(direction);
     } else {
       this.frameDirection.copy(direction).normalize();
@@ -182,6 +183,7 @@ export class CameraRig {
    * Set polar angle with smooth animation
    */
   setPolarAngle(targetPolarDegrees: number, animate = true) {
+    this.stopViewDirectionAnimation();
     const targetPolarRadians = (targetPolarDegrees * Math.PI) / 180;
 
     if (animate) {
@@ -366,6 +368,14 @@ export class CameraRig {
         Math.cos(this.orbitAzimuth) * cosPolar,
       )
       .normalize();
+  }
+
+  private stopViewDirectionAnimation() {
+    this.isAnimatingViewDirection = false;
+    this.animationStartAzimuth = this.orbitAzimuth;
+    this.animationEndAzimuth = this.orbitAzimuth;
+    this.animationStartPolar = this.orbitPolar;
+    this.animationEndPolar = this.orbitPolar;
   }
 
   private notifyAnimationComplete() {

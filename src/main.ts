@@ -1888,6 +1888,7 @@ yt.onPlaybackEnded(() => {
 });
 
 let pendingVinylSelection: VinylSelectionDetail | null = null;
+let pendingFocusVinylReset: VinylSelectionDetail | null = null;
 let loadedSelectionVideoId: string | null = null;
 let selectionVisualUpdateId = 0;
 let currentVideoLoad: Promise<void> | null = null;
@@ -1990,6 +1991,14 @@ const vinylSelectionController = createVinylSelectionController({
   incrementSelectionVisualUpdateId: () => ++selectionVisualUpdateId,
   getSelectionVisualUpdateId: () => selectionVisualUpdateId,
 });
+
+const performFocusVinylReset = (selection: VinylSelectionDetail) => {
+  if (!focusVinylState) {
+    return;
+  }
+  vinylSelectionController.resetFocusCardState();
+  void vinylSelectionController.handleFocusSelection(selection);
+};
 
 // YouTube player callbacks now managed by TurntableStateManager
 let isTonearmInPlayArea = false;
@@ -2207,6 +2216,17 @@ inputHandlers = registerInputHandlers({
   getMouseInactivityTimer: () => mouseInactivityTimer,
   notifyFreeLookAction: (action) => {
     turntableUiController?.notifyFreeLookAction(action);
+  },
+  resetFocusVinylAfterTurntableDrag: () => {
+    if (!focusVinylState) {
+      return;
+    }
+    const selection = focusVinylState.selection;
+    if (isReturningVinyl || isReturningToFocusCard) {
+      pendingFocusVinylReset = selection;
+      return;
+    }
+    performFocusVinylReset(selection);
   },
   CAMERA_ORBIT_SENSITIVITY,
   PAN_SENSITIVITY,
@@ -2693,6 +2713,12 @@ const animate = (time: number) => {
     }
 
     vinylModel.scale.setScalar(finalScale);
+  }
+
+  if (pendingFocusVinylReset && !isReturningVinyl && !isReturningToFocusCard) {
+    const selection = pendingFocusVinylReset;
+    pendingFocusVinylReset = null;
+    performFocusVinylReset(selection);
   }
 
   // When a dropping vinyl is being animated, also update the focus vinyl position

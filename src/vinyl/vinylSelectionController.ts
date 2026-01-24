@@ -1,3 +1,7 @@
+import {
+  directionFromAngles,
+  TURNTABLE_CAMERA_YAW,
+} from "../camera/pageNavigation";
 import type { Object3D } from "three";
 import type { CameraRig } from "../camera/cameraRig";
 import type { YouTubeBridge, VideoMetadata } from "../youtube/youtube";
@@ -382,9 +386,12 @@ export const createVinylSelectionController = (
       }
     });
 
+    deps.cameraRig.clearRotationState();
     deps.runWhenTurntableReady(() => {
       deps.setTurntablePositionState("bottom-center");
       deps.cameraRig.setLookTarget(deps.cameraTargets["bottom-center"], true);
+      const focusDirection = directionFromAngles(TURNTABLE_CAMERA_YAW, 22);
+      deps.cameraRig.setViewDirection(focusDirection, true);
       deps.vinylAnimationState.cameraRelativeOffsetValid = false;
 
       // Show focus card with fade-in only if there's no focus card rendered yet
@@ -401,8 +408,6 @@ export const createVinylSelectionController = (
           viewer.showFocusCardUIImmediate();
         }
       }
-
-      deps.cameraRig.setPolarAngle(22, true);
     });
   };
 

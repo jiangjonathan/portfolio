@@ -95,6 +95,7 @@ type InputHandlersDeps = {
   setMouseInactivityTimer: (value: number | null) => void;
   getMouseInactivityTimer: () => number | null;
   notifyFreeLookAction: (action: FreeLookTutorialAction) => void;
+  resetFocusVinylAfterTurntableDrag: () => void;
   CAMERA_ORBIT_SENSITIVITY: number;
   PAN_SENSITIVITY: number;
   FREE_LOOK_MIN_ZOOM: number;
@@ -298,6 +299,7 @@ export const registerInputHandlers = (deps: InputHandlersDeps) => {
 
     if (cameraOrbitState.mode === "turntable" && !deps.isFreeLookModeActive()) {
       deps.cameraRig.restoreRotationState();
+      deps.cameraRig.clearRotationState();
     } else if (cameraOrbitState.mode === "home") {
       if (Math.abs(cameraOrbitState.velocityX) > 0.0001) {
         autoOrbitDirection = cameraOrbitState.velocityX > 0 ? 1 : -1;
@@ -473,6 +475,9 @@ export const registerInputHandlers = (deps: InputHandlersDeps) => {
       ) {
         return;
       }
+      if (deps.yt.isFullscreen()) {
+        return;
+      }
       startCameraOrbit(event);
       return;
     }
@@ -529,6 +534,9 @@ export const registerInputHandlers = (deps: InputHandlersDeps) => {
     }
     const vinylSelection = deps.pickVinylUnderPointer();
     if (!vinylSelection) {
+      return;
+    }
+    if (vinylSelection.source === "turntable" && deps.getIsReturningVinyl()) {
       return;
     }
     const previousSource = deps.getActiveVinylSource();
@@ -879,6 +887,10 @@ export const registerInputHandlers = (deps: InputHandlersDeps) => {
       !launchedTurntableFlyaway
     ) {
       deps.setActiveVinylSource("focus");
+    }
+
+    if (dragSource === "turntable") {
+      deps.resetFocusVinylAfterTurntableDrag();
     }
   };
 
