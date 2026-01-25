@@ -48,6 +48,7 @@ type FocusCardControllerDeps = {
 type FocusCardController = {
   getFocusCardAnchorPosition: () => Vector3;
   getFocusVisualOffset: () => number;
+  getFocusVinylYOffset: () => number;
   getVisualOffsetForSource: (source: VinylSource | null) => number;
   updateFocusVinylVisibility: () => void;
   updateFocusCardPosition: (override?: {
@@ -71,10 +72,12 @@ type FocusCardController = {
   cachePreloadedFocusVinyl: (model: Object3D) => void;
 };
 
-const FOCUS_VINYL_HOVER_DISTANCE_BASE = 8.8;
+const FOCUS_VINYL_HOVER_DISTANCE_BASE = 7.19;
 const FOCUS_VINYL_HOVER_ANIMATION_SPEED = 0.25;
 const FOCUS_COVER_CLICK_CLASS = "focus-cover-click-active";
 const FOCUS_COVER_CLICK_TIMEOUT = 3000;
+const FOCUS_VINYL_Y_OFFSET = -0.25;
+const FOCUS_VINYL_Y_OFFSET_COMPACT = FOCUS_VINYL_Y_OFFSET;
 
 export const createFocusCardController = (
   deps: FocusCardControllerDeps,
@@ -92,10 +95,22 @@ export const createFocusCardController = (
   let focusCardMotionFrame: number | null = null;
   let pendingFocusVinylRevealFrame: number | null = null;
   let isFocusCardAnimationActive = false;
+  let focusCardLayoutCompact = false;
   let preloadedFocusVinylModel: Object3D | null = null;
   let preloadedFocusVinylPromise: Promise<Object3D | null> | null = null;
   const preloadedFocusVinylAnchor = deps.cameraTargets.default.clone();
-  const focusCardAnchorPosition = deps.cameraTargets.default.clone();
+  const focusCardAnchorBasePosition = deps.cameraTargets.default.clone();
+  const focusCardAnchorPosition = focusCardAnchorBasePosition.clone();
+
+  const getCurrentYOffset = () =>
+    focusCardLayoutCompact
+      ? FOCUS_VINYL_Y_OFFSET_COMPACT
+      : FOCUS_VINYL_Y_OFFSET;
+
+  const applyAnchorYOffset = () => {
+    focusCardAnchorPosition.copy(focusCardAnchorBasePosition);
+    focusCardAnchorPosition.y += getCurrentYOffset();
+  };
 
   const getFocusVinylHoverDistance = () =>
     FOCUS_VINYL_HOVER_DISTANCE_BASE * getFocusVinylScale(deps.cameraRig);
@@ -311,7 +326,7 @@ export const createFocusCardController = (
     trackingRaycaster.setFromCamera(new Vector2(ndcX, ndcY), deps.camera);
 
     const distanceFromCamera = 100;
-    const vinylPosition = trackingRaycaster.ray.origin
+    const baseVinylPosition = trackingRaycaster.ray.origin
       .clone()
       .add(
         trackingRaycaster.ray.direction
@@ -319,7 +334,10 @@ export const createFocusCardController = (
           .multiplyScalar(distanceFromCamera),
       );
 
-    focusCardAnchorPosition.copy(vinylPosition);
+    focusCardAnchorBasePosition.copy(baseVinylPosition);
+    applyAnchorYOffset();
+    const anchoredPosition = baseVinylPosition.clone();
+    anchoredPosition.y += getCurrentYOffset();
 
     if (
       deps.getVinylDragPointerId() !== null &&
@@ -332,12 +350,12 @@ export const createFocusCardController = (
     if (!model) {
       return;
     }
-    model.position.copy(vinylPosition);
+    model.position.copy(anchoredPosition);
     deps.setVinylAnchorPosition(focusCardAnchorPosition, "focus");
     if (deps.getActiveVinylSource() === "focus") {
-      deps.vinylTargetPosition.copy(vinylPosition);
-      deps.lastTargetPosition.copy(vinylPosition);
-      deps.updateDragPlaneDepthLocal(vinylPosition.z);
+      deps.vinylTargetPosition.copy(anchoredPosition);
+      deps.lastTargetPosition.copy(anchoredPosition);
+      deps.updateDragPlaneDepthLocal(baseVinylPosition.z);
       deps.applyFocusVinylScale(model, deps.cameraRig);
     }
   };
@@ -590,7 +608,12 @@ export const createFocusCardController = (
   });
 
   window.addEventListener("focus-card-layout-updated", (event: any) => {
-    const { coverCenterX, coverCenterY, layoutChanged } = event.detail || {};
+    const { coverCenterX, coverCenterY, layoutChanged, compact } =
+      event.detail || {};
+    if (typeof compact === "boolean") {
+      focusCardLayoutCompact = compact;
+      applyAnchorYOffset();
+    }
     const hasCoords =
       typeof coverCenterX === "number" && typeof coverCenterY === "number";
     if (!hasCoords) {
@@ -615,8 +638,12 @@ export const createFocusCardController = (
   });
 
   return {
-    getFocusCardAnchorPosition: () => focusCardAnchorPosition,
+    getFocusCardAnchorPosition: () => {
+      applyAnchorYOffset();
+      return focusCardAnchorPosition;
+    },
     getFocusVisualOffset: () => focusVinylHoverOffset,
+    getFocusVinylYOffset: () => getCurrentYOffset(),
     getVisualOffsetForSource: (source) =>
       source === "focus" ? focusVinylHoverOffset : 0,
     updateFocusVinylVisibility,

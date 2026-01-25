@@ -357,7 +357,9 @@ const lightingAnimator = new LightingAnimator(
 );
 
 let darkModeLightingEnabled = false;
+let darkModeEnabled = false;
 let fullscreenLightingEnabled = false;
+let focusCoverClickActive = false;
 
 const refreshLightingTarget = () => {
   if (fullscreenLightingEnabled) {
@@ -373,12 +375,24 @@ const refreshLightingTarget = () => {
 darkModeLightingEnabled =
   typeof document !== "undefined" &&
   document.documentElement.classList.contains("dark-mode");
+darkModeEnabled = darkModeLightingEnabled;
 refreshLightingTarget();
 
 window.addEventListener("dark-mode-change", (event) => {
   const customEvent = event as CustomEvent<{ enabled: boolean }>;
-  darkModeLightingEnabled = Boolean(customEvent.detail?.enabled);
+  const enabled = Boolean(customEvent.detail?.enabled);
+  darkModeLightingEnabled = enabled;
+  darkModeEnabled = enabled;
   refreshLightingTarget();
+});
+
+window.addEventListener("focus-cover-click", (event) => {
+  const detail = (event as CustomEvent<{ active?: boolean }>).detail;
+  focusCoverClickActive = Boolean(detail?.active);
+});
+
+window.addEventListener("focus-cover-click-reset", () => {
+  focusCoverClickActive = false;
 });
 
 // Create light control panel (press 'L' to toggle)
@@ -1552,7 +1566,7 @@ const attachFocusVinylOutline = (model: Object3D) => {
   const baseRadius = Math.max(size.x, size.z) / 2 / parentScale || 1;
   const tubeRadius = Math.max(baseRadius * 0.025, 0.012);
   const outlineGeometry = new TorusGeometry(
-    baseRadius + tubeRadius * 0.08,
+    baseRadius + tubeRadius * 0.719,
     tubeRadius,
     24,
     96,
@@ -2868,15 +2882,19 @@ const animate = (time: number) => {
     }
 
     if (focusVinylOutlineMaterial) {
-      const shouldShowOutline = shouldGlow;
+      const shouldShowOutline =
+        shouldGlow && (darkModeEnabled || focusCoverClickActive);
       const targetOpacity = shouldShowOutline ? 0.9 : 0;
-      const currentOpacity = focusVinylOutlineMaterial.uniforms.baseOpacity.value;
+      const currentOpacity =
+        focusVinylOutlineMaterial.uniforms.baseOpacity.value;
       const opacityDelta = targetOpacity - currentOpacity;
       if (Math.abs(opacityDelta) > 0.001) {
         const lerpFactor = Math.min(1, delta * 8);
         focusVinylOutlineMaterial.uniforms.baseOpacity.value =
           currentOpacity + opacityDelta * lerpFactor;
-      } else if (focusVinylOutlineMaterial.uniforms.baseOpacity.value !== targetOpacity) {
+      } else if (
+        focusVinylOutlineMaterial.uniforms.baseOpacity.value !== targetOpacity
+      ) {
         focusVinylOutlineMaterial.uniforms.baseOpacity.value = targetOpacity;
       }
     }

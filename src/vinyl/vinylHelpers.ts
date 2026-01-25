@@ -12,11 +12,18 @@ import { FALLBACK_BACKGROUND_COLOR } from "../utils/config";
 import type { VinylSelectionDetail } from "./vinylInteractions";
 import { getOrCacheAlbumCover } from "../utils/albumCoverCache";
 
-export const FOCUS_VINYL_BASE_SCALE = 1.0;
+export const FOCUS_VINYL_BASE_SCALE = 1.05;
 export const VINYL_DRAG_THRESHOLD = 38;
 // Focus card scaling (kept separate from the library viewer so it can stay larger)
 export const FOCUS_CARD_BASE_WIDTH = 1200;
 export const FOCUS_CARD_MIN_SCALE = 0.9;
+const FOCUS_VINYL_COMPACT_BASE_SCALE = 0.95;
+const FOCUS_VINYL_REFERENCE_HEIGHT = 900;
+const FOCUS_CARD_COMPACT_CLASS = "focus-card-compact";
+
+const isFocusCardCompactLayout = () =>
+  typeof document !== "undefined" &&
+  document.body.classList.contains(FOCUS_CARD_COMPACT_CLASS);
 
 // Calculate the focus card scale factor (same logic as in domSetup.ts)
 export function getFocusCardScale(): number {
@@ -28,9 +35,12 @@ export function getFocusCardScale(): number {
 }
 
 export function getFocusVinylScale(cameraRig: CameraRig): number {
-  const baseScale = FOCUS_VINYL_BASE_SCALE / cameraRig.getZoomFactor();
-  const referenceHeight = 900; // Assumed reference viewport height for base scale.
-  const heightScale = baseScale * (referenceHeight / window.innerHeight);
+  const effectiveBaseScale = isFocusCardCompactLayout()
+    ? FOCUS_VINYL_COMPACT_BASE_SCALE
+    : FOCUS_VINYL_BASE_SCALE;
+  const baseScale = effectiveBaseScale / cameraRig.getZoomFactor();
+  const heightScale =
+    baseScale * (FOCUS_VINYL_REFERENCE_HEIGHT / window.innerHeight);
   // Also apply the focus card scale so vinyl matches the scaled album cover
   return heightScale * getFocusCardScale();
 }
