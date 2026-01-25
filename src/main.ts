@@ -1327,6 +1327,8 @@ let focusVinylState: FocusVinylState | null = null;
 let focusVinylOutlineMesh: Mesh | null = null;
 let focusVinylOutlineMaterial: ShaderMaterial | null = null;
 let focusVinylOutlineNeedsRebuild = false;
+let focusVinylOutlineDelayedRebuildFrames = 0;
+let focusVinylOutlineLastScale = 0;
 let turntableVinylState: TurntableVinylState | null = null;
 // Dropping vinyl: a vinyl mid-animation that will become the turntable vinyl
 // This allows a new focus vinyl to be created while the old one finishes its drop animation
@@ -1555,18 +1557,17 @@ const detachFocusVinylOutline = () => {
 
 const attachFocusVinylOutline = (model: Object3D) => {
   detachFocusVinylOutline();
+  // Temporarily remove scale to get unscaled bounds
+  const originalScale = model.scale.clone();
+  model.scale.set(1, 1, 1);
   const bounds = new Box3().setFromObject(model);
   const size = bounds.getSize(new Vector3());
-  const parentScale = Math.max(
-    Math.abs(model.scale.x),
-    Math.abs(model.scale.y),
-    Math.abs(model.scale.z),
-    0.0001,
-  );
-  const baseRadius = Math.max(size.x, size.z) / 2 / parentScale || 1;
-  const tubeRadius = Math.max(baseRadius * 0.025, 0.012);
+  model.scale.copy(originalScale);
+
+  const baseRadius = Math.max(size.x, size.z) / 2 || 1;
+  const tubeRadius = Math.max(baseRadius * 0.035, 0.015);
   const outlineGeometry = new TorusGeometry(
-    baseRadius + tubeRadius * 0.719,
+    baseRadius + tubeRadius * 0.15,
     tubeRadius,
     24,
     96,
@@ -1620,9 +1621,11 @@ const attachFocusVinylOutline = (model: Object3D) => {
 const setFocusVinylState = (state: FocusVinylState | null) => {
   focusVinylState = state;
   if (state?.model) {
-    focusVinylOutlineNeedsRebuild = true;
+    // Delay outline build by a few frames to ensure scale is fully applied
+    focusVinylOutlineDelayedRebuildFrames = 2;
   } else {
     focusVinylOutlineNeedsRebuild = false;
+    focusVinylOutlineDelayedRebuildFrames = 0;
     detachFocusVinylOutline();
   }
 };
@@ -1636,6 +1639,10 @@ const refreshFocusVinylOutline = () => {
   }
   attachFocusVinylOutline(model);
   focusVinylOutlineNeedsRebuild = false;
+  // Update tracked radius after rebuild - use actual bounding box radius
+  const bounds = new Box3().setFromObject(model);
+  const size = bounds.getSize(new Vector3());
+  focusVinylOutlineLastScale = Math.max(size.x, size.z) / 2;
 };
 
 const disposeTurntableVinyl = (reason: string = "unknown") => {
@@ -2877,8 +2884,39 @@ const animate = (time: number) => {
     applyVinylEmissive(focusModel, focusVinylEmissiveCurrent);
 
     // Update focus vinyl outline
+    if (focusVinylOutlineDelayedRebuildFrames > 0) {
+      focusVinylOutlineDelayedRebuildFrames--;
+      if (focusVinylOutlineDelayedRebuildFrames === 0) {
+        focusVinylOutlineNeedsRebuild = true;
+      }
+    }
+
     if (focusVinylOutlineNeedsRebuild) {
+      console.log(`[focusVinylOutline] Rebuilding outline`);
       refreshFocusVinylOutline();
+    }
+
+    // Always check and log vinyl outline size
+    if (focusVinylState?.model && focusVinylOutlineMesh && focusModel) {
+      // Use actual focus model's bounding box to determine outline size
+      const bounds = new Box3().setFromObject(focusModel);
+      const size = bounds.getSize(new Vector3());
+      const actualRadius = Math.max(size.x, size.z) / 2;
+
+      const sizeDifference = Math.abs(actualRadius - focusVinylOutlineLastScale);
+
+      if (sizeDifference > 0.001) {
+        console.log(
+          `[focusVinylOutline] actualRadius=${actualRadius.toFixed(5)}, recorded=${focusVinylOutlineLastScale.toFixed(5)}, diff=${sizeDifference.toFixed(5)}`,
+        );
+      }
+
+      if (sizeDifference > 0.1) {
+        console.log(
+          `[focusVinylOutline] REBUILDING - Size mismatch threshold exceeded`,
+        );
+        focusVinylOutlineNeedsRebuild = true;
+      }
     }
 
     if (focusVinylOutlineMaterial) {
