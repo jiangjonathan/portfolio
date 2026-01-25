@@ -13,6 +13,8 @@ import {
   Plane,
   Quaternion,
   Raycaster,
+  ShaderMaterial,
+  TorusGeometry,
   Vector2,
   Vector3,
 } from "three";
@@ -1308,6 +1310,9 @@ cameraRig.setZoomFactor(zoomFactor);
 let vinylModel: Object3D | null = null;
 // FocusVinylState and TurntableVinylState now imported from vinylInteractions.ts
 let focusVinylState: FocusVinylState | null = null;
+let focusVinylOutlineMesh: Mesh | null = null;
+let focusVinylOutlineMaterial: ShaderMaterial | null = null;
+let focusVinylOutlineNeedsRebuild = false;
 let turntableVinylState: TurntableVinylState | null = null;
 // Dropping vinyl: a vinyl mid-animation that will become the turntable vinyl
 // This allows a new focus vinyl to be created while the old one finishes its drop animation
@@ -1511,6 +1516,7 @@ const disposeFocusVinyl = () => {
   if (!focusVinylState) {
     return;
   }
+  detachFocusVinylOutline();
   heroGroup.remove(focusVinylState.model);
   focusVinylState = null;
   shouldTrackFocusCard = false;
@@ -1520,6 +1526,102 @@ const disposeFocusVinyl = () => {
   if (activePage === "turntable") {
     focusCardController.ensureFocusVinylPreloaded();
   }
+};
+
+const detachFocusVinylOutline = () => {
+  if (!focusVinylOutlineMesh) {
+    return;
+  }
+  focusVinylOutlineMesh.parent?.remove(focusVinylOutlineMesh);
+  focusVinylOutlineMesh.geometry.dispose();
+  focusVinylOutlineMaterial?.dispose();
+  focusVinylOutlineMesh = null;
+  focusVinylOutlineMaterial = null;
+};
+
+const attachFocusVinylOutline = (model: Object3D) => {
+  detachFocusVinylOutline();
+  const bounds = new Box3().setFromObject(model);
+  const size = bounds.getSize(new Vector3());
+  const parentScale = Math.max(
+    Math.abs(model.scale.x),
+    Math.abs(model.scale.y),
+    Math.abs(model.scale.z),
+    0.0001,
+  );
+  const baseRadius = Math.max(size.x, size.z) / 2 / parentScale || 1;
+  const tubeRadius = Math.max(baseRadius * 0.025, 0.012);
+  const outlineGeometry = new TorusGeometry(
+    baseRadius + tubeRadius * 0.08,
+    tubeRadius,
+    24,
+    96,
+  );
+  const outlineMaterial = new ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    depthTest: false,
+    toneMapped: false,
+    uniforms: {
+      baseOpacity: { value: 0 },
+    },
+    vertexShader: `
+      varying float vTubeV;
+
+      void main() {
+        // The V texture coordinate corresponds to position around the tube (0 to 1)
+        // 0.5 is the center of the tube, 0 and 1 are the edges
+        vTubeV = uv.y;
+
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform float baseOpacity;
+      varying float vTubeV;
+
+      void main() {
+        // Create fade from center (0.5) towards edges (0 and 1)
+        float distFromCenter = abs(vTubeV - 0.5) * 2.0;
+
+        // Sharp falloff - fade starts immediately and goes to 0 quickly
+        float fadeFactor = 1.0 - smoothstep(0.0, 1.0, distFromCenter);
+        // Apply power for even sharper gradient
+        fadeFactor = pow(fadeFactor, 3.0);
+
+        gl_FragColor = vec4(1.0, 1.0, 1.0, baseOpacity * fadeFactor);
+      }
+    `,
+  });
+  const outlineMesh = new Mesh(outlineGeometry, outlineMaterial);
+  outlineMesh.rotation.x = Math.PI / 2;
+  outlineMesh.renderOrder = 600;
+  outlineMesh.frustumCulled = false;
+  outlineMesh.name = "focus-vinyl-outline";
+  model.add(outlineMesh);
+  focusVinylOutlineMesh = outlineMesh;
+  focusVinylOutlineMaterial = outlineMaterial;
+};
+
+const setFocusVinylState = (state: FocusVinylState | null) => {
+  focusVinylState = state;
+  if (state?.model) {
+    focusVinylOutlineNeedsRebuild = true;
+  } else {
+    focusVinylOutlineNeedsRebuild = false;
+    detachFocusVinylOutline();
+  }
+};
+
+const refreshFocusVinylOutline = () => {
+  const model = focusVinylState?.model ?? null;
+  if (!model) {
+    focusVinylOutlineNeedsRebuild = false;
+    detachFocusVinylOutline();
+    return;
+  }
+  attachFocusVinylOutline(model);
+  focusVinylOutlineNeedsRebuild = false;
 };
 
 const disposeTurntableVinyl = (reason: string = "unknown") => {
@@ -1950,7 +2052,7 @@ const vinylSelectionController = createVinylSelectionController({
   setPendingPromotionSource,
   getFocusVinylState: () => focusVinylState,
   setFocusVinylState: (state) => {
-    focusVinylState = state;
+    setFocusVinylState(state);
   },
   getTurntableVinylState: () => turntableVinylState,
   setTurntableVinylState: (state) => {
@@ -2046,7 +2148,7 @@ const {
   setPendingPromotionSource,
   getFocusVinylState: () => focusVinylState,
   setFocusVinylState: (state) => {
-    focusVinylState = state;
+    setFocusVinylState(state);
   },
   getTurntableVinylState: () => turntableVinylState,
   setTurntableVinylState: (state) => {
@@ -2759,6 +2861,25 @@ const animate = (time: number) => {
       focusVinylEmissiveCurrent += emissiveDelta * FOCUS_VINYL_EMISSIVE_LERP;
     }
     applyVinylEmissive(focusModel, focusVinylEmissiveCurrent);
+
+    // Update focus vinyl outline
+    if (focusVinylOutlineNeedsRebuild) {
+      refreshFocusVinylOutline();
+    }
+
+    if (focusVinylOutlineMaterial) {
+      const shouldShowOutline = shouldGlow;
+      const targetOpacity = shouldShowOutline ? 0.9 : 0;
+      const currentOpacity = focusVinylOutlineMaterial.uniforms.baseOpacity.value;
+      const opacityDelta = targetOpacity - currentOpacity;
+      if (Math.abs(opacityDelta) > 0.001) {
+        const lerpFactor = Math.min(1, delta * 8);
+        focusVinylOutlineMaterial.uniforms.baseOpacity.value =
+          currentOpacity + opacityDelta * lerpFactor;
+      } else if (focusVinylOutlineMaterial.uniforms.baseOpacity.value !== targetOpacity) {
+        focusVinylOutlineMaterial.uniforms.baseOpacity.value = targetOpacity;
+      }
+    }
   } else if (focusVinylEmissiveCurrent !== 0) {
     focusVinylEmissiveCurrent = 0;
   }
