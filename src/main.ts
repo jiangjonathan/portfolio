@@ -1024,7 +1024,10 @@ const setActiveScenePage = (page: ScenePage) => {
     resetTutorialButton.style.display = page === "turntable" ? "block" : "none";
     freeLookButton.style.display = page === "turntable" ? "block" : "none";
     const shouldShowSettingsButton =
-      page === "turntable" || page === "home" || page === "portfolio";
+      page === "turntable" ||
+      page === "home" ||
+      page === "portfolio" ||
+      page === "business_card";
     settingsButton.style.display = shouldShowSettingsButton ? "block" : "none";
     if (!shouldShowSettingsButton) {
       setSettingsPanelVisible(false);
