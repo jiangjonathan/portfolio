@@ -155,6 +155,7 @@ export function createYouTubePlayer(): YouTubeBridge {
 
   // Collapse/expand button with SVG
   let isCollapsed = false;
+  let isAnimatingUncollapse = false;
   const collapseButton = document.createElement("button");
   collapseButton.tabIndex = -1;
   Object.assign(collapseButton.style, {
@@ -223,6 +224,7 @@ export function createYouTubePlayer(): YouTubeBridge {
       currentArrowSvg = createArrowSvg("down");
       collapseButton.appendChild(currentArrowSvg);
       fullscreenButtonContainer.style.display = "none";
+      updateButtonVisibility();
     } else {
       const isTonearmInPlayArea = isTonearmInPlayAreaQuery?.() ?? false;
       if (isTonearmInPlayArea) {
@@ -233,30 +235,30 @@ export function createYouTubePlayer(): YouTubeBridge {
       currentArrowSvg.remove();
       currentArrowSvg = createArrowSvg("up");
       collapseButton.appendChild(currentArrowSvg);
+      // Show fullscreen button when expanded, but delay it to appear near end of animation
+      isAnimatingUncollapse = true;
       fullscreenButtonContainer.style.display = "flex";
-      if (!wrapper.matches(":hover")) {
-        fullscreenButtonContainer.style.opacity = "0";
-        fullscreenButtonContainer.style.pointerEvents = "none";
-      }
+      fullscreenButtonContainer.style.opacity = "0";
+      fullscreenButtonContainer.style.pointerEvents = "none";
+      updateButtonVisibility(); // Call this while flag is true to prevent showing
+      setTimeout(() => {
+        isAnimatingUncollapse = false;
+        updateFullscreenButtonVisibility();
+      }, 400); // Show towards end of 0.5s animation
     }
-    updateButtonVisibility();
   });
 
   buttonContainer.appendChild(collapseButton);
 
   const updateCollapseButtonVisibility = () => {
     const isTonearmInPlayArea = isTonearmInPlayAreaQuery?.() ?? false;
-    const isPlayerVisible = viewport.clientHeight > 0;
     const isHoveringPlayer = wrapper.matches(":hover");
-    const isOnTurntablePage = isOnTurntablePageQuery?.() ?? false;
     const shouldShowWithControls =
       hasLoadedVideo &&
       controlsAreVisible &&
       !isCollapsed &&
       isTonearmInPlayArea &&
-      isPlayerVisible &&
-      isHoveringPlayer &&
-      isOnTurntablePage;
+      isHoveringPlayer;
     const shouldShowWhileCollapsed =
       hasLoadedVideo && isCollapsed && isTonearmInPlayArea;
     if (shouldShowWithControls || shouldShowWhileCollapsed) {
@@ -284,7 +286,8 @@ export function createYouTubePlayer(): YouTubeBridge {
       isTonearmInPlayArea &&
       isOnTurntablePage &&
       isHoveringPlayer &&
-      !isInFreeLookMode;
+      !isInFreeLookMode &&
+      !isAnimatingUncollapse;
     if (shouldShow) {
       fullscreenButtonContainer.style.opacity = "1";
       fullscreenButtonContainer.style.pointerEvents = "auto";
@@ -1272,12 +1275,17 @@ export function createYouTubePlayer(): YouTubeBridge {
         currentArrowSvg.remove();
         currentArrowSvg = createArrowSvg("up");
         collapseButton.appendChild(currentArrowSvg);
-        // Show fullscreen button when expanded
+        // Show fullscreen button when expanded, but delay it to appear near end of animation
+        isAnimatingUncollapse = true;
         fullscreenButtonContainer.style.display = "flex";
-        if (!wrapper.matches(":hover")) {
-          fullscreenButtonContainer.style.opacity = "0";
-          fullscreenButtonContainer.style.pointerEvents = "none";
-        }
+        fullscreenButtonContainer.style.opacity = "0";
+        fullscreenButtonContainer.style.pointerEvents = "none";
+        updateButtonVisibility(); // Call this while flag is true to prevent showing
+        setTimeout(() => {
+          isAnimatingUncollapse = false;
+          updateFullscreenButtonVisibility();
+        }, 400); // Show towards end of 0.5s animation
+        return; // Don't call updateButtonVisibility again
       }
       updateButtonVisibility();
     },

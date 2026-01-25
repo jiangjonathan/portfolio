@@ -1567,7 +1567,7 @@ const attachFocusVinylOutline = (model: Object3D) => {
   const baseRadius = Math.max(size.x, size.z) / 2 || 1;
   const tubeRadius = Math.max(baseRadius * 0.035, 0.015);
   const outlineGeometry = new TorusGeometry(
-    baseRadius + tubeRadius * 0.15,
+    baseRadius + tubeRadius * 0.719,
     tubeRadius,
     24,
     96,
@@ -2903,7 +2903,9 @@ const animate = (time: number) => {
       const size = bounds.getSize(new Vector3());
       const actualRadius = Math.max(size.x, size.z) / 2;
 
-      const sizeDifference = Math.abs(actualRadius - focusVinylOutlineLastScale);
+      const sizeDifference = Math.abs(
+        actualRadius - focusVinylOutlineLastScale,
+      );
 
       if (sizeDifference > 0.001) {
         console.log(

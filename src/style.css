@@ -112,10 +112,18 @@ body.focus-cover-click-active #vinyl-focus-card-info-root {
 
 #vinyl-focus-card-cover-root {
     cursor: pointer;
+    -webkit-user-drag: none;
+    user-select: none;
 }
 
 #vinyl-focus-card-cover-root:empty {
     cursor: default;
+}
+
+#vinyl-focus-card-cover-root img {
+    -webkit-user-drag: none;
+    user-select: none;
+    pointer-events: none;
 }
 
 body.vinyl-drag-active .vinyl-viewer-widget,
