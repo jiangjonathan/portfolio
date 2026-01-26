@@ -737,7 +737,7 @@ export function createYouTubePlayer(): YouTubeBridge {
   // Store original small mode position values
   const SMALL_MODE_POSITION = {
     position: "absolute",
-    bottom: "32px",
+    bottom: "30.5px",
     right: "-10px",
     zIndex: FULLSCREEN_BUTTON_Z_INDEX,
   };

@@ -193,6 +193,7 @@ const {
   coloredVinylsCheckbox,
   sfxCheckbox,
   songCommentsCheckbox,
+  paperFontSizeSelect,
   contactButton,
   // cameraDebugPanel, // Debug UI - disabled
   portfolioPrevArrow,
@@ -779,6 +780,52 @@ const portfolioFeature = createPortfolioFeature({
   paperOverlayManager,
 });
 portfolioPapersManager = portfolioFeature.init();
+
+// Add listener for paper font size changes
+const updatePaperFontSize = () => {
+  if (portfolioPapersManager) {
+    const fontSizeMap: {
+      [key: string]: {
+        h1: number;
+        h2: number;
+        h3: number;
+        h4: number;
+        body: number;
+        bullet: number;
+      };
+    } = {
+      small: {
+        h1: 48,
+        h2: 42,
+        h3: 37,
+        h4: 32,
+        body: 30,
+        bullet: 30,
+      },
+      medium: {
+        h1: 60,
+        h2: 52,
+        h3: 46,
+        h4: 40,
+        body: 37,
+        bullet: 37,
+      },
+      large: {
+        h1: 72,
+        h2: 62,
+        h3: 55,
+        h4: 48,
+        body: 44,
+        bullet: 44,
+      },
+    };
+    portfolioPapersManager.setMarkdownLayoutConfig({
+      fontSizes: fontSizeMap[paperFontSizeSelect.value] || fontSizeMap.medium,
+    });
+  }
+};
+
+paperFontSizeSelect.addEventListener("change", updatePaperFontSize);
 
 type PaperDirection = "prev" | "next";
 type PendingNav = { direction: PaperDirection; durationMs?: number };

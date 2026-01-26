@@ -590,7 +590,7 @@ body.dark-mode
     max-width: 100%;
     user-select: text;
     cursor: default;
-    font-size: 34px;
+    font-size: 37px;
     line-height: 1.28;
     box-sizing: border-box;
     overflow-x: hidden;
@@ -619,25 +619,25 @@ body.dark-mode
 }
 
 .paper-overlay-markdown h1 {
-    font-size: 55px;
+    font-size: 60px;
     font-weight: 700;
     margin: 0 0 20px;
 }
 
 .paper-overlay-markdown h2 {
-    font-size: 48px;
+    font-size: 52px;
     font-weight: 600;
     margin: 24px 0 17px;
 }
 
 .paper-overlay-markdown h3 {
-    font-size: 42px;
+    font-size: 46px;
     font-weight: 600;
     margin: 20px 0 14px;
 }
 
 .paper-overlay-markdown h4 {
-    font-size: 37px;
+    font-size: 40px;
     font-weight: 600;
     margin: 18px 0 12px;
 }

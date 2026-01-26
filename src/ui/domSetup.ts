@@ -51,6 +51,7 @@ export interface DOMElements {
   coloredVinylsCheckbox: HTMLInputElement;
   sfxCheckbox: HTMLInputElement;
   songCommentsCheckbox: HTMLInputElement;
+  paperFontSizeSelect: HTMLInputElement;
   contactButton: HTMLButtonElement;
   cameraDebugPanel: HTMLDivElement;
   portfolioPapersContainer: HTMLDivElement;
@@ -652,7 +653,7 @@ export function setupDOM(): DOMElements {
     display: "flex",
     flexDirection: "column",
     gap: "0.4rem",
-    minWidth: "160px",
+    width: "max-content",
     fontFamily: "inherit",
     fontSize: "0.85rem",
     letterSpacing: "0",
@@ -676,6 +677,7 @@ export function setupDOM(): DOMElements {
   themeToggle.style.letterSpacing = "0";
   themeToggle.style.lineHeight = "1.4";
   themeToggle.style.fontFamily = "inherit";
+  themeToggle.style.whiteSpace = "nowrap";
 
   const themeLabel = document.createElement("span");
   themeLabel.textContent = "theme:";
@@ -895,6 +897,161 @@ export function setupDOM(): DOMElements {
   );
   settingsPanel.appendChild(songCommentsOption.wrapper);
 
+  // Create paper font size toggle (like dark mode toggle)
+  const paperFontSizeToggle = document.createElement("div");
+  paperFontSizeToggle.id = "paper-font-size-toggle";
+  paperFontSizeToggle.style.display = "flex";
+  paperFontSizeToggle.style.alignItems = "center";
+  paperFontSizeToggle.style.gap = "0.2rem";
+  paperFontSizeToggle.style.fontSize = "0.85rem";
+  paperFontSizeToggle.style.lineHeight = "1.4";
+  paperFontSizeToggle.style.fontFamily = "inherit";
+  paperFontSizeToggle.style.whiteSpace = "nowrap";
+
+  const paperFontSizeLabel = document.createElement("span");
+  paperFontSizeLabel.textContent = "paper font size: ";
+  paperFontSizeLabel.style.textTransform = "none";
+  paperFontSizeLabel.style.fontFamily = "inherit";
+  paperFontSizeLabel.style.fontSize = "0.85rem";
+  paperFontSizeLabel.style.lineHeight = "1.4";
+  paperFontSizeToggle.appendChild(paperFontSizeLabel);
+
+  const smallButton = document.createElement("button");
+  smallButton.type = "button";
+  smallButton.textContent = "s";
+  smallButton.id = "paper-font-small";
+  smallButton.style.background = "transparent";
+  smallButton.style.border = "none";
+  smallButton.style.cursor = "pointer";
+  smallButton.style.padding = "0";
+  smallButton.style.fontFamily = "inherit";
+  smallButton.style.fontSize = "0.85rem";
+  smallButton.style.letterSpacing = "0";
+  smallButton.style.color = "inherit";
+  smallButton.style.transition = "text-decoration 0.2s ease";
+
+  const mediumButton = document.createElement("button");
+  mediumButton.type = "button";
+  mediumButton.textContent = "m";
+  mediumButton.id = "paper-font-medium";
+  mediumButton.style.background = "transparent";
+  mediumButton.style.border = "none";
+  mediumButton.style.cursor = "pointer";
+  mediumButton.style.padding = "0";
+  mediumButton.style.fontFamily = "inherit";
+  mediumButton.style.fontSize = "0.85rem";
+  mediumButton.style.letterSpacing = "0";
+  mediumButton.style.color = "inherit";
+  mediumButton.style.transition = "text-decoration 0.2s ease";
+
+  const largeButton = document.createElement("button");
+  largeButton.type = "button";
+  largeButton.textContent = "l";
+  largeButton.id = "paper-font-large";
+  largeButton.style.background = "transparent";
+  largeButton.style.border = "none";
+  largeButton.style.cursor = "pointer";
+  largeButton.style.padding = "0";
+  largeButton.style.fontFamily = "inherit";
+  largeButton.style.fontSize = "0.85rem";
+  largeButton.style.letterSpacing = "0";
+  largeButton.style.color = "inherit";
+  largeButton.style.transition = "text-decoration 0.2s ease";
+
+  // Add hover effects
+  smallButton.addEventListener("mouseenter", () => {
+    if (paperFontSizeSelect.value !== "small") {
+      smallButton.style.textDecoration = "underline";
+    }
+  });
+  smallButton.addEventListener("mouseleave", () => {
+    if (paperFontSizeSelect.value !== "small") {
+      smallButton.style.textDecoration = "none";
+    }
+  });
+
+  mediumButton.addEventListener("mouseenter", () => {
+    if (paperFontSizeSelect.value !== "medium") {
+      mediumButton.style.textDecoration = "underline";
+    }
+  });
+  mediumButton.addEventListener("mouseleave", () => {
+    if (paperFontSizeSelect.value !== "medium") {
+      mediumButton.style.textDecoration = "none";
+    }
+  });
+
+  largeButton.addEventListener("mouseenter", () => {
+    if (paperFontSizeSelect.value !== "large") {
+      largeButton.style.textDecoration = "underline";
+    }
+  });
+  largeButton.addEventListener("mouseleave", () => {
+    if (paperFontSizeSelect.value !== "large") {
+      largeButton.style.textDecoration = "none";
+    }
+  });
+
+  const separator1 = document.createElement("span");
+  separator1.textContent = " / ";
+  separator1.style.fontFamily = "inherit";
+  separator1.style.fontSize = "0.85rem";
+  separator1.style.lineHeight = "1.4";
+
+  const separator2 = document.createElement("span");
+  separator2.textContent = " / ";
+  separator2.style.fontFamily = "inherit";
+  separator2.style.fontSize = "0.85rem";
+  separator2.style.lineHeight = "1.4";
+
+  paperFontSizeToggle.appendChild(smallButton);
+  paperFontSizeToggle.appendChild(separator1);
+  paperFontSizeToggle.appendChild(mediumButton);
+  paperFontSizeToggle.appendChild(separator2);
+  paperFontSizeToggle.appendChild(largeButton);
+  settingsPanel.appendChild(paperFontSizeToggle);
+
+  // Create a hidden select to store current selection
+  const paperFontSizeSelect = document.createElement("input");
+  paperFontSizeSelect.type = "hidden";
+  paperFontSizeSelect.id = "paper-font-size-select";
+  paperFontSizeSelect.value = "medium"; // Default to medium
+  settingsPanel.appendChild(paperFontSizeSelect);
+
+  // Update underline based on current selection
+  const updatePaperFontUnderline = () => {
+    const currentSize = paperFontSizeSelect.value;
+    smallButton.style.textDecoration =
+      currentSize === "small" ? "underline" : "none";
+    mediumButton.style.textDecoration =
+      currentSize === "medium" ? "underline" : "none";
+    largeButton.style.textDecoration =
+      currentSize === "large" ? "underline" : "none";
+  };
+  updatePaperFontUnderline();
+
+  // Add click handlers
+  smallButton.addEventListener("click", (e) => {
+    e.stopPropagation();
+    paperFontSizeSelect.value = "small";
+    paperFontSizeSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    updatePaperFontUnderline();
+  });
+
+  mediumButton.addEventListener("click", (e) => {
+    e.stopPropagation();
+    paperFontSizeSelect.value = "medium";
+    paperFontSizeSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    updatePaperFontUnderline();
+  });
+
+  largeButton.addEventListener("click", (e) => {
+    e.stopPropagation();
+    paperFontSizeSelect.value = "large";
+    paperFontSizeSelect.dispatchEvent(new Event("change", { bubbles: true }));
+    updatePaperFontUnderline();
+  });
+
   // Create camera debug panel (debug - hidden)
   const cameraDebugPanel = document.createElement("div");
   cameraDebugPanel.id = "camera-debug-panel";
@@ -1081,6 +1238,7 @@ export function setupDOM(): DOMElements {
     coloredVinylsCheckbox,
     sfxCheckbox,
     songCommentsCheckbox,
+    paperFontSizeSelect,
     contactButton,
     cameraDebugPanel,
     portfolioPapersContainer,

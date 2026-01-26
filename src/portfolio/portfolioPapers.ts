@@ -88,12 +88,12 @@ const DEFAULT_MARKDOWN_LAYOUT: MarkdownLayoutConfig = {
   marginBottomRatio: 0.2,
   lineHeight: 1.28,
   fontSizes: {
-    h1: 55,
-    h2: 48,
-    h3: 42,
-    h4: 37,
-    body: 34,
-    bullet: 34,
+    h1: 60,
+    h2: 52,
+    h3: 46,
+    h4: 40,
+    body: 37,
+    bullet: 37,
   },
 };
 
