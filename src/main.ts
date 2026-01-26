@@ -77,6 +77,7 @@ import { TutorialManager } from "./turntable/tutorialManager";
 import {
   directionFromAngles,
   lerpAngleDegrees,
+  calculateYawToFacePosition,
   cloneCameraSettings,
   applyPageCameraSettings,
   captureCameraState,
@@ -106,6 +107,7 @@ import {
   BUSINESS_CARD_CAMERA_YAW,
   BUSINESS_CARD_CAMERA_PITCH,
   BUSINESS_CARD_CAMERA_ZOOM,
+  BUSINESS_CARD_FOCUS_LIFT,
   PLACEHOLDER_SCENES,
   PLACEHOLDER_SIZE,
   PORTFOLIO_CAMERA_TARGET_OFFSET,
@@ -945,7 +947,6 @@ const setActiveScenePage = (page: ScenePage) => {
   const previousPage = activePage;
   portfolioFeature.handlePageExit(previousPage, page);
   if (page === BUSINESS_CARD_PAGE) {
-    businessCardAnimation.handlePageSelection(page);
     businessCardAnimation.setMouseReactiveRotation(true);
   }
   if (previousPage === BUSINESS_CARD_PAGE && page !== BUSINESS_CARD_PAGE) {
@@ -973,7 +974,18 @@ const setActiveScenePage = (page: ScenePage) => {
     rememberedHomeCameraState = cloneCameraSettings(fromSettings);
     pageCameraSettings.home = cloneCameraSettings(rememberedHomeCameraState);
   }
-  const toSettings = pageCameraSettings[page];
+  const toSettings = cloneCameraSettings(pageCameraSettings[page]);
+  if (page === BUSINESS_CARD_PAGE) {
+    const cardMesh = pageSceneRoots[BUSINESS_CARD_PAGE];
+    if (cardMesh) {
+      const cardWorldPos = new Vector3();
+      cardMesh.getWorldPosition(cardWorldPos);
+      cardWorldPos.y += BUSINESS_CARD_FOCUS_LIFT;
+      toSettings.target.copy(cardWorldPos);
+      toSettings.yaw = calculateYawToFacePosition(cardWorldPos);
+      toSettings.pitch = fromSettings.pitch;
+    }
+  }
   // Compute target camera distance by temporarily applying target settings
   // This ensures we get the correct distance for the destination page's framing
   let frameObjectTarget: Object3D = heroGroup;
@@ -999,6 +1011,12 @@ const setActiveScenePage = (page: ScenePage) => {
   pageTransitionState.fromDistance = fromDistance;
   pageTransitionState.toDistance = toDistance;
   pageTransitionState.active = true;
+  if (page === BUSINESS_CARD_PAGE) {
+    businessCardAnimation.handlePageSelection(page, {
+      yaw: toSettings.yaw,
+      pitch: toSettings.pitch,
+    });
+  }
   const wasTurntable = previousPage === "turntable";
   if (page === "portfolio") {
     portfolioFeature.showUI();
@@ -1567,9 +1585,9 @@ const setActiveVinylSource = (
     }
   } else if (source === "dropping") {
     vinylModel = droppingVinylState?.model ?? null;
-    console.log(
-      `[setActiveVinylSource] Set to dropping: vinylModel=${vinylModel ? "exists" : "null"}`,
-    );
+    // console.log(
+    //   `[setActiveVinylSource] Set to dropping: vinylModel=${vinylModel ? "exists" : "null"}`,
+    // );
     // Don't sync state - dropping vinyl continues its animation
   } else {
     vinylModel = null;
@@ -1695,14 +1713,14 @@ const refreshFocusVinylOutline = () => {
   focusVinylOutlineLastScale = Math.max(size.x, size.z) / 2;
 };
 
-const disposeTurntableVinyl = (reason: string = "unknown") => {
+const disposeTurntableVinyl = () => {
   if (!turntableVinylState) {
-    console.log(`[turntableVinyl] dispose skipped (no state) reason=${reason}`);
+    // console.log("[turntableVinyl] dispose skipped (no state)");
     return;
   }
-  console.log(
-    `[turntableVinyl] Disposing ${turntableVinylState.selection.songName} (reason=${reason})`,
-  );
+  // console.log(
+  //   `[turntableVinyl] Disposing ${turntableVinylState.selection.songName}`,
+  // );
   heroGroup.remove(turntableVinylState.model);
   turntableVinylState.labelTextures.sideA.dispose();
   turntableVinylState.labelTextures.sideB.dispose();
@@ -1714,16 +1732,16 @@ const disposeTurntableVinyl = (reason: string = "unknown") => {
   }
 };
 
-const startTurntableVinylFadeOut = (reason: string = "unknown") => {
+const startTurntableVinylFadeOut = () => {
   if (!turntableVinylState) {
-    console.log(
-      `[turntableVinyl] fade-out skipped (no state) reason=${reason}`,
-    );
+    // console.log(
+    //   `[turntableVinyl] fade-out skipped (no state) reason=${reason}`,
+    // );
     return;
   }
-  console.log(
-    `[turntableVinyl] Fading ${turntableVinylState.selection.songName} (reason=${reason})`,
-  );
+  // console.log(
+  //   `[turntableVinyl] Fading ${turntableVinylState.selection.songName} (reason=${reason})`,
+  // );
 
   const { model, labelTextures } = turntableVinylState;
   const materials: FadingVinyl["materials"] = [];
@@ -1918,7 +1936,9 @@ const findBusinessCardLinkUnderRay = () => {
     if (!hit.uv || hit.face?.materialIndex !== 2) {
       continue;
     }
-    const { x: u, y: v } = hit.uv;
+    const { x: rawU, y: rawV } = hit.uv;
+    const u = 1 - rawU; // Match horizontal mirror applied to business card texture.
+    const v = 1 - rawV; // Match vertical flip applied to business card texture.
     for (const link of businessCardContactLinks) {
       const rect = link.getRect();
       if (isUVWithinRect(u, v, rect)) {
@@ -2435,7 +2455,7 @@ loadTurntableModel()
         );
         // Only play if video is loaded
         if (loadedSelectionVideoId) {
-          console.log(`[TurntableController] Calling yt.play()`);
+          // console.log(`[TurntableController] Calling yt.play()`);
           yt.play();
         } else {
           console.warn(
@@ -2750,9 +2770,9 @@ const animate = (time: number) => {
       const isAnimatingDroppingVinyl =
         activeVinylSource === "dropping" && droppingVinylState;
       if (isAnimatingDroppingVinyl) {
-        console.log(
-          `[animate] Animating dropping vinyl, vinylModel=${vinylModel ? "exists" : "null"}, isReturningVinyl=${isReturningVinyl}, hasClearedNub=${hasClearedNub}`,
-        );
+        // console.log(
+        //   `[animate] Animating dropping vinyl, vinylModel=${vinylModel ? "exists" : "null"}, isReturningVinyl=${isReturningVinyl}, hasClearedNub=${hasClearedNub}`,
+        // );
       }
 
       const vinylAnimationResult = updateVinylAnimation(vinylAnimationState, {
@@ -2799,14 +2819,12 @@ const animate = (time: number) => {
         isAnimatingDroppingVinyl &&
         (shouldSignalOnTurntable || vinylAnimationResult.returnedToPlatter)
       ) {
-        console.log(
-          `[animate] Dropping vinyl landed on turntable: ${droppingVinylState!.selection.songName}`,
-        );
+        // console.log(
+        //   `[animate] Dropping vinyl landed on turntable: ${droppingVinylState!.selection.songName}`,
+        // );
         // Dispose any existing turntable vinyl
         if (turntableVinylState) {
-          startTurntableVinylFadeOut(
-            "dropping landed - replacing existing turntable vinyl",
-          );
+          startTurntableVinylFadeOut();
         }
         // Promote dropping vinyl to turntable vinyl
         turntableVinylState = {
@@ -2942,7 +2960,7 @@ const animate = (time: number) => {
     }
 
     if (focusVinylOutlineNeedsRebuild) {
-      console.log(`[focusVinylOutline] Rebuilding outline`);
+      // console.log(`[focusVinylOutline] Rebuilding outline`);
       refreshFocusVinylOutline();
     }
 
@@ -2958,15 +2976,15 @@ const animate = (time: number) => {
       );
 
       if (sizeDifference > 0.001) {
-        console.log(
-          `[focusVinylOutline] actualRadius=${actualRadius.toFixed(5)}, recorded=${focusVinylOutlineLastScale.toFixed(5)}, diff=${sizeDifference.toFixed(5)}`,
-        );
+        // console.log(
+        //   `[focusVinylOutline] actualRadius=${actualRadius.toFixed(5)}, recorded=${focusVinylOutlineLastScale.toFixed(5)}, diff=${sizeDifference.toFixed(5)}`,
+        // );
       }
 
       if (sizeDifference > 0.1) {
-        console.log(
-          `[focusVinylOutline] REBUILDING - Size mismatch threshold exceeded`,
-        );
+        // console.log(
+        //   `[focusVinylOutline] REBUILDING - Size mismatch threshold exceeded`,
+        // );
         focusVinylOutlineNeedsRebuild = true;
       }
     }
@@ -3103,10 +3121,10 @@ const animate = (time: number) => {
 
       // Reload the vinyl to focus position after cleanup
       if (shouldReloadToFocus) {
-        console.log(
-          "[Flyaway] Reloading vinyl to focus position:",
-          entry.selection.songName,
-        );
+        // console.log(
+        //   "[Flyaway] Reloading vinyl to focus position:",
+        //   entry.selection.songName,
+        // );
         pendingVinylSelection = entry.selection;
         void vinylSelectionController.handleFocusSelection(entry.selection);
       }
@@ -3216,7 +3234,7 @@ function logMaterialNames(model: Object3D) {
     });
   });
 
-  console.log("GLB materials:", Array.from(names));
+  // console.log("GLB materials:", Array.from(names));
 }
 
 function updateTurntableNubClearance(turntable: Object3D) {
@@ -3395,7 +3413,7 @@ function updateDragPlaneDepthLocal(z: number) {
 
   try {
     await vinylLibraryWidget.init();
-    console.log("✓ Vinyl library widget initialized");
+    console.log("Vinyl library widget initialized");
   } catch (error) {
     console.error("✗ Failed to initialize vinyl library widget:", error);
   }
@@ -3406,7 +3424,7 @@ function updateDragPlaneDepthLocal(z: number) {
   try {
     const tutorialManager = new TutorialManager("vinyl-tutorial");
     tutorialManager.init();
-    console.log("✓ Tutorial manager initialized");
+    console.log("Tutorial manager initialized");
 
     // Expose tutorial manager to window for debugging
     (window as any).tutorialManager = tutorialManager;
@@ -3437,7 +3455,7 @@ function updateDragPlaneDepthLocal(z: number) {
 
   try {
     await vinylLibraryViewer.init();
-    console.log("✓ Vinyl library viewer initialized");
+    console.log("Vinyl library viewer initialized");
 
     // Expose viewer instance to window for show focus button
     (window as any).vinylLibraryViewer = vinylLibraryViewer;

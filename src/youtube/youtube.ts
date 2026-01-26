@@ -406,9 +406,9 @@ export function createYouTubePlayer(): YouTubeBridge {
       if (isTonearmInPlayArea) {
         const targetHeight = getSmallPlayerTargetHeight();
         viewport.style.height = `${targetHeight}px`;
-        console.log(
-          `[YouTube] Updated viewport height to ${targetHeight}px for aspect ratio ${DYNAMIC_VIDEO_ASPECT}`,
-        );
+        // console.log(
+        //   `[YouTube] Updated viewport height to ${targetHeight}px for aspect ratio ${DYNAMIC_VIDEO_ASPECT}`,
+        // );
       }
     }
   };
@@ -598,10 +598,10 @@ export function createYouTubePlayer(): YouTubeBridge {
   });
 
   // Register callback for aspect ratio changes
-  aspectRatioChangeCallback = (aspectRatio: number) => {
-    console.log(
-      `[YouTube] Aspect ratio changed to ${aspectRatio}, updating viewport`,
-    );
+  aspectRatioChangeCallback = () => {
+    // console.log(
+    //   `[YouTube] Aspect ratio changed to ${aspectRatio}, updating viewport`,
+    // );
     updateViewportForAspectRatio();
   };
 
@@ -621,9 +621,9 @@ export function createYouTubePlayer(): YouTubeBridge {
   const detectAndUpdateAspectRatio = async (videoId: string) => {
     // If there's a manual aspect ratio override, use it instead of detecting
     if (manualAspectRatioOverride !== null) {
-      console.log(
-        `[YouTube] Using manual aspect ratio override: ${manualAspectRatioOverride}`,
-      );
+      // console.log(
+      //   `[YouTube] Using manual aspect ratio override: ${manualAspectRatioOverride}`,
+      // );
       DYNAMIC_VIDEO_ASPECT = manualAspectRatioOverride;
       updateViewport();
       return;
@@ -1220,9 +1220,9 @@ export function createYouTubePlayer(): YouTubeBridge {
       } else {
         DYNAMIC_VIDEO_ASPECT = aspectRatio;
         manualAspectRatioOverride = aspectRatio;
-        console.log(
-          `[YouTube] Set manual aspect ratio override to ${aspectRatio}`,
-        );
+        // console.log(
+        //   `[YouTube] Set manual aspect ratio override to ${aspectRatio}`,
+        // );
         updateViewportForAspectRatio();
       }
     },
@@ -1588,8 +1588,9 @@ export function createVideoControls(
   volumeSlider.max = "100";
   volumeSlider.value = "100";
   volumeSlider.className = "volume-slider";
-  volumeSlider.style.width = "92px";
+  volumeSlider.style.width = "100%";
   volumeSlider.style.height = "4px";
+  volumeSlider.style.pointerEvents = "none";
   volumeSlider.tabIndex = -1;
   const releaseVolumeFocus = () => {
     if (document.activeElement === volumeSlider) {
@@ -1628,6 +1629,59 @@ export function createVideoControls(
     gap: "0.2rem",
     marginLeft: "auto",
   });
+
+  const volumeSliderWrap = document.createElement("div");
+  Object.assign(volumeSliderWrap.style, {
+    position: "relative",
+    display: "flex",
+    alignItems: "center",
+    width: "92px",
+    height: "4px",
+  });
+
+  const volumeSliderHitbox = document.createElement("div");
+  Object.assign(volumeSliderHitbox.style, {
+    position: "absolute",
+    left: "0",
+    top: "50%",
+    transform: "translateY(-50%)",
+    width: "100%",
+    height: "24px",
+    cursor: "pointer",
+    background: "transparent",
+  });
+
+  let volumeHitboxPointerId: number | null = null;
+  const setVolumeFromPointerEvent = (event: PointerEvent, animate: boolean) => {
+    const rect = volumeSliderHitbox.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const ratio = Math.min(Math.max(x / rect.width, 0), 1);
+    const value = Math.round(ratio * 100);
+    handleVolumeChange(value, animate);
+    clickSetVolume = true;
+  };
+
+  volumeSliderHitbox.addEventListener("pointerdown", (event) => {
+    volumeHitboxPointerId = event.pointerId;
+    volumeSliderHitbox.setPointerCapture(event.pointerId);
+    setVolumeFromPointerEvent(event, true);
+  });
+  volumeSliderHitbox.addEventListener("pointermove", (event) => {
+    if (volumeHitboxPointerId !== event.pointerId) {
+      return;
+    }
+    event.preventDefault();
+    setVolumeFromPointerEvent(event, false);
+  });
+  const releaseVolumeHitbox = (event: PointerEvent) => {
+    if (volumeHitboxPointerId !== event.pointerId) {
+      return;
+    }
+    volumeSliderHitbox.releasePointerCapture(event.pointerId);
+    volumeHitboxPointerId = null;
+  };
+  volumeSliderHitbox.addEventListener("pointerup", releaseVolumeHitbox);
+  volumeSliderHitbox.addEventListener("pointercancel", releaseVolumeHitbox);
 
   const volumeIcon = document.createElementNS(
     "http://www.w3.org/2000/svg",
@@ -1813,7 +1867,8 @@ export function createVideoControls(
     toggleMute();
   });
 
-  volumeGroup.append(volumeIcon, volumeSlider);
+  volumeSliderWrap.append(volumeSliderHitbox, volumeSlider);
+  volumeGroup.append(volumeIcon, volumeSliderWrap);
   controlsRow.append(timingLabel, volumeGroup);
   container.append(bar, controlsRow);
 

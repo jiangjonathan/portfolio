@@ -1,11 +1,11 @@
-import { Object3D, Quaternion, Vector3 } from "three";
+import { Matrix4, Object3D, Quaternion, Vector3 } from "three";
 import { directionFromAngles } from "../camera/pageNavigation";
 import type { ScenePage } from "../camera/pageNavigation";
 import {
   BUSINESS_CARD_PAGE,
   BUSINESS_CARD_CAMERA_PITCH,
   BUSINESS_CARD_CAMERA_YAW,
-  BUSINESS_CARD_FOCUS_TARGET,
+  BUSINESS_CARD_FOCUS_LIFT,
 } from "./sceneObjects";
 
 type MeshGetter = () => Object3D | null;
@@ -15,7 +15,10 @@ export type BusinessCardAnimationOptions = {
 };
 
 export type BusinessCardAnimationController = {
-  handlePageSelection: (page: ScenePage) => void;
+  handlePageSelection: (
+    page: ScenePage,
+    focusAngles?: { yaw: number; pitch: number },
+  ) => void;
   resetToHome: () => void;
   setMouseReactiveRotation: (enabled: boolean) => void;
   updateMousePosition: (x: number, y: number) => void;
@@ -28,14 +31,26 @@ export const createBusinessCardAnimation = ({
   const FOCUS_ANIMATION_DURATION = 720;
   const RESET_ANIMATION_DURATION = 520;
   const UP_VECTOR = new Vector3(0, 1, 0);
-  const focusDirection = directionFromAngles(
-    BUSINESS_CARD_CAMERA_YAW,
-    BUSINESS_CARD_CAMERA_PITCH,
-  ).clone();
-  const focusQuaternion = new Quaternion().setFromUnitVectors(
-    UP_VECTOR,
-    focusDirection,
-  );
+  const buildFocusQuaternion = (yaw: number, pitch: number) => {
+    const desiredNormal = directionFromAngles(yaw, pitch).clone().normalize();
+    const desiredUp = UP_VECTOR.clone();
+    desiredUp.addScaledVector(desiredNormal, -desiredUp.dot(desiredNormal));
+    if (desiredUp.lengthSq() < 1e-6) {
+      desiredUp
+        .set(0, 0, 1)
+        .addScaledVector(desiredNormal, -desiredNormal.dot(desiredUp));
+    }
+    desiredUp.normalize();
+    const desiredRight = new Vector3()
+      .crossVectors(desiredNormal, desiredUp)
+      .normalize();
+    const basis = new Matrix4().makeBasis(
+      desiredRight,
+      desiredNormal,
+      desiredUp,
+    );
+    return new Quaternion().setFromRotationMatrix(basis);
+  };
   let animationFrame: number | null = null;
   let homePosition: Vector3 | null = null;
   let homeQuaternion: Quaternion | null = null;
@@ -94,9 +109,21 @@ export const createBusinessCardAnimation = ({
     animationFrame = requestAnimationFrame(step);
   };
 
-  const animateToFocus = (mesh: Object3D) => {
+  const animateToFocus = (
+    mesh: Object3D,
+    focusAngles?: { yaw: number; pitch: number },
+  ) => {
     captureHomeTransform(mesh);
-    const focusPosition = BUSINESS_CARD_FOCUS_TARGET.clone();
+    const focusPosition = homePosition
+      ? homePosition.clone()
+      : mesh.position.clone();
+    focusPosition.y += BUSINESS_CARD_FOCUS_LIFT;
+    const focusQuaternion = focusAngles
+      ? buildFocusQuaternion(focusAngles.yaw, focusAngles.pitch)
+      : buildFocusQuaternion(
+          BUSINESS_CARD_CAMERA_YAW,
+          BUSINESS_CARD_CAMERA_PITCH,
+        );
     animateMeshTransform(
       mesh,
       focusPosition,
@@ -127,7 +154,10 @@ export const createBusinessCardAnimation = ({
     );
   };
 
-  const handlePageSelection = (page: ScenePage) => {
+  const handlePageSelection = (
+    page: ScenePage,
+    focusAngles?: { yaw: number; pitch: number },
+  ) => {
     if (page !== BUSINESS_CARD_PAGE) {
       return;
     }
@@ -135,7 +165,7 @@ export const createBusinessCardAnimation = ({
     if (!mesh) {
       return;
     }
-    animateToFocus(mesh);
+    animateToFocus(mesh, focusAngles);
   };
 
   const resetToHome = () => {
@@ -158,9 +188,9 @@ export const createBusinessCardAnimation = ({
     if (isHovered) {
       // Convert mouse position (0-1) to rotation angle
       // Invert so card faces towards mouse instead of away
-      const rotationX = -(mouseY - 0.5) * 2 * MAX_ROTATION_X;
-      const rotationY = -(mouseX - 0.5) * 2 * MAX_ROTATION_Y;
-      const rotationZ = -(mouseX - 0.5) * 2 * MAX_ROTATION_Z;
+      const rotationX = (mouseY - 0.5) * 2 * MAX_ROTATION_X;
+      const rotationY = (mouseX - 0.5) * 2 * MAX_ROTATION_Y;
+      const rotationZ = (mouseX - 0.5) * 2 * MAX_ROTATION_Z;
 
       // Create rotation quaternions from world axes
       const xAxis = new Vector3(1, 0, 0);

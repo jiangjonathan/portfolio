@@ -203,7 +203,7 @@ export const createVinylSelectionController = (
       if (updateId !== deps.getSelectionVisualUpdateId()) {
         return;
       }
-      console.warn("Failed to extract dominant color, using fallback", error);
+      // console.warn("Failed to extract dominant color, using fallback", error);
       deps.labelVisuals.background = deps.FALLBACK_BACKGROUND_COLOR;
       refreshFocusVinylColor();
     }
@@ -238,20 +238,20 @@ export const createVinylSelectionController = (
 
     const selection = pending;
     const loadPromise = (async () => {
-      console.log(
-        `[loadVideoForCurrentSelection] Starting load for ${selection.artistName} - ${selection.songName}`,
-      );
+      // console.log(
+      //   `[loadVideoForCurrentSelection] Starting load for ${selection.artistName} - ${selection.songName}`,
+      // );
       deps.turntableStateManager.resetFadeOut();
       deps.getTurntableController()?.returnTonearmHome();
       deps.getTurntableController()?.pausePlayback();
-      console.log(
-        `[loadVideoForCurrentSelection] Clearing loadedSelectionVideoId (was "${deps.getLoadedSelectionVideoId()}")`,
-      );
+      // console.log(
+      //   `[loadVideoForCurrentSelection] Clearing loadedSelectionVideoId (was "${deps.getLoadedSelectionVideoId()}")`,
+      // );
       deps.setLoadedSelectionVideoId(null);
 
       if (selection.aspectRatio !== undefined) {
         deps.yt.setAspectRatio(selection.aspectRatio);
-        console.log(`[main] Applied aspect ratio: ${selection.aspectRatio}`);
+        // console.log(`[main] Applied aspect ratio: ${selection.aspectRatio}`);
       } else {
         deps.yt.setAspectRatio(null as any);
       }
@@ -288,7 +288,7 @@ export const createVinylSelectionController = (
           deps.getTurntableController()?.setMediaDuration(duration);
         }
         if (duration > 0) {
-          console.log(`[main] Video duration loaded: ${duration} seconds`);
+          // console.log(`[main] Video duration loaded: ${duration} seconds`);
           window.dispatchEvent(
             new CustomEvent("video-duration-loaded", {
               detail: {
@@ -316,22 +316,22 @@ export const createVinylSelectionController = (
       }, 300);
 
       const isOnTurntable = deps.turntableStateManager.isOnTurntable();
-      console.log(
-        `[loadVideoForCurrentSelection] isOnTurntable=${isOnTurntable}`,
-      );
+      // console.log(
+      //   `[loadVideoForCurrentSelection] isOnTurntable=${isOnTurntable}`,
+      // );
       if (isOnTurntable) {
         deps.setLoadedSelectionVideoId(selection.videoId);
-        console.log(
-          `Loaded for turntable: ${selection.artistName} - ${selection.songName}`,
-        );
-        console.log(
-          `[loadVideoForCurrentSelection] Set loadedSelectionVideoId="${deps.getLoadedSelectionVideoId()}"`,
-        );
+        // console.log(
+        //   `Loaded for turntable: ${selection.artistName} - ${selection.songName}`,
+        // );
+        // console.log(
+        //   `[loadVideoForCurrentSelection] Set loadedSelectionVideoId="${deps.getLoadedSelectionVideoId()}"`,
+        // );
       } else {
         deps.setLoadedSelectionVideoId(null);
-        console.log(
-          `[loadVideoForCurrentSelection] Not on turntable, cleared loadedSelectionVideoId`,
-        );
+        // console.log(
+        //   `[loadVideoForCurrentSelection] Not on turntable, cleared loadedSelectionVideoId`,
+        // );
       }
     })();
 
@@ -522,9 +522,9 @@ export const createVinylSelectionController = (
       const preloaded = deps.focusCardController.takePreloadedFocusVinyl();
       if (preloaded.model) {
         if (preloaded.model === deps.getTurntableVinylState()?.model) {
-          console.warn(
-            "[handleFocusSelection] Preloaded model is turntable vinyl! Loading fresh model.",
-          );
+          // console.warn(
+          //   "[handleFocusSelection] Preloaded model is turntable vinyl! Loading fresh model.",
+          // );
           model = await deps.loadVinylModel(deps.vinylNormalTexture);
         } else {
           model = preloaded.model;
@@ -533,9 +533,9 @@ export const createVinylSelectionController = (
         const resolved = await preloaded.promise;
         if (resolved && !deps.getFocusVinylState()) {
           if (resolved === deps.getTurntableVinylState()?.model) {
-            console.warn(
-              "[handleFocusSelection] Resolved preload is turntable vinyl! Loading fresh model.",
-            );
+            // console.warn(
+            //   "[handleFocusSelection] Resolved preload is turntable vinyl! Loading fresh model.",
+            // );
             model = await deps.loadVinylModel(deps.vinylNormalTexture);
           } else {
             model = resolved;
@@ -597,7 +597,7 @@ export const createVinylSelectionController = (
         // );
       }
     } catch (error) {
-      console.error("Failed to load focus vinyl", error);
+      // console.error("Failed to load focus vinyl", error);
     }
   };
 
@@ -605,7 +605,7 @@ export const createVinylSelectionController = (
     const detail = (event as CustomEvent<VinylSelectionDetail>).detail;
     // console.log(`[load-vinyl-song] Event received:`, detail);
     if (!detail || !detail.videoId) {
-      console.warn(`[load-vinyl-song] Invalid detail or missing videoId`);
+      // console.warn(`[load-vinyl-song] Invalid detail or missing videoId`);
       return;
     }
 

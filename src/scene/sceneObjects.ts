@@ -3,6 +3,7 @@ import {
   CanvasTexture,
   Mesh,
   MeshStandardMaterial,
+  RepeatWrapping,
   SphereGeometry,
   Vector3,
   Euler,
@@ -345,6 +346,10 @@ export function createBusinessCardTexture(
   const texture = new CanvasTexture(canvas);
   texture.anisotropy = renderer.capabilities.getMaxAnisotropy?.() ?? 1;
   texture.colorSpace = SRGBColorSpace;
+  texture.flipY = false;
+  texture.wrapS = RepeatWrapping;
+  texture.center.set(0.5, 0.5);
+  texture.repeat.x = -1;
   texture.needsUpdate = true;
   businessCardTexture = texture;
   return texture;
@@ -386,6 +391,7 @@ export const BUSINESS_CARD_FOCUS_TARGET = new Vector3(0, 6, 0);
 export const BUSINESS_CARD_CAMERA_YAW = 0;
 export const BUSINESS_CARD_CAMERA_PITCH = 25;
 export const BUSINESS_CARD_CAMERA_ZOOM = 2;
+export const BUSINESS_CARD_FOCUS_LIFT = 5;
 
 export function createBusinessCardMesh(
   renderer: WebGLRenderer,

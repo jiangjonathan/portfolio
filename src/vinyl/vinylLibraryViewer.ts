@@ -1391,6 +1391,7 @@ export class VinylLibraryViewer {
             line-height: 1;
             color: #666;
             padding: 0;
+            margin-right: 0.5rem;
             display: none;
           }
 
