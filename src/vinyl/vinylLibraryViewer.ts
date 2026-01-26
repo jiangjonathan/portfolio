@@ -1356,6 +1356,8 @@ export class VinylLibraryViewer {
             font-family: inherit;
             flex: 1;
             min-width: calc(60px * var(--font-scale, 1));
+            color: var(--vinyl-link-color);
+            text-shadow: var(--vinyl-link-text-shadow);
             -webkit-font-smoothing: none;
             -moz-osx-font-smoothing: grayscale;
             line-height: 1;
