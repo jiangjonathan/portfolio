@@ -128,7 +128,12 @@ export function createLights() {
 }
 
 export function createRenderer(canvas: HTMLCanvasElement) {
-  const renderer = new WebGLRenderer({ canvas, antialias: true, alpha: true });
+  const renderer = new WebGLRenderer({
+    canvas,
+    antialias: true,
+    alpha: true,
+    powerPreference: "high-performance", // Request high-performance GPU
+  });
   renderer.outputColorSpace = SRGBColorSpace;
   renderer.toneMapping = ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.1;

@@ -12,7 +12,7 @@ import { FALLBACK_BACKGROUND_COLOR } from "../utils/config";
 import type { VinylSelectionDetail } from "./vinylInteractions";
 import { getOrCacheAlbumCover } from "../utils/albumCoverCache";
 
-export const FOCUS_VINYL_BASE_SCALE = 1.05;
+export const FOCUS_VINYL_BASE_SCALE = 1.04;
 export const VINYL_DRAG_THRESHOLD = 38;
 // Focus card scaling (kept separate from the library viewer so it can stay larger)
 export const FOCUS_CARD_BASE_WIDTH = 1200;
