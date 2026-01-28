@@ -1421,36 +1421,6 @@ let activeVinylSource: VinylSource | null = null;
 let currentDragSource: VinylSource | null = null;
 let pendingPromotionSource: VinylSource | null = null;
 
-setupSettingsPersistence({
-  coloredVinylsCheckbox,
-  sfxCheckbox,
-  songCommentsCheckbox,
-  cameraModeSelect,
-  onColoredVinylsChange: (enabled) => {
-    coloredVinylsEnabled = enabled;
-    updateFocusVinylColorFromDerived();
-    updateTurntableVinylColorFromDerived();
-    restoreDroppingVinylAppearance("coloredVinylToggle");
-  },
-  onSfxChange: (enabled) => {
-    sfx_on = enabled;
-    window.sfx_on = sfx_on;
-  },
-  onSongCommentsChange: (enabled) => {
-    document.body.classList.toggle("song-comments-hidden", !enabled);
-  },
-  onCameraModeChange: (mode) => {
-    if (mode === "manual") {
-      inputHandlers?.setAutoOrbitActive(false);
-    } else {
-      // Only re-enable auto-orbit if we're on the home page
-      if (activePage === "home") {
-        inputHandlers?.startAutoOrbit();
-      }
-    }
-  },
-});
-
 function setPendingPromotionSource(
   value: VinylSource | null,
   _reason: string,
@@ -2438,6 +2408,36 @@ inputHandlers = registerInputHandlers({
   CAMERA_ORBIT_SENSITIVITY,
   PAN_SENSITIVITY,
   FREE_LOOK_MIN_ZOOM,
+});
+
+setupSettingsPersistence({
+  coloredVinylsCheckbox,
+  sfxCheckbox,
+  songCommentsCheckbox,
+  cameraModeSelect,
+  onColoredVinylsChange: (enabled) => {
+    coloredVinylsEnabled = enabled;
+    updateFocusVinylColorFromDerived();
+    updateTurntableVinylColorFromDerived();
+    restoreDroppingVinylAppearance("coloredVinylToggle");
+  },
+  onSfxChange: (enabled) => {
+    sfx_on = enabled;
+    window.sfx_on = sfx_on;
+  },
+  onSongCommentsChange: (enabled) => {
+    document.body.classList.toggle("song-comments-hidden", !enabled);
+  },
+  onCameraModeChange: (mode) => {
+    if (mode === "manual") {
+      inputHandlers?.setAutoOrbitActive(false);
+    } else {
+      // Only re-enable auto-orbit if we're on the home page
+      if (activePage === "home") {
+        inputHandlers?.startAutoOrbit();
+      }
+    }
+  },
 });
 
 // Start auto-orbit on initial page (home) if camera mode is orbit
