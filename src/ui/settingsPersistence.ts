@@ -2,15 +2,18 @@ type SettingsPersistenceDeps = {
   coloredVinylsCheckbox: HTMLInputElement;
   sfxCheckbox: HTMLInputElement;
   songCommentsCheckbox: HTMLInputElement;
+  cameraModeSelect: HTMLInputElement;
   onColoredVinylsChange: (enabled: boolean) => void;
   onSfxChange: (enabled: boolean) => void;
   onSongCommentsChange: (enabled: boolean) => void;
+  onCameraModeChange: (mode: string) => void;
 };
 
 type SettingsState = {
   coloredVinylsEnabled?: boolean;
   sfxEnabled?: boolean;
   songCommentsEnabled?: boolean;
+  cameraMode?: string;
 };
 
 const STORAGE_KEY = "vinylSettings";
@@ -56,6 +59,9 @@ export const setupSettingsPersistence = (deps: SettingsPersistenceDeps) => {
   if (typeof state.songCommentsEnabled === "boolean") {
     deps.songCommentsCheckbox.checked = state.songCommentsEnabled;
   }
+  if (typeof state.cameraMode === "string") {
+    deps.cameraModeSelect.value = state.cameraMode;
+  }
 
   deps.coloredVinylsCheckbox.addEventListener("change", () => {
     const enabled = deps.coloredVinylsCheckbox.checked;
@@ -84,6 +90,15 @@ export const setupSettingsPersistence = (deps: SettingsPersistenceDeps) => {
     }
   });
 
+  deps.cameraModeSelect.addEventListener("change", () => {
+    const mode = deps.cameraModeSelect.value;
+    deps.onCameraModeChange(mode);
+    if (!isInitializing) {
+      state.cameraMode = mode;
+      saveSettings(state);
+    }
+  });
+
   deps.coloredVinylsCheckbox.dispatchEvent(
     new Event("change", { bubbles: true }),
   );
@@ -91,5 +106,6 @@ export const setupSettingsPersistence = (deps: SettingsPersistenceDeps) => {
   deps.songCommentsCheckbox.dispatchEvent(
     new Event("change", { bubbles: true }),
   );
+  deps.cameraModeSelect.dispatchEvent(new Event("change", { bubbles: true }));
   isInitializing = false;
 };

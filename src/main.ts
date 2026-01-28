@@ -196,6 +196,7 @@ const {
   sfxCheckbox,
   songCommentsCheckbox,
   paperFontSizeSelect,
+  cameraModeSelect,
   contactButton,
   // cameraDebugPanel, // Debug UI - disabled
   portfolioPrevArrow,
@@ -1033,9 +1034,11 @@ const setActiveScenePage = (page: ScenePage) => {
   activePage = page;
   turntableStateManager.setActivePage(page);
 
-  // Start auto-orbit if moving to home page
+  // Start auto-orbit if moving to home page (only if in orbit mode)
   if (page === "home") {
-    inputHandlers?.startAutoOrbit();
+    if (cameraModeSelect.value === "orbit") {
+      inputHandlers?.startAutoOrbit();
+    }
   } else {
     inputHandlers?.setAutoOrbitActive(false);
   }
@@ -1241,8 +1244,8 @@ const updateScenePageTransition = () => {
       );
       callbacks.forEach((fn) => fn());
     }
-    // Start auto-orbit after transition completes when returning to home page
-    if (activePage === "home") {
+    // Start auto-orbit after transition completes when returning to home page (only if in orbit mode)
+    if (activePage === "home" && cameraModeSelect.value === "orbit") {
       inputHandlers?.startAutoOrbit();
     }
   }
@@ -1422,6 +1425,7 @@ setupSettingsPersistence({
   coloredVinylsCheckbox,
   sfxCheckbox,
   songCommentsCheckbox,
+  cameraModeSelect,
   onColoredVinylsChange: (enabled) => {
     coloredVinylsEnabled = enabled;
     updateFocusVinylColorFromDerived();
@@ -1434,6 +1438,16 @@ setupSettingsPersistence({
   },
   onSongCommentsChange: (enabled) => {
     document.body.classList.toggle("song-comments-hidden", !enabled);
+  },
+  onCameraModeChange: (mode) => {
+    if (mode === "manual") {
+      inputHandlers?.setAutoOrbitActive(false);
+    } else {
+      // Only re-enable auto-orbit if we're on the home page
+      if (activePage === "home") {
+        inputHandlers?.startAutoOrbit();
+      }
+    }
   },
 });
 
@@ -2426,6 +2440,11 @@ inputHandlers = registerInputHandlers({
   FREE_LOOK_MIN_ZOOM,
 });
 
+// Start auto-orbit on initial page (home) if camera mode is orbit
+if (activePage === "home" && cameraModeSelect.value === "orbit") {
+  inputHandlers?.startAutoOrbit();
+}
+
 loadTurntableModel()
   .then((turntable) => {
     const cartridge = findObjectByName(
@@ -3208,8 +3227,7 @@ const animate = (time: number) => {
   // `;
 };
 
-// Start auto-orbit on initial page (home)
-inputHandlers?.startAutoOrbit();
+// Auto-orbit is started by setupSettingsPersistence based on camera mode setting
 
 requestAnimationFrame(animate);
 

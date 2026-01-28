@@ -52,6 +52,7 @@ export interface DOMElements {
   sfxCheckbox: HTMLInputElement;
   songCommentsCheckbox: HTMLInputElement;
   paperFontSizeSelect: HTMLInputElement;
+  cameraModeSelect: HTMLInputElement;
   contactButton: HTMLButtonElement;
   cameraDebugPanel: HTMLDivElement;
   portfolioPapersContainer: HTMLDivElement;
@@ -1052,6 +1053,118 @@ export function setupDOM(): DOMElements {
     updatePaperFontUnderline();
   });
 
+  // Create camera mode toggle
+  const cameraModeToggle = document.createElement("div");
+  cameraModeToggle.id = "camera-mode-toggle";
+  cameraModeToggle.style.display = "flex";
+  cameraModeToggle.style.alignItems = "center";
+  cameraModeToggle.style.gap = "0.2rem";
+  cameraModeToggle.style.fontSize = "0.85rem";
+  cameraModeToggle.style.lineHeight = "1.4";
+  cameraModeToggle.style.fontFamily = "inherit";
+  cameraModeToggle.style.whiteSpace = "nowrap";
+
+  const cameraModeLabel = document.createElement("span");
+  cameraModeLabel.textContent = "camera: ";
+  cameraModeLabel.style.textTransform = "none";
+  cameraModeLabel.style.fontFamily = "inherit";
+  cameraModeLabel.style.fontSize = "0.85rem";
+  cameraModeLabel.style.lineHeight = "1.4";
+  cameraModeToggle.appendChild(cameraModeLabel);
+
+  const orbitButton = document.createElement("button");
+  orbitButton.type = "button";
+  orbitButton.textContent = "orbit";
+  orbitButton.id = "camera-mode-orbit";
+  orbitButton.style.background = "transparent";
+  orbitButton.style.border = "none";
+  orbitButton.style.cursor = "pointer";
+  orbitButton.style.padding = "0";
+  orbitButton.style.fontFamily = "inherit";
+  orbitButton.style.fontSize = "0.85rem";
+  orbitButton.style.letterSpacing = "0";
+  orbitButton.style.color = "inherit";
+  orbitButton.style.transition = "text-decoration 0.2s ease";
+
+  const manualButton = document.createElement("button");
+  manualButton.type = "button";
+  manualButton.textContent = "manual";
+  manualButton.id = "camera-mode-manual";
+  manualButton.style.background = "transparent";
+  manualButton.style.border = "none";
+  manualButton.style.cursor = "pointer";
+  manualButton.style.padding = "0";
+  manualButton.style.fontFamily = "inherit";
+  manualButton.style.fontSize = "0.85rem";
+  manualButton.style.letterSpacing = "0";
+  manualButton.style.color = "inherit";
+  manualButton.style.transition = "text-decoration 0.2s ease";
+
+  // Add hover effects
+  orbitButton.addEventListener("mouseenter", () => {
+    orbitButton.style.textDecoration = "underline";
+  });
+  orbitButton.addEventListener("mouseleave", () => {
+    if (cameraModeSelect.value !== "orbit") {
+      orbitButton.style.textDecoration = "none";
+    }
+  });
+
+  manualButton.addEventListener("mouseenter", () => {
+    manualButton.style.textDecoration = "underline";
+  });
+  manualButton.addEventListener("mouseleave", () => {
+    if (cameraModeSelect.value !== "manual") {
+      manualButton.style.textDecoration = "none";
+    }
+  });
+
+  const cameraSeparator = document.createElement("span");
+  cameraSeparator.textContent = " / ";
+  cameraSeparator.style.fontFamily = "inherit";
+  cameraSeparator.style.fontSize = "0.85rem";
+  cameraSeparator.style.lineHeight = "1.4";
+
+  cameraModeToggle.appendChild(orbitButton);
+  cameraModeToggle.appendChild(cameraSeparator);
+  cameraModeToggle.appendChild(manualButton);
+  settingsPanel.appendChild(cameraModeToggle);
+
+  // Create a hidden input to store current camera mode
+  const cameraModeSelect = document.createElement("input");
+  cameraModeSelect.type = "hidden";
+  cameraModeSelect.id = "camera-mode-select";
+  cameraModeSelect.value = "orbit"; // Default to orbit
+  settingsPanel.appendChild(cameraModeSelect);
+
+  // Update underline based on current camera mode
+  const updateCameraModeUnderline = () => {
+    const currentMode = cameraModeSelect.value;
+    orbitButton.style.textDecoration =
+      currentMode === "orbit" ? "underline" : "none";
+    manualButton.style.textDecoration =
+      currentMode === "manual" ? "underline" : "none";
+  };
+  updateCameraModeUnderline();
+
+  // Add change listener to update underline when value changes
+  cameraModeSelect.addEventListener("change", () => {
+    updateCameraModeUnderline();
+  });
+
+  // Add click handlers
+  orbitButton.addEventListener("click", (e) => {
+    e.stopPropagation();
+    cameraModeSelect.value = "orbit";
+    cameraModeSelect.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+
+  manualButton.addEventListener("click", (e) => {
+    e.stopPropagation();
+    cameraModeSelect.value = "manual";
+    cameraModeSelect.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+
   // Create camera debug panel (debug - hidden)
   const cameraDebugPanel = document.createElement("div");
   cameraDebugPanel.id = "camera-debug-panel";
@@ -1239,6 +1352,7 @@ export function setupDOM(): DOMElements {
     sfxCheckbox,
     songCommentsCheckbox,
     paperFontSizeSelect,
+    cameraModeSelect,
     contactButton,
     cameraDebugPanel,
     portfolioPapersContainer,
