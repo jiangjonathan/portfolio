@@ -14,6 +14,12 @@ import {
 } from "three";
 import { CameraRig } from "../camera/cameraRig";
 
+// Convert frame-based lerp factor to delta-time-based factor
+// This ensures consistent animation speed regardless of frame rate
+const dtLerp = (baseFactor: number, delta: number): number => {
+  return 1 - Math.pow(1 - baseFactor, delta * 60);
+};
+
 // Lighting state for fullscreen transitions
 type LightingState = {
   ambientIntensity: number;
@@ -71,8 +77,8 @@ class LightingAnimator {
     this.transitionSpeed = fast ? 0.15 : 0.05;
   }
 
-  update(): void {
-    const speed = this.transitionSpeed;
+  update(delta: number): void {
+    const speed = dtLerp(this.transitionSpeed, delta);
 
     this.currentState.ambientIntensity +=
       (this.targetState.ambientIntensity - this.currentState.ambientIntensity) *

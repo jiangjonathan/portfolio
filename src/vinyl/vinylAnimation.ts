@@ -3,20 +3,27 @@ import { Matrix4, Quaternion, Vector3 } from "three";
 import { clampValue } from "../utils/utils";
 
 export const MAX_DRAG_RADIUS = 100;
-const SWING_DAMPING = 0.18;
+// Base lerp factors (calibrated for 60 FPS)
+const SWING_DAMPING_BASE = 0.25;
 const SWING_MAX_TILT = 0.35;
 const SWING_VELOCITY_FACTOR = 16;
-const STRING_RELAX_RATE = 0.08;
-const POSITION_LERP = 0.22;
+const STRING_RELAX_RATE_BASE = 0.14;
+const POSITION_LERP_BASE = 0.32;
 export const RETURN_CLEARANCE = 2.5;
 const RETURN_HORIZONTAL_EPS = 0.01;
 const RETURN_VERTICAL_EPS = 0.0005;
-const RETURN_DROP_RATE = 0.1;
-const RETURN_APPROACH_RATE = 0.2;
+const RETURN_DROP_RATE_BASE = 0.16;
+const RETURN_APPROACH_RATE_BASE = 0.3;
 const VINYL_WOBBLE_AMPLITUDE = 0.005;
 const VINYL_WOBBLE_PHASE_MULT = 1;
 export const VINYL_RETURN_FINAL_TWIST = (75 * Math.PI) / 180;
-const VINYL_RETURN_TWIST_LERP = 0.14;
+const VINYL_RETURN_TWIST_LERP_BASE = 0.22;
+
+// Convert frame-based lerp factor to delta-time-based factor
+// This ensures consistent animation speed regardless of frame rate
+const dtLerp = (baseFactor: number, delta: number): number => {
+  return 1 - Math.pow(1 - baseFactor, delta * 60);
+};
 const WORLD_UP = new Vector3(0, 1, 0);
 const TO_CAMERA = new Vector3();
 const BILLBOARD_X_AXIS = new Vector3();
@@ -121,6 +128,7 @@ export interface VinylAnimationInput {
   cameraTrackingEnabled: boolean;
   turntableAnchorY: number;
   anchorType: "turntable" | "focus";
+  delta: number;
 }
 
 export interface VinylAnimationOutput {
@@ -154,6 +162,7 @@ export function updateVinylAnimation(
     cameraTrackingEnabled,
     turntableAnchorY,
     anchorType: _anchorType,
+    delta,
   }: VinylAnimationInput,
 ): VinylAnimationOutput {
   if (!vinylModel) {
@@ -172,7 +181,10 @@ export function updateVinylAnimation(
     state.cameraRelativeOffsetValid = false;
   }
   if (dragActive) {
-    state.pointerAttachmentOffset.lerp(state.hangOffset, STRING_RELAX_RATE);
+    state.pointerAttachmentOffset.lerp(
+      state.hangOffset,
+      dtLerp(STRING_RELAX_RATE_BASE, delta),
+    );
     state.desiredPosition
       .copy(state.currentPointerWorld)
       .add(state.pointerAttachmentOffset);
@@ -239,7 +251,8 @@ export function updateVinylAnimation(
     if (isReturningVinyl) {
       const horizontalDelta =
         state.vinylAnchorPosition.x - state.vinylTargetPosition.x;
-      state.vinylTargetPosition.x += horizontalDelta * RETURN_APPROACH_RATE;
+      state.vinylTargetPosition.x +=
+        horizontalDelta * dtLerp(RETURN_APPROACH_RATE_BASE, delta);
 
       state.vinylTargetPosition.z = state.vinylAnchorPosition.z;
 
@@ -249,14 +262,15 @@ export function updateVinylAnimation(
         const targetLift =
           nubClearanceY || state.vinylAnchorPosition.y + RETURN_CLEARANCE;
         state.vinylTargetPosition.y +=
-          (targetLift - state.vinylTargetPosition.y) * RETURN_APPROACH_RATE;
+          (targetLift - state.vinylTargetPosition.y) *
+          dtLerp(RETURN_APPROACH_RATE_BASE, delta);
         if (Math.abs(horizontalDelta) < RETURN_HORIZONTAL_EPS) {
           hasClearedNub = true;
         }
       } else {
         state.vinylTargetPosition.y +=
           (state.vinylAnchorPosition.y - state.vinylTargetPosition.y) *
-          RETURN_DROP_RATE;
+          dtLerp(RETURN_DROP_RATE_BASE, delta);
         const closeHorizontally =
           Math.abs(horizontalDelta) < RETURN_HORIZONTAL_EPS;
         vinylReturnTwistTarget = 0;
@@ -316,7 +330,10 @@ export function updateVinylAnimation(
     state.lastTargetPosition.copy(state.vinylTargetPosition);
     vinylModel.position.copy(state.vinylTargetPosition);
   } else {
-    vinylModel.position.lerp(state.vinylTargetPosition, POSITION_LERP);
+    vinylModel.position.lerp(
+      state.vinylTargetPosition,
+      dtLerp(POSITION_LERP_BASE, delta),
+    );
   }
 
   const orientToCamera =
@@ -345,9 +362,11 @@ export function updateVinylAnimation(
   } else {
     // Normal rotation behavior
     state.swingState.currentX +=
-      (state.swingState.targetX - state.swingState.currentX) * SWING_DAMPING;
+      (state.swingState.targetX - state.swingState.currentX) *
+      dtLerp(SWING_DAMPING_BASE, delta);
     state.swingState.currentZ +=
-      (state.swingState.targetZ - state.swingState.currentZ) * SWING_DAMPING;
+      (state.swingState.targetZ - state.swingState.currentZ) *
+      dtLerp(SWING_DAMPING_BASE, delta);
     const wobblePhase = vinylSpinAngle * VINYL_WOBBLE_PHASE_MULT;
     const wobbleX = onTurntable
       ? Math.sin(wobblePhase) * VINYL_WOBBLE_AMPLITUDE
@@ -358,7 +377,8 @@ export function updateVinylAnimation(
     vinylModel.rotation.x = state.swingState.currentX + wobbleX;
     vinylModel.rotation.z = state.swingState.currentZ + wobbleZ;
     vinylReturnTwist +=
-      (vinylReturnTwistTarget - vinylReturnTwist) * VINYL_RETURN_TWIST_LERP;
+      (vinylReturnTwistTarget - vinylReturnTwist) *
+      dtLerp(VINYL_RETURN_TWIST_LERP_BASE, delta);
     vinylModel.rotation.y =
       vinylUserRotation +
       vinylSpinAngle +

@@ -8,6 +8,12 @@ import {
   BUSINESS_CARD_FOCUS_LIFT,
 } from "./sceneObjects";
 
+// Convert frame-based lerp factor to delta-time-based factor
+// This ensures consistent animation speed regardless of frame rate
+const dtLerp = (baseFactor: number, delta: number): number => {
+  return 1 - Math.pow(1 - baseFactor, delta * 60);
+};
+
 type MeshGetter = () => Object3D | null;
 
 export type BusinessCardAnimationOptions = {
@@ -65,6 +71,8 @@ export const createBusinessCardAnimation = ({
   const MAX_ROTATION_Z = 0.3; // radians (~17.2 degrees)
   let rotationAnimationFrame: number | null = null;
   let baseRotationQuaternion: Quaternion | null = null;
+  let lastRotationTime: number | null = null;
+  const ROTATION_LERP_BASE = 0.08;
 
   const captureHomeTransform = (mesh: Object3D) => {
     homePosition = mesh.position.clone();
@@ -176,11 +184,20 @@ export const createBusinessCardAnimation = ({
     animateToHome(mesh);
   };
 
-  const applyMouseReactiveRotation = () => {
+  const applyMouseReactiveRotation = (currentTime?: number) => {
     const mesh = getBusinessCardMesh();
     if (!mesh || !mouseReactiveRotationEnabled || !baseRotationQuaternion) {
+      lastRotationTime = null;
       return;
     }
+
+    // Calculate delta time for frame-rate independent animation
+    const now = currentTime ?? performance.now();
+    const delta =
+      lastRotationTime !== null
+        ? Math.min((now - lastRotationTime) / 1000, 0.1)
+        : 1 / 60;
+    lastRotationTime = now;
 
     let targetQuaternion: Quaternion;
 
@@ -218,8 +235,8 @@ export const createBusinessCardAnimation = ({
       targetQuaternion = baseRotationQuaternion;
     }
 
-    // Smoothly interpolate towards target rotation
-    mesh.quaternion.slerp(targetQuaternion, 0.08);
+    // Smoothly interpolate towards target rotation (frame-rate independent)
+    mesh.quaternion.slerp(targetQuaternion, dtLerp(ROTATION_LERP_BASE, delta));
 
     rotationAnimationFrame = requestAnimationFrame(applyMouseReactiveRotation);
   };
@@ -241,6 +258,7 @@ export const createBusinessCardAnimation = ({
       cancelAnimationFrame(rotationAnimationFrame);
       rotationAnimationFrame = null;
       baseRotationQuaternion = null;
+      lastRotationTime = null;
     }
   };
 

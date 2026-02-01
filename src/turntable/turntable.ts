@@ -4,6 +4,12 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { mediaTimeToYaw } from "../utils/media";
 import { clampValue, updatePointer } from "../utils/utils";
 
+// Convert frame-based lerp factor to delta-time-based factor
+// This ensures consistent animation speed regardless of frame rate
+const dtLerp = (baseFactor: number, delta: number): number => {
+  return 1 - Math.pow(1 - baseFactor, delta * 60);
+};
+
 export interface TurntableControllerOptions {
   camera: Camera;
   canvas: HTMLCanvasElement;
@@ -236,14 +242,15 @@ export class TurntableController {
     // Spin-up / spin-down
     const targetVel = this.startOn ? -this.angularSpeed : 0;
     this.platterAngularVelocity +=
-      (targetVel - this.platterAngularVelocity) * this.VELOCITY_RESPONSE;
+      (targetVel - this.platterAngularVelocity) *
+      dtLerp(this.VELOCITY_RESPONSE, delta);
     this.lastAngularStep = this.platterAngularVelocity * delta;
     this.platterMesh?.rotateY(this.lastAngularStep);
     this.pulleyMesh?.rotateY(this.lastAngularStep * this.PULLEY_RATIO);
 
     // Start/Stop button easing
     this.startStopOffset +=
-      (this.startStopTarget - this.startStopOffset) * 0.25;
+      (this.startStopTarget - this.startStopOffset) * dtLerp(0.25, delta);
     if (this.startStopButton) {
       this.startStopButton.position.y =
         this.startStopRestY + this.startStopOffset;
@@ -252,7 +259,7 @@ export class TurntableController {
 
     // Speed slide easing
     this.speedSlideOffset +=
-      (this.speedSlideTarget - this.speedSlideOffset) * 0.2;
+      (this.speedSlideTarget - this.speedSlideOffset) * dtLerp(0.2, delta);
     if (this.speedSlide) {
       this.speedSlide.position.set(
         this.speedSlideBaseX,
@@ -309,7 +316,7 @@ export class TurntableController {
       } else if (!this.isDraggingTonearm && this.autoReturn) {
         this.tonearmBaseRotation +=
           (this.tonearmHomeRotation - this.tonearmBaseRotation) *
-          this.TONEARM_RETURN_RATE;
+          dtLerp(this.TONEARM_RETURN_RATE, delta);
         this.tonearmBaseRotation = clampValue(
           this.tonearmBaseRotation,
           this.TONEARM_MIN_YAW,
@@ -323,7 +330,7 @@ export class TurntableController {
       } else if (!this.isDraggingTonearm && !inPlayableYaw) {
         this.tonearmBaseRotation +=
           (this.tonearmHomeRotation - this.tonearmBaseRotation) *
-          this.TONEARM_RETURN_RATE;
+          dtLerp(this.TONEARM_RETURN_RATE, delta);
         this.tonearmBaseRotation = clampValue(
           this.tonearmBaseRotation,
           this.TONEARM_MIN_YAW,
@@ -336,7 +343,7 @@ export class TurntableController {
         this.tonearmBaseRotation +
         (advanceMedia ? this.TONEARM_YAW_WOBBLE * Math.sin(wobblePhase) : 0);
       this.tonearmMount.rotation.y +=
-        (yawRender - this.tonearmMount.rotation.y) * 0.2;
+        (yawRender - this.tonearmMount.rotation.y) * dtLerp(0.2, delta);
       this.tonearmMount.rotation.y = clampValue(
         this.tonearmMount.rotation.y,
         this.TONEARM_MIN_YAW,
@@ -363,7 +370,8 @@ export class TurntableController {
             Math.sin(wobblePhase + Math.PI / 2)
           : 0);
       this.tonearm.rotation.x +=
-        (pitchRender - this.tonearm.rotation.x) * this.TONEARM_PLAY_LERP;
+        (pitchRender - this.tonearm.rotation.x) *
+        dtLerp(this.TONEARM_PLAY_LERP, delta);
 
       const needleDown =
         Math.abs(this.tonearm.rotation.x - desiredPitchDown) <

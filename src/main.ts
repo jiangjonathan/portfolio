@@ -2701,7 +2701,7 @@ const animate = (time: number) => {
   updateScenePageTransition();
 
   // Update lighting animations
-  lightingAnimator.update();
+  lightingAnimator.update(delta);
 
   // Update cursor based on drag state and hover (non-turntable pages only)
   if (activePage !== "turntable") {
@@ -2814,6 +2814,7 @@ const animate = (time: number) => {
         cameraTrackingEnabled: vinylCameraTrackingEnabled,
         turntableAnchorY: turntableAnchorPosition.y,
         anchorType: currentVinylAnchorType,
+        delta,
       });
       const shouldSignalOnTurntable =
         !turntableStateManager.isOnTurntable() &&
@@ -3163,7 +3164,7 @@ const animate = (time: number) => {
   }
 
   // Update auto-orbit and momentum
-  inputHandlers?.updateAutoOrbit();
+  inputHandlers?.updateAutoOrbit(delta);
 
   if (portfolioPapersManager) {
     paperOverlayManager.setActive(activePage === "portfolio");

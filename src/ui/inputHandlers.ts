@@ -122,10 +122,22 @@ type CameraPanState = {
   lastY: number;
 };
 
-const MOMENTUM_FRICTION = 0.94;
+// Base values calibrated for 60 FPS
+const MOMENTUM_FRICTION_BASE = 0.94;
 const MOMENTUM_MIN_VELOCITY = 0.001;
-const AUTO_ORBIT_SPEED = 0.001;
-const AUTO_ORBIT_DECEL_RATE = 0.967;
+const AUTO_ORBIT_SPEED_BASE = 0.06; // per second (0.001 * 60)
+const AUTO_ORBIT_DECEL_RATE_BASE = 0.967;
+const AUTO_ORBIT_ACCEL_RATE_BASE = 0.08;
+
+// Convert frame-based lerp/decay factor to delta-time-based factor
+const dtLerp = (baseFactor: number, delta: number): number => {
+  return 1 - Math.pow(1 - baseFactor, delta * 60);
+};
+
+// Convert frame-based decay (multiply) factor to delta-time-based factor
+const dtDecay = (baseFactor: number, delta: number): number => {
+  return Math.pow(baseFactor, delta * 60);
+};
 
 export const registerInputHandlers = (deps: InputHandlersDeps) => {
   const cameraOrbitState: CameraOrbitState = {
@@ -165,7 +177,7 @@ export const registerInputHandlers = (deps: InputHandlersDeps) => {
     }
   };
 
-  const updateAutoOrbit = () => {
+  const updateAutoOrbit = (delta: number) => {
     if (!cameraOrbitState.isAutoOrbiting) {
       return;
     }
@@ -180,19 +192,24 @@ export const registerInputHandlers = (deps: InputHandlersDeps) => {
     }
 
     if (cameraOrbitState.isHoveringModel) {
-      autoOrbitSpeedMultiplier *= AUTO_ORBIT_DECEL_RATE;
+      autoOrbitSpeedMultiplier *= dtDecay(AUTO_ORBIT_DECEL_RATE_BASE, delta);
       if (autoOrbitSpeedMultiplier < 0.01) {
         autoOrbitSpeedMultiplier = 0;
       }
     } else {
-      autoOrbitSpeedMultiplier += (1.0 - autoOrbitSpeedMultiplier) * 0.08;
+      autoOrbitSpeedMultiplier +=
+        (1.0 - autoOrbitSpeedMultiplier) *
+        dtLerp(AUTO_ORBIT_ACCEL_RATE_BASE, delta);
       if (autoOrbitSpeedMultiplier > 0.99) {
         autoOrbitSpeedMultiplier = 1.0;
       }
     }
 
     const autoOrbitSpeed =
-      AUTO_ORBIT_SPEED * autoOrbitDirection * autoOrbitSpeedMultiplier;
+      AUTO_ORBIT_SPEED_BASE *
+      delta *
+      autoOrbitDirection *
+      autoOrbitSpeedMultiplier;
     deps.cameraRig.orbit(autoOrbitSpeed, 0);
   };
 
@@ -207,10 +224,18 @@ export const registerInputHandlers = (deps: InputHandlersDeps) => {
       return;
     }
     isCameraOrbitDecelerating = true;
+    let lastMomentumTime: number | null = null;
 
-    const decelerate = () => {
-      cameraOrbitState.velocityX *= MOMENTUM_FRICTION;
-      cameraOrbitState.velocityY *= MOMENTUM_FRICTION;
+    const decelerate = (currentTime: number) => {
+      const delta =
+        lastMomentumTime !== null
+          ? Math.min((currentTime - lastMomentumTime) / 1000, 0.1)
+          : 1 / 60;
+      lastMomentumTime = currentTime;
+
+      const friction = dtDecay(MOMENTUM_FRICTION_BASE, delta);
+      cameraOrbitState.velocityX *= friction;
+      cameraOrbitState.velocityY *= friction;
 
       if (
         Math.abs(cameraOrbitState.velocityX) < MOMENTUM_MIN_VELOCITY &&
